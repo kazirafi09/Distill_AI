@@ -1,0 +1,125 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="High Level Architecture" id="distill-ai-architecture">
+    <mxGraphModel dx="1433" dy="718" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1170" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="system" parent="1" style="container=1;collapsible=0;recursiveResize=0;rounded=1;absoluteArcSize=1;arcSize=16;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingTop=12;spacingLeft=18;fontFamily=Helvetica;fontSize=18;fontStyle=1;fontColor=#334155;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;spacingLeft=260;" value="DISTILL AI&amp;nbsp;&amp;nbsp;" vertex="1">
+          <mxGeometry height="770" width="1080" x="40" y="270" as="geometry" />
+        </mxCell>
+        <mxCell id="pre" parent="system" style="container=1;collapsible=0;recursiveResize=0;rounded=1;absoluteArcSize=1;arcSize=16;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingTop=12;spacingLeft=18;fontFamily=Helvetica;fontSize=16;fontStyle=1;fontColor=#3b6ea5;fillColor=#f5f9ff;strokeColor=#a9c4e6;strokeWidth=1.5;" value="PRE-INTERVIEW" vertex="1">
+          <mxGeometry height="340" width="680" x="30" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="recruit" parent="pre" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Recruitment UI&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="40" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="jobs" parent="pre" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Job &amp;amp; Candidate&lt;br&gt;Management&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="40" y="219" as="geometry" />
+        </mxCell>
+        <mxCell id="select" parent="pre" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Candidate Selection UI&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="410" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="eval" parent="pre" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;CV Evaluation&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="410" y="219" as="geometry" />
+        </mxCell>
+        <mxCell id="live" parent="system" style="container=1;collapsible=0;recursiveResize=0;rounded=1;absoluteArcSize=1;arcSize=16;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingTop=12;spacingLeft=18;fontFamily=Helvetica;fontSize=16;fontStyle=1;fontColor=#4a7c38;fillColor=#f5fbf6;strokeColor=#b2d5a4;strokeWidth=1.5;" value="INTERVIEW" vertex="1">
+          <mxGeometry height="340" width="290" x="750" y="60" as="geometry" />
+        </mxCell>
+        <mxCell id="interview" parent="live" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Interview&lt;br&gt;Management&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="25" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="analysis" parent="live" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Interview Analysis&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="25" y="230" as="geometry" />
+        </mxCell>
+        <mxCell id="post" parent="system" style="container=1;collapsible=0;recursiveResize=0;rounded=1;absoluteArcSize=1;arcSize=16;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingTop=12;spacingLeft=18;fontFamily=Helvetica;fontSize=16;fontStyle=1;fontColor=#75548f;fillColor=#faf7fe;strokeColor=#c9b4de;strokeWidth=1.5;" value="POST-INTERVIEW" vertex="1">
+          <mxGeometry height="300" width="840" x="100" y="440" as="geometry" />
+        </mxCell>
+        <mxCell id="claim" parent="post" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;CV Claim Verification&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="67" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="score" parent="post" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Post-Interview Scoring&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="357" y="65" as="geometry" />
+        </mxCell>
+        <mxCell id="assessment" parent="post" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Consolidated Assessment&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="212" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="dashboard" parent="post" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Recruitment Results&lt;br&gt;Dashboard&lt;/font&gt;" vertex="1">
+          <mxGeometry height="72" width="230" x="542" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="n3R2sVNnR8LQLUP-XH-a-1" edge="1" parent="system" source="analysis" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="claim">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="890" y="490.06" />
+              <mxPoint x="282" y="490.06" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="n3R2sVNnR8LQLUP-XH-a-2" edge="1" parent="system" source="analysis" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.75;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="score">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="947.5" y="470" />
+              <mxPoint x="572" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="external" parent="1" style="container=1;collapsible=0;recursiveResize=0;rounded=1;absoluteArcSize=1;arcSize=16;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingTop=12;spacingLeft=18;fontFamily=Helvetica;fontSize=16;fontStyle=1;fontColor=#64748b;fillColor=#ffffff;strokeColor=#94a3b8;strokeWidth=1.5;dashed=1;dashPattern=6 4;" value="EXTERNAL SERVICE" vertex="1">
+          <mxGeometry height="175" width="300" x="680" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="external-note" parent="external" style="text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;fontSize=14;fontStyle=2;fontColor=#64748b;fontFamily=Helvetica;spacing=0;spacingLeft=18;" value="Email delivery provider" vertex="1">
+          <mxGeometry height="24" width="300" y="38" as="geometry" />
+        </mxCell>
+        <mxCell id="email" parent="external" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Email&lt;/font&gt;" vertex="1">
+          <mxGeometry height="64" width="200" x="50" y="78" as="geometry" />
+        </mxCell>
+        <mxCell id="user" parent="1" style="rounded=1;absoluteArcSize=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;fontSize=16;fontFamily=Helvetica;spacing=10;strokeWidth=1.5;" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Recruiter / Interviewer&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="230" x="110" y="160" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="recruit" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="recruit" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="jobs" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Create job -&amp;gt;&amp;nbsp;&lt;br&gt;Job post -&amp;gt; Receieve CVs&lt;/font&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="jobs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" target="eval" value="Job requirements">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="jobs" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" target="eval" value="Parsed CV data">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="eval" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="select" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Score &amp;amp; rank&lt;/font&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="select" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="interview" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="select" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;dashed=1;dashPattern=6 4;" target="email" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Interview invitation&lt;/font&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="interview" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="analysis" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Transcript&lt;/font&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="claim" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.2;entryY=0;entryDx=0;entryDy=0;" target="assessment" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Claim evidence&lt;/font&gt;">
+          <mxGeometry relative="1" x="-0.6434" y="-2" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="322" y="880.06" />
+              <mxPoint x="398" y="880.06" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="score" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.8;entryY=0;entryDx=0;entryDy=0;" target="assessment" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;&lt;font style=&quot;&quot;&gt;Interview&lt;/font&gt;&lt;font style=&quot;&quot;&gt; &lt;/font&gt;&lt;font style=&quot;&quot;&gt;score&lt;/font&gt;&lt;/font&gt;">
+          <mxGeometry relative="1" x="0.5891" y="-3" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="612" y="870.06" />
+              <mxPoint x="536" y="870.06" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="assessment" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;endSize=6;strokeColor=#475569;strokeWidth=2;fontSize=13;fontFamily=Helvetica;fontColor=#334155;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="dashboard" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

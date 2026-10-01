@@ -1,0 +1,13 @@
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.app h1 {
+  margin: 0 0 16px;
+}
+
+.app p {
+  margin: 0 0 12px;
+}
