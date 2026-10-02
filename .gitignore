@@ -25,3 +25,5 @@ logs/
 
 *.sqlite3
 *.db
+
+backend/logs/
