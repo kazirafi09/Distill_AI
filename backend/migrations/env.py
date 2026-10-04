@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models.user import User
-
+from app.models.jd import JDConversation, JobDescription
 
 config = context.config
 
@@ -21,6 +21,14 @@ if config.config_file_name is not None:
 settings = get_settings()
 target_metadata = Base.metadata
 
+def include_name(name, type_, parent_names):
+    if type_ == "table" and name is not None:
+        return not (
+            name == "checkpoints"
+            or name.startswith("checkpoint_")
+        )
+
+    return True
 
 def run_migrations_offline() -> None:
     context.configure(
@@ -29,6 +37,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_name=include_name,
     )
 
     with context.begin_transaction():

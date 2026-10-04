@@ -1,11 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
-from pydantic import Field, SecretStr
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -25,6 +23,8 @@ class Settings(BaseSettings):
     postgres_port: int = 5442
     jwt_secret_key: SecretStr = Field(min_length=32)
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
+    groq_api_key: SecretStr | None = None
+    groq_model: str = "openai/gpt-oss-20b"
 
     @property
     def database_url(self) -> URL:

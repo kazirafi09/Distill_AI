@@ -1,5 +1,5 @@
 import logging
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from time import perf_counter
 from typing import Annotated
 
@@ -13,19 +13,34 @@ from app.core.logging import setup_logging
 from app.db.session import engine, get_db
 from app.auth import router as auth_router
 
+from starlette.concurrency import run_in_threadpool
+
+from app.workflows.jd.runtime import open_jd_graph
+from app.jd import router as jd_router
+
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Application started")
+    resources = ExitStack()
 
     try:
+        app.state.jd_graph = await run_in_threadpool(
+            resources.enter_context,
+            open_jd_graph(),
+        )
+
+        logger.info("Application started; PostgreSQL JD graph ready")
         yield
+
     finally:
-        await engine.dispose()
-        logger.info("Application stopped; database engine disposed")
+        try:
+            await run_in_threadpool(resources.close)
+        finally:
+            await engine.dispose()
+            logger.info("Application stopped; database connections closed")
 
 
 app = FastAPI(
@@ -35,6 +50,7 @@ app = FastAPI(
 
 register_error_handlers(app)
 app.include_router(auth_router)
+app.include_router(jd_router)
 
 
 @app.middleware("http")
