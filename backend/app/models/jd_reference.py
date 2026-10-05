@@ -34,6 +34,10 @@ class JDReference(Base):
             "index_status IN ('pending', 'indexing', 'indexed', 'failed')",
             name="ck_jd_references_index_status",
         ),
+        CheckConstraint(
+            "document_type IN ('prior_jd', 'company_policy')",
+            name="ck_jd_references_document_type",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -76,4 +80,10 @@ class JDReference(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+    document_type: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="prior_jd",
     )

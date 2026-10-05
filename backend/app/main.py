@@ -17,6 +17,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.workflows.jd.runtime import open_jd_graph
 from app.jd import router as jd_router
+from app.jd_reference_routes import router as jd_references_router
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -51,7 +52,7 @@ app = FastAPI(
 register_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(jd_router)
-
+app.include_router(jd_references_router)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
