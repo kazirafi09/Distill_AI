@@ -12,6 +12,8 @@ from app.core.config import get_settings
 from app.db.base import Base
 from app.models.user import User
 from app.models.jd import JDConversation, JobDescription
+from app.models.jd_reference import JDReference
+
 
 config = context.config
 
