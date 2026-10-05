@@ -298,8 +298,7 @@ def gather_requirements(state: JDState) -> dict[str, object]:
 
         structured_model = model.with_structured_output(
             RequirementGatheringResult,
-            method="json_schema",
-            strict=True,
+            method="json_mode",
             include_raw=True,
         )
 
