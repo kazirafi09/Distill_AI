@@ -26,6 +26,20 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-20b"
 
+    ollama_base_url: str = "http://127.0.0.1:11435"
+    embedding_model: str = Field(
+        default="qwen3-embedding:0.6b",
+        validation_alias="OLLAMA_EMBEDDING_MODEL",
+    )
+
+    embedding_timeout_seconds: int = Field(default=120, ge=1)
+
+    chroma_host: str = "127.0.0.1"
+    chroma_port: int = Field(default=8001, ge=1, le=65535)
+
+    rag_max_distance: float = Field(default=0.45, ge=0, le=2)
+
+
     @property
     def database_url(self) -> URL:
         return URL.create(

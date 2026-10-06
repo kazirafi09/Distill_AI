@@ -4,6 +4,7 @@ from app.workflows.jd.nodes import (
     gather_requirements,
     generate_jd,
     receive_requirements,
+    retrieve_references,
     review_jd,
     revise_jd,
 )
@@ -14,8 +15,7 @@ def route_start(state: JDState) -> str:
     if state.get("messages"):
         return "gather_requirements"
 
-    # Preserve support for the existing direct-requirements check.
-    return "generate_jd"
+    return "retrieve_references"
 
 
 def route_after_gathering(state: JDState) -> str:
@@ -23,7 +23,7 @@ def route_after_gathering(state: JDState) -> str:
         return END
 
     if state.get("requirements_ready"):
-        return "generate_jd"
+        return "retrieve_references"
 
     return "receive_requirements"
 
@@ -35,6 +35,20 @@ def route_after_reply(state: JDState) -> str:
     return END
 
 
+def route_after_retrieval(state: JDState) -> str:
+    if state.get("status") == "failed":
+        return END
+
+    return "generate_jd"
+
+
+def route_after_revision_retrieval(state: JDState) -> str:
+    if state.get("status") == "failed":
+        return END
+
+    return "revise_jd"
+
+
 def route_after_generation(state: JDState) -> str:
     if state.get("status") == "awaiting_review":
         return "review_jd"
@@ -44,7 +58,7 @@ def route_after_generation(state: JDState) -> str:
 
 def route_after_review(state: JDState) -> str:
     if state.get("status") == "drafting":
-        return "revise_jd"
+        return "retrieve_revision_references"
 
     return END
 
@@ -54,6 +68,11 @@ def build_jd_graph(checkpointer):
 
     builder.add_node("gather_requirements", gather_requirements)
     builder.add_node("receive_requirements", receive_requirements)
+    builder.add_node("retrieve_references", retrieve_references)
+    builder.add_node(
+        "retrieve_revision_references",
+        retrieve_references,
+    )
     builder.add_node("generate_jd", generate_jd)
     builder.add_node("review_jd", review_jd)
     builder.add_node("revise_jd", revise_jd)
@@ -63,7 +82,7 @@ def build_jd_graph(checkpointer):
         route_start,
         {
             "gather_requirements": "gather_requirements",
-            "generate_jd": "generate_jd",
+            "retrieve_references": "retrieve_references",
         },
     )
 
@@ -71,7 +90,7 @@ def build_jd_graph(checkpointer):
         "gather_requirements",
         route_after_gathering,
         {
-            "generate_jd": "generate_jd",
+            "retrieve_references": "retrieve_references",
             "receive_requirements": "receive_requirements",
             END: END,
         },
@@ -82,6 +101,15 @@ def build_jd_graph(checkpointer):
         route_after_reply,
         {
             "gather_requirements": "gather_requirements",
+            END: END,
+        },
+    )
+
+    builder.add_conditional_edges(
+        "retrieve_references",
+        route_after_retrieval,
+        {
+            "generate_jd": "generate_jd",
             END: END,
         },
     )
@@ -100,6 +128,16 @@ def build_jd_graph(checkpointer):
     builder.add_conditional_edges(
         "review_jd",
         route_after_review,
+        {
+            "retrieve_revision_references":
+                "retrieve_revision_references",
+            END: END,
+        },
+    )
+
+    builder.add_conditional_edges(
+        "retrieve_revision_references",
+        route_after_revision_retrieval,
         {
             "revise_jd": "revise_jd",
             END: END,

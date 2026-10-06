@@ -22,3 +22,5 @@ chromadb==1.5.9
 pypdf==6.19.0
 python-docx==1.2.0
 python-multipart==0.0.32
+
+langchain-text-splitters==1.1.3

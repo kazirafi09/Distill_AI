@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 
 import { ApiError } from '../../services/api'
@@ -10,6 +10,7 @@ import type {
   JobDescriptionSummary,
   SavedJobDescription,
 } from './api'
+import ReferenceDocuments from './ReferenceDocuments'
 
 type MyJobDescriptionsProps = {
   token: string
@@ -39,6 +40,7 @@ export default function MyJobDescriptions({
   const [offset, setOffset] = useState(0)
   const [reloadCount, setReloadCount] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const detailDialogRef = useRef<HTMLDialogElement>(null)
 
   const [listResult, setListResult] = useState<{
     key: string
@@ -129,14 +131,23 @@ export default function MyJobDescriptions({
     return () => controller.abort()
   }, [token, selectedId])
 
+  useEffect(() => {
+    const dialog = detailDialogRef.current
+
+    if (selectedId && dialog && !dialog.open) {
+      dialog.showModal()
+    }
+  }, [selectedId])
+
   return (
     <section
       aria-labelledby="saved-jds-title"
-      className="mt-8 rounded-2xl border border-slate-200 bg-white p-5"
+      className="jd-library"
     >
+      <ReferenceDocuments token={token} />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="saved-jds-title" className="text-xl font-semibold">
-          My Job Descriptions
+        <h2 id="saved-jds-title" className="text-lg font-semibold">
+          Your Job Descriptions
         </h2>
 
         <button
@@ -176,6 +187,7 @@ export default function MyJobDescriptions({
             <li key={item.id}>
               <button
                 type="button"
+                aria-haspopup="dialog"
                 aria-pressed={selectedId === item.id}
                 onClick={() => setSelectedId(item.id)}
                 className={`w-full rounded-xl border p-4 text-left ${
@@ -187,6 +199,7 @@ export default function MyJobDescriptions({
                 <span className="block font-semibold">
                   {item.title}
                 </span>
+
                 <time
                   dateTime={item.created_at}
                   className="mt-1 block text-sm text-slate-500"
@@ -224,14 +237,21 @@ export default function MyJobDescriptions({
       </div>
 
       {selectedId && (
-        <article className="mt-6 border-t border-slate-200 pt-5">
+        <dialog
+          ref={detailDialogRef}
+          className="jd-detail-dialog"
+          aria-labelledby="saved-jd-detail-title"
+          onClose={() => setSelectedId(null)}
+        >
           <div className="mb-4 flex items-center justify-between gap-3">
-            <h3 className="font-semibold">Saved job description</h3>
+            <h3 id="saved-jd-detail-title" className="font-semibold">
+              Saved job description
+            </h3>
 
             <button
               type="button"
               className="button-secondary"
-              onClick={() => setSelectedId(null)}
+              onClick={() => detailDialogRef.current?.close()}
             >
               Close
             </button>
@@ -258,7 +278,7 @@ export default function MyJobDescriptions({
               </div>
             </>
           ) : null}
-        </article>
+        </dialog>
       )}
     </section>
   )

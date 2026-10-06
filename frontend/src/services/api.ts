@@ -20,8 +20,9 @@ export async function apiRequest<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const headers = new Headers()
+  const isFormData = options.body instanceof FormData
 
-  if (options.body !== undefined) {
+  if (options.body !== undefined && !isFormData) {
     headers.set('Content-Type', 'application/json')
   }
 
@@ -33,9 +34,11 @@ export async function apiRequest<T>(
     method: options.method ?? 'GET',
     headers,
     body:
-      options.body !== undefined
-        ? JSON.stringify(options.body)
-        : undefined,
+      options.body === undefined
+        ? undefined
+        : isFormData
+          ? options.body as FormData
+          : JSON.stringify(options.body),
     signal: options.signal,
   })
 
@@ -49,10 +52,19 @@ export async function apiRequest<T>(
       data !== null &&
       'detail' in data
     ) {
-      if (typeof data.detail === 'string') {
-        message = data.detail
-      } else if (Array.isArray(data.detail)) {
+      const detail = data.detail
+
+      if (typeof detail === 'string') {
+        message = detail
+      } else if (Array.isArray(detail)) {
         message = 'Please check the information you entered.'
+      } else if (
+        typeof detail === 'object' &&
+        detail !== null &&
+        'message' in detail &&
+        typeof detail.message === 'string'
+      ) {
+        message = detail.message
       }
     }
 

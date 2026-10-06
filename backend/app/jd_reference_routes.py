@@ -26,11 +26,17 @@ from app.services.document_extraction import (
     extract_document,
 )
 
+import logging
+
+from app.services.jd_reference_index import index_reference_document
 
 router = APIRouter(
     prefix="/jd/references",
     tags=["JD References"],
 )
+
+logger = logging.getLogger("distill_ai.jd_references")
+
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 Recruiter = Annotated[User, Depends(require_recruiter)]
@@ -60,6 +66,56 @@ def duplicate_error() -> HTTPException:
         },
     )
 
+async def index_saved_reference(
+    db: AsyncSession,
+    recruiter_id: UUID,
+    reference_id: UUID,
+) -> JDReference:
+    reference = await db.scalar(
+        select(JDReference)
+        .where(
+            JDReference.id == reference_id,
+            JDReference.recruiter_id == recruiter_id,
+        )
+        .with_for_update()
+    )
+
+    if reference is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Reference document not found.",
+        )
+
+    reference.index_status = "indexing"
+    reference.error_code = None
+    await db.flush()
+
+    try:
+        await run_in_threadpool(
+            index_reference_document,
+            str(reference.id),
+            str(reference.recruiter_id),
+            reference.filename,
+            reference.document_type,
+            reference.extracted_text,
+        )
+    except Exception as exc:
+        logger.error(
+            "Reference indexing failed | reference_id=%s | error_type=%s",
+            reference.id,
+            type(exc).__name__,
+        )
+
+        reference.index_status = "failed"
+        reference.error_code = "REFERENCE_INDEX_FAILED"
+    else:
+        reference.index_status = "indexed"
+        reference.error_code = None
+
+    await db.commit()
+    await db.refresh(reference)
+
+    return reference
 
 @router.post("", response_model=ReferenceResponse, status_code=201)
 async def upload_reference(
@@ -119,7 +175,12 @@ async def upload_reference(
         raise
 
     await db.refresh(reference)
-    return reference
+
+    return await index_saved_reference(
+        db,
+        recruiter.id,
+        reference.id,
+    )
 
 
 @router.get("", response_model=list[ReferenceResponse])
@@ -144,3 +205,18 @@ async def list_references(
     )
 
     return result.all()
+
+@router.post(
+    "/{reference_id}/index",
+    response_model=ReferenceResponse,
+)
+async def retry_reference_index(
+    reference_id: UUID,
+    db: DatabaseSession,
+    recruiter: Recruiter,
+):
+    return await index_saved_reference(
+        db,
+        recruiter.id,
+        reference_id,
+    )

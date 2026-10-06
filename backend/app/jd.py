@@ -40,10 +40,14 @@ class ConversationAction(BaseModel):
         max_length=6000,
     )
 
-def workflow_config(conversation_id: UUID) -> dict:
+def workflow_config(
+    conversation_id: UUID,
+    recruiter_id: UUID,
+) -> dict:
     return {
         "configurable": {
             "thread_id": f"jd:{conversation_id}",
+            "recruiter_id": str(recruiter_id),
         },
         "recursion_limit": 50,
     }
@@ -93,6 +97,8 @@ def conversation_response(conversation: JDConversation, snapshot) -> dict:
         "approved_jd": state.get("approved_jd"),
         "revision_count": state.get("revision_count", 0),
         "error_code": state.get("error_code"),
+        "rag_status": state.get("rag_status", "not_run"),
+        "reference_sources": state.get("reference_sources", []),
     }
 
 
@@ -137,7 +143,7 @@ async def create_conversation(
     await db.refresh(conversation, with_for_update=True)
 
     graph = request.app.state.jd_graph
-    config = workflow_config(conversation.id)
+    config = workflow_config(conversation.id, user.id)
 
     await run_in_threadpool(
         graph.invoke,
@@ -167,7 +173,7 @@ async def get_conversation(
 
     snapshot = await run_in_threadpool(
         request.app.state.jd_graph.get_state,
-        workflow_config(conversation.id),
+        workflow_config(conversation.id, user.id),
     )
 
     document = await db.scalar(
@@ -260,7 +266,7 @@ async def act_on_conversation(
     )
 
     graph = request.app.state.jd_graph
-    config = workflow_config(conversation.id)
+    config = workflow_config(conversation.id, user.id)
     snapshot = await run_in_threadpool(graph.get_state, config)
 
     # Retrying approval can recover a save interrupted after the graph

@@ -13,6 +13,12 @@ JDStatus = Literal[
     "failed",
 ]
 
+class ReferenceSource(TypedDict):
+    reference_id: str
+    filename: str
+    document_type: str
+    chunk_index: int
+    distance: float
 
 class JDState(TypedDict):
     messages: NotRequired[Annotated[list[AnyMessage], add_messages]]
@@ -26,3 +32,6 @@ class JDState(TypedDict):
     status: NotRequired[JDStatus]
     approved_jd: NotRequired[str]
     error_code: NotRequired[str | None]
+    reference_context: NotRequired[str]
+    reference_sources: NotRequired[list[ReferenceSource]]
+    rag_status: NotRequired[str]

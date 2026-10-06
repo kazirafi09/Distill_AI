@@ -18,7 +18,7 @@ export default function ChatMessage({
     <article
       className={`rounded-2xl border p-4 ${
         isUser
-          ? 'ml-auto max-w-[90%] border-slate-200 bg-white'
+          ? 'ml-auto max-w-[90%] border-emerald-100 bg-emerald-50'
           : 'mr-auto w-full border-slate-200 bg-slate-50'
       }`}
     >

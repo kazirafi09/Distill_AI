@@ -153,7 +153,7 @@ export default function RecruiterChat({
   }
 
   return (
-    <div className="mt-6 h-[70vh] min-h-[480px]">
+    <div className="jd-chat">
       <ChatWindow
         title="Job description assistant"
         description="Describe the role, answer questions, then review the draft."
@@ -195,7 +195,7 @@ export default function RecruiterChat({
               disabled={isBusy}
               onClick={startNewConversation}
             >
-              New conversation
+              Create new JD
             </button>
           </div>
         }
@@ -214,7 +214,28 @@ export default function RecruiterChat({
             />
           ) : undefined
         }
-      >
+            >
+        {conversation?.rag_status === 'retrieved' && (
+          <div
+            className="rounded-xl border border-emerald-100
+              bg-emerald-50 px-4 py-3"
+          >
+            <p className="text-xs font-semibold text-emerald-800">
+              Reference excerpts supplied to the assistant
+            </p>
+
+            <p className="mt-1 break-words text-xs text-emerald-700">
+              {[
+                ...new Set(
+                  (conversation.reference_sources ?? []).map(
+                    (source) => source.filename,
+                  ),
+                ),
+              ].join(', ')}
+            </p>
+          </div>
+        )}
+
         {!conversation && !restoring && !restoreError && (
           <ChatMessage
             role="assistant"
