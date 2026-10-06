@@ -5,13 +5,9 @@ from langgraph.graph.message import add_messages
 
 
 JDStatus = Literal[
-    "gathering",
-    "drafting",
-    "awaiting_review",
-    "approved",
-    "cancelled",
-    "failed",
+    "gathering", "drafting", "awaiting_review", "approved", "cancelled", "failed",
 ]
+
 
 class ReferenceSource(TypedDict):
     reference_id: str
@@ -20,12 +16,17 @@ class ReferenceSource(TypedDict):
     chunk_index: int
     distance: float
 
+
 class JDState(TypedDict):
     messages: NotRequired[Annotated[list[AnyMessage], add_messages]]
+    tool_messages: NotRequired[Annotated[list[AnyMessage], add_messages]]
+    tool_return_node: NotRequired[
+        Literal["gather_requirements", "generate_jd", "revise_jd"]
+    ]
+    tool_rounds: NotRequired[int]
     requirements: NotRequired[str]
     requirements_ready: NotRequired[bool]
     follow_up_question: NotRequired[str]
-
     draft_jd: NotRequired[str]
     feedback: NotRequired[str]
     revision_count: NotRequired[int]
