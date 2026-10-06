@@ -12,10 +12,11 @@ from app.core.errors import register_error_handlers
 from app.core.logging import setup_logging
 from app.db.session import engine, get_db
 from app.auth import router as auth_router
+from app.assistant import router as assistant_router
 
 from starlette.concurrency import run_in_threadpool
 
-from app.workflows.jd.runtime import open_jd_graph
+from app.workflows.runtime import open_workflow_graphs
 from app.jd import router as jd_router
 from app.jd_reference_routes import router as jd_references_router
 
@@ -28,12 +29,17 @@ async def lifespan(app: FastAPI):
     resources = ExitStack()
 
     try:
-        app.state.jd_graph = await run_in_threadpool(
+        jd_graph, assistant_graph = await run_in_threadpool(
             resources.enter_context,
-            open_jd_graph(),
+            open_workflow_graphs(),
         )
 
-        logger.info("Application started; PostgreSQL JD graph ready")
+        app.state.jd_graph = jd_graph
+        app.state.assistant_graph = assistant_graph
+
+        logger.info(
+            "Application started; PostgreSQL JD and assistant graphs ready"
+        )
         yield
 
     finally:
@@ -53,6 +59,7 @@ register_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(jd_router)
 app.include_router(jd_references_router)
+app.include_router(assistant_router)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

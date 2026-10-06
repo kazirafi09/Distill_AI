@@ -173,21 +173,22 @@ async def create_jd_conversation(
     conversation = JDConversation(recruiter_id=recruiter_id)
     db.add(conversation)
     await db.commit()
+    return await initialize_jd_conversation(db, graph, recruiter_id, conversation.id, message)
 
-    # Serialize changes to this conversation using a database row lock.
-    await db.refresh(conversation, with_for_update=True)
 
+async def initialize_jd_conversation(
+    db: AsyncSession, graph: Any, recruiter_id: UUID,
+    conversation_id: UUID, message: str,
+) -> dict:
+    conversation = await get_owned_conversation(db, recruiter_id, conversation_id, lock=True)
     config = workflow_config(conversation.id, recruiter_id)
-
-    await run_in_threadpool(
-        graph.invoke,
-        {"messages": [HumanMessage(content=message)]},
-        config,
-    )
-
+    snapshot = await run_in_threadpool(graph.get_state, config)
+    if not snapshot.values:
+        await run_in_threadpool(graph.invoke, {"messages": [HumanMessage(content=message)]}, config)
+    elif snapshot.next and not any(task.interrupts for task in snapshot.tasks):
+        await run_in_threadpool(graph.invoke, None, config)
     snapshot = await run_in_threadpool(graph.get_state, config)
     response = conversation_response(conversation, snapshot)
-
     await db.commit()
     return response
 

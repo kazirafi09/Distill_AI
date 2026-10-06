@@ -1,16 +1,20 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import ChatInput from '../../components/chat/ChatInput'
 import ChatMessage from '../../components/chat/ChatMessage'
 import ChatWindow from '../../components/chat/ChatWindow'
 import { ApiError } from '../../services/api'
+import type { JDAction } from './api'
 import {
-  createConversation,
-  getConversation,
-  sendConversationAction,
-} from './api'
-import type { JDAction, JDConversation } from './api'
-import { usePersistentConversation } from './usePersistentConversation'
+  createAssistant,
+  getAssistant,
+  sendAssistantAction,
+  sendAssistantMessage,
+} from './assistantApi'
+import type { AssistantConversation } from './assistantApi'
+import {
+  usePersistentAssistantConversation,
+} from './usePersistentAssistantConversation'
 
 type RecruiterChatProps = {
   token: string
@@ -30,116 +34,168 @@ export default function RecruiterChat({
     restoreError,
     resetConversation,
     retryRestore,
-  } = usePersistentConversation(token, userId)
+  } = usePersistentAssistantConversation(token, userId)
+
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const requestRef = useRef(false)
+
+  const requestRef = useRef<AbortController | null>(null)
   const isBusy = busy || restoring
 
-  const allowedActions =
-    conversation?.interrupt?.payload.allowed_actions ?? []
+  useEffect(() => {
+    return () => requestRef.current?.abort()
+  }, [])
+
+  const jd = conversation?.jd_conversation
+  const allowedActions = jd?.interrupt?.payload.allowed_actions ?? []
 
   const canReply = allowedActions.includes('reply')
   const canRevise = allowedActions.includes('revise')
-  const canCompose =
-  !restoring &&
-  !restoreError &&
-  (!conversation || canReply || canRevise)
+  const canRecoverSave = jd?.status === 'approved' && !jd.job_description
 
-  const document =
-    conversation?.approved_jd || conversation?.draft_jd
+  const canCompose =
+    !restoring &&
+    !restoreError &&
+    (
+      !conversation ||
+      conversation.mode === 'chat' ||
+      canReply ||
+      canRevise
+    )
+
+  const document = jd?.approved_jd || jd?.draft_jd
 
   async function runRequest(
-    operation: () => Promise<JDConversation>,
+    operation: (signal: AbortSignal) => Promise<AssistantConversation>,
     clearInput = false,
   ) {
     if (requestRef.current || restoring || restoreError) return
 
-    requestRef.current = true
+    const controller = new AbortController()
+    requestRef.current = controller
     setBusy(true)
     setError(null)
 
     try {
-      const updated = await operation()
+      const updated = await operation(controller.signal)
+
+      if (controller.signal.aborted) return
+
       setConversation(updated)
-      if (
-        updated.job_description &&
-        updated.job_description.id !== conversation?.job_description?.id
-      ) {
+
+      const saved = updated.jd_conversation?.job_description
+
+      if (saved && saved.id !== jd?.job_description?.id) {
         onSaved()
       }
-      if (clearInput) {
+
+      if (updated.error_code) {
+        setError(
+          `Assistant request failed: ${updated.error_code}. Reload before retrying.`,
+        )
+      } else if (clearInput) {
         setInput('')
       }
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
+    } catch (caught) {
+      if (controller.signal.aborted) return
+
+      if (caught instanceof ApiError && caught.status === 401) {
         setError('Your session expired. Sign out and sign in again.')
       } else if (
-        error instanceof ApiError &&
-        error.status === 409 &&
+        caught instanceof ApiError &&
+        caught.status === 409 &&
         conversation
       ) {
         try {
-          const updated = await getConversation(
+          const updated = await getAssistant(
             token,
             conversation.conversation_id,
+            controller.signal,
           )
-          setConversation(updated)
-          setError(
-            'The conversation was updated. Review it before continuing.',
-          )
+
+          if (!controller.signal.aborted) {
+            setConversation(updated)
+            setError(
+              'The conversation was updated. Review it before continuing.',
+            )
+          }
         } catch {
-          setError(
-            'Unable to reload the conversation. Use Reload conversation.',
-          )
+          if (!controller.signal.aborted) {
+            setError(
+              'Unable to reload. Use Reload conversation before retrying.',
+            )
+          }
         }
       } else {
         setError(
-          error instanceof Error
-            ? error.message
-            : 'Unable to complete the request. Please try again.',
+          caught instanceof Error
+            ? caught.message
+            : 'Unable to complete the request. Reload before retrying.',
         )
       }
     } finally {
-      requestRef.current = false
-      setBusy(false)
+      if (!controller.signal.aborted) {
+        requestRef.current = null
+        setBusy(false)
+      }
     }
   }
 
   function sendMessage() {
     const message = input.trim()
 
-    if (!message || requestRef.current) return
+    if (!message || requestRef.current || !canCompose) return
 
-    if (!conversation) {
-      void runRequest(
-        () => createConversation(token, message),
-        true,
-      )
-      return
-    }
+    void runRequest(async (signal) => {
+      let current = conversation
 
-    const action = canReply ? 'reply' : canRevise ? 'revise' : null
+      if (!current) {
+        current = await createAssistant(token, signal)
 
-    if (action) {
-      void runRequest(
-        () => sendConversationAction(
+        if (signal.aborted) return current
+
+        // Remember the server ID before running the LLM request.
+        setConversation(current)
+      }
+
+      if (current.mode === 'jd_workflow') {
+        const action = canReply ? 'reply' : canRevise ? 'revise' : null
+
+        if (!action) {
+          throw new Error('Use the JD review controls to continue.')
+        }
+
+        return sendAssistantAction(
           token,
-          conversation,
+          current,
           action,
           message,
-        ),
-        true,
-      )
-    }
+          signal,
+        )
+      }
+
+      return sendAssistantMessage(token, current, message, signal)
+    }, true)
   }
 
   function performAction(action: JDAction) {
-    if (!conversation || !allowedActions.includes(action)) return
+    if (!conversation) return
+
+    const available =
+      allowedActions.includes(action) ||
+      (action === 'approve' && canRecoverSave)
+
+    if (!available) return
 
     void runRequest(
-      () => sendConversationAction(token, conversation, action),
+      (signal) => sendAssistantAction(
+        token,
+        conversation,
+        action,
+        undefined,
+        signal,
+      ),
       true,
     )
   }
@@ -152,13 +208,52 @@ export default function RecruiterChat({
     setError(null)
   }
 
+  const messages = conversation?.messages ?? []
+
+  const savedMessageIndex = messages.findIndex(
+    (message) =>
+      message.role === 'assistant' &&
+      message.content.startsWith('Approved job description saved:'),
+  )
+
+  const beforeJD =
+    savedMessageIndex < 0
+      ? messages
+      : messages.slice(0, savedMessageIndex)
+
+  const afterJD =
+    savedMessageIndex < 0
+      ? []
+      : messages.slice(savedMessageIndex)
+
+  // The initial creation request appears in both graphs.
+  // Display it once in the central conversation.
+  const jdMessages = (jd?.messages ?? []).filter(
+    (message, index) => !(
+      index === 0 &&
+      message.role === 'user' &&
+      messages.some(
+        (parent) =>
+          parent.role === 'user' &&
+          parent.content === message.content,
+      )
+    ),
+  )
+
   return (
     <div className="jd-chat">
       <ChatWindow
-        title="Job description assistant"
-        description="Describe the role, answer questions, then review the draft."
+        title="Distill AI Assistant"
+        description={
+          jd?.job_description
+            ? `Selected JD: ${jd.job_description.title}`
+            : 'Create a job description, review it, then continue chatting.'
+        }
         busy={isBusy}
-        scrollKey={`${conversation?.checkpoint_id ?? 'new'}:${isBusy}`}
+        scrollKey={
+          `${conversation?.checkpoint_id ?? 'new'}:` +
+          `${jd?.checkpoint_id ?? ''}:${isBusy}`
+        }
         actions={
           <div className="flex flex-wrap gap-2">
             {restoreError && (
@@ -171,6 +266,7 @@ export default function RecruiterChat({
                 Retry restoration
               </button>
             )}
+
             {conversation && (
               <button
                 type="button"
@@ -178,9 +274,10 @@ export default function RecruiterChat({
                 disabled={isBusy}
                 onClick={() => {
                   void runRequest(
-                    () => getConversation(
+                    (signal) => getAssistant(
                       token,
                       conversation.conversation_id,
+                      signal,
                     ),
                   )
                 }}
@@ -208,26 +305,51 @@ export default function RecruiterChat({
               disabled={isBusy}
               placeholder={
                 canRevise
-                  ? 'Describe the changes you want, then press Send...'
-                  : 'Tell me about the job you want to create...'
+                  ? 'Describe the changes you want...'
+                  : canReply
+                    ? 'Answer the JD question...'
+                    : 'Ask a question or request a job description...'
               }
             />
           ) : undefined
         }
-            >
-        {conversation?.rag_status === 'retrieved' && (
+      >
+        {!conversation && !restoring && !restoreError && (
+          <ChatMessage
+            role="assistant"
+            content="Hello! I’m your Distill AI assistant. How can I help you?"
+          />
+        )}
+
+        {beforeJD.map((message, index) => (
+          <ChatMessage
+            key={message.id ?? `assistant-before-${index}`}
+            role={message.role}
+            content={message.content}
+          />
+        ))}
+
+        {jdMessages.map((message, index) => (
+          <ChatMessage
+            key={message.id ?? `jd-message-${index}`}
+            role={message.role}
+            content={message.content}
+          />
+        ))}
+
+        {jd?.rag_status === 'retrieved' && (
           <div
             className="rounded-xl border border-emerald-100
               bg-emerald-50 px-4 py-3"
           >
             <p className="text-xs font-semibold text-emerald-800">
-              Reference excerpts supplied to the assistant
+              Reference excerpts supplied to the JD workflow
             </p>
 
             <p className="mt-1 break-words text-xs text-emerald-700">
               {[
                 ...new Set(
-                  (conversation.reference_sources ?? []).map(
+                  (jd.reference_sources ?? []).map(
                     (source) => source.filename,
                   ),
                 ),
@@ -236,26 +358,11 @@ export default function RecruiterChat({
           </div>
         )}
 
-        {!conversation && !restoring && !restoreError && (
-          <ChatMessage
-            role="assistant"
-            content="What job description would you like to create?"
-          />
-        )}
-
-        {conversation?.messages.map((message, index) => (
-          <ChatMessage
-            key={message.id ?? `message-${index}`}
-            role={message.role}
-            content={message.content}
-          />
-        ))}
-
         {document && (
           <ChatMessage
             role="assistant"
             name={
-              conversation?.status === 'approved'
+              jd?.status === 'approved'
                 ? 'Approved job description'
                 : 'Draft job description'
             }
@@ -263,28 +370,26 @@ export default function RecruiterChat({
           />
         )}
 
-        {conversation?.status === 'awaiting_review' && (
-          <div className="space-y-3">
-            <p className="text-sm text-slate-500">
-              Revisions used: {conversation.revision_count}/3.
-              {canRevise
-                ? ' Send a message below to request changes.'
-                : ' The revision limit has been reached.'}
-            </p>
+        {jd?.status === 'awaiting_review' && (
+          <p className="text-sm text-slate-500">
+            Revisions used: {jd.revision_count}/3.
+            {canRevise
+              ? ' Send a message to request changes.'
+              : ' The revision limit has been reached.'}
+          </p>
+        )}
 
-            <div className="flex flex-wrap gap-2">
-              {allowedActions.includes('approve') && (
-                <button
-                  type="button"
-                  className="button-primary"
-                  disabled={isBusy}
-                  onClick={() => performAction('approve')}
-                >
-                  Approve and save
-                </button>
-              )}
-            </div>
-          </div>
+        {(allowedActions.includes('approve') || canRecoverSave) && (
+          <button
+            type="button"
+            className="button-primary"
+            disabled={isBusy}
+            onClick={() => performAction('approve')}
+          >
+            {canRecoverSave
+              ? 'Recover approved JD save'
+              : 'Approve and save'}
+          </button>
         )}
 
         {allowedActions.includes('cancel') && (
@@ -298,32 +403,40 @@ export default function RecruiterChat({
           </button>
         )}
 
-        {conversation?.status === 'approved' && (
+        {jd?.status === 'approved' && (
           <p role="status" className="text-sm text-emerald-700">
-            {conversation.job_description
-              ? `Saved: ${conversation.job_description.title} — ${
+            {jd.job_description
+              ? `Saved: ${jd.job_description.title} — ${
                   new Date(
-                    conversation.job_description.created_at,
+                    jd.job_description.created_at,
                   ).toLocaleString('en-GB', {
                     timeZone: 'Asia/Dhaka',
                   })
                 } (Bangladesh time)`
-              : 'Approved. Reload to check whether the JD was saved.'}
+              : 'Approved. Recover the save before continuing.'}
           </p>
         )}
 
-        {conversation?.status === 'cancelled' && (
+        {jd?.status === 'cancelled' && (
           <p role="status" className="text-sm text-slate-500">
-            Conversation cancelled. Start a new conversation to create a JD.
+            JD workflow cancelled. Start a new conversation for another JD.
           </p>
         )}
 
-        {conversation?.status === 'failed' && (
+        {jd?.status === 'failed' && (
           <p role="alert" className="text-sm text-red-700">
             The JD workflow could not finish. Start a new conversation
             to try again.
           </p>
         )}
+
+        {afterJD.map((message, index) => (
+          <ChatMessage
+            key={message.id ?? `assistant-after-${index}`}
+            role={message.role}
+            content={message.content}
+          />
+        ))}
 
         {(error || restoreError) && (
           <p role="alert" className="text-sm text-red-700">
