@@ -15,7 +15,6 @@ class Settings(BaseSettings):
         extra="ignore",
         hide_input_in_errors=True,
     )
-
     postgres_user: str
     postgres_password: SecretStr
     postgres_db: str
@@ -25,24 +24,22 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-20b"
-
     ollama_base_url: str = "http://127.0.0.1:11435"
     embedding_model: str = Field(
         default="qwen3-embedding:0.6b",
         validation_alias="OLLAMA_EMBEDDING_MODEL",
     )
-
     embedding_timeout_seconds: int = Field(default=120, ge=1)
-
     chroma_host: str = "127.0.0.1"
     chroma_port: int = Field(default=8001, ge=1, le=65535)
-
     rag_max_distance: float = Field(default=0.45, ge=0, le=2)
-
     discord_webhook_url: SecretStr | None = None
     discord_channel_name: str = "job-openings"
     discord_timeout_seconds: int = Field(default=20, ge=1, le=60)
-
+    google_application_credentials: Path | None = None
+    google_drive_cv_root_folder_id: str | None = None
+    google_drive_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 
     @property
     def database_url(self) -> URL:

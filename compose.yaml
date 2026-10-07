@@ -60,12 +60,21 @@ services:
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
       WATCHFILES_FORCE_POLLING: "true"
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-drive-service-account.json
+      CV_STORAGE_PATH: /workspace/storage/cvs
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./backend/app:/workspace/backend/app
       - ./backend/migrations:/workspace/backend/migrations
       - ./backend/alembic.ini:/workspace/backend/alembic.ini:ro
+      - ./storage/cvs:/workspace/storage/cvs
+      - type: bind
+        source: ${GOOGLE_DRIVE_CREDENTIALS_HOST_PATH:?Set GOOGLE_DRIVE_CREDENTIALS_HOST_PATH in .env}
+        target: /run/secrets/google-drive-service-account.json
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       postgres:
         condition: service_healthy
