@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.jd import JDConversation, JobDescription
 from app.models.jd_reference import JDReference
 from app.models.assistant import AssistantConversation
+from app.models.cv import CVSource, CVDocument, CVFileVersion
 
 config = context.config
 
