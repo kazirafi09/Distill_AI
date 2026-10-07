@@ -17,7 +17,7 @@ from app.models.cv import CVSource
 from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
 from app.services.google_drive import list_folder_files
-
+from app.services.cv_ingestion import fetch_cv_source
 
 router = APIRouter(prefix="/cv", tags=["CV Ingestion"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
@@ -159,3 +159,11 @@ async def list_cv_sources(
         .limit(limit)
     )
     return sources.all()
+
+
+@router.post("/sources/{source_id}/fetch")
+async def fetch_source(
+    source_id: UUID,
+    recruiter: Recruiter,
+):
+    return await fetch_cv_source(source_id, recruiter.id)

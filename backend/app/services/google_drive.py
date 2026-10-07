@@ -23,7 +23,7 @@ from app.services.document_extraction import (
 
 DRIVE_API_URL = "https://www.googleapis.com/drive/v3/"
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly"
-FILE_FIELDS = "id,name,mimeType,size,trashed"
+FILE_FIELDS = "id,name,mimeType,size,trashed,sha256Checksum"
 SUPPORTED_TYPES = {
     ".pdf": "application/pdf",
     ".docx": (
@@ -126,7 +126,11 @@ def validate_saved_document(path: Path, suffix: str) -> None:
                 raise ValueError("The downloaded file is not a DOCX.")
 
 
-def download_cv(file_id: str, storage_id: UUID | None = None) -> dict:
+def download_cv(
+    file_id: str,
+    storage_id: UUID | None = None,
+    expected_source_sha256: str | None = None,
+) -> dict:
     storage_id = storage_id or uuid4()
     root = get_settings().cv_storage_path.resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -135,6 +139,11 @@ def download_cv(file_id: str, storage_id: UUID | None = None) -> dict:
     try:
         with drive_client() as client:
             metadata = get_file_metadata(client, file_id)
+            if (
+                expected_source_sha256
+                and metadata.get("sha256Checksum") != expected_source_sha256
+            ):
+                raise ValueError("Source changed after listing; fetch again.")
             filename = metadata["name"]
             suffix = Path(filename).suffix.lower()
 
@@ -181,6 +190,10 @@ def download_cv(file_id: str, storage_id: UUID | None = None) -> dict:
             if size != expected_size:
                 raise ValueError("Downloaded size does not match the source.")
 
+            source_sha256 = metadata.get("sha256Checksum")
+            if source_sha256 and checksum.hexdigest() != source_sha256:
+                raise ValueError("Downloaded checksum does not match the source.")
+
             validate_saved_document(temporary_path, suffix)
             os.replace(temporary_path, final_path)
 
@@ -192,6 +205,7 @@ def download_cv(file_id: str, storage_id: UUID | None = None) -> dict:
                 "mime_type": metadata["mimeType"],
                 "file_size_bytes": size,
                 "file_sha256": checksum.hexdigest(),
+                "source_sha256": source_sha256,
                 "status": "downloaded",
             }
     finally:
