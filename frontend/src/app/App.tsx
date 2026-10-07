@@ -10,8 +10,10 @@ import {
 import LoginForm from '../features/auth/LoginForm'
 import RecruiterChat from '../features/jd/RecruiterChat'
 import MyJobDescriptions from '../features/jd/MyJobDescriptions'
+import CVScreening from '../features/cv/CVScreening'
 import type { RecruiterSession } from '../services/api'
 import './App.css'
+
 
 const navigation = [
   { path: '/recruiter/dashboard', label: 'Dashboard', mark: 'D' },
@@ -191,9 +193,21 @@ export default function App() {
               </section>
             }
           />
-
+          <Route
+            path="/recruiter/cv-screening"
+            element={
+              <CVScreening
+                key={session.user.id}
+                token={session.token}
+              />
+            }
+          />
           {navigation
-            .filter((item) => item.path !== '/recruiter/job-descriptions')
+            .filter(
+              (item) =>
+                item.path !== '/recruiter/job-descriptions' &&
+                item.path !== '/recruiter/cv-screening',
+            )
             .map((item) => (
               <Route
                 key={item.path}
