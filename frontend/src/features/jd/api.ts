@@ -28,6 +28,7 @@ export type JDConversation = {
   error_code: string | null
   job_description?: {
     id: string
+    number: number
     title: string
     created_at: string
   } | null
@@ -89,6 +90,7 @@ export function sendConversationAction(
 
 export type JobDescriptionSummary = {
   id: string
+  number: number
   conversation_id: string
   title: string
   created_at: string

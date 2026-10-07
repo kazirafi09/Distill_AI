@@ -195,6 +195,14 @@ def _failed(code: str) -> dict[str, object]:
 
 def _make_model(max_tokens: int = 4096) -> ChatGroq:
     settings = get_settings()
+
+    model_options = {}
+    if settings.groq_model in {
+        "openai/gpt-oss-20b",
+        "openai/gpt-oss-120b",
+    }:
+        model_options["reasoning_effort"] = "low"
+
     return ChatGroq(
         model=settings.groq_model,
         api_key=settings.groq_api_key,
@@ -202,6 +210,7 @@ def _make_model(max_tokens: int = 4096) -> ChatGroq:
         max_tokens=max_tokens,
         timeout=30,
         max_retries=2,
+        **model_options,
     )
 
 
@@ -266,10 +275,16 @@ def invoke_jd_tool_model(
     if not isinstance(response, AIMessage):
         return None, _failed("JD_INVALID_MODEL_RESPONSE")
     if response.response_metadata.get("finish_reason") == "length":
+        logger.warning(
+            "JD output truncated | node=%s | max_tokens=%s | usage=%s",
+            node_name,
+            max_tokens,
+            response.usage_metadata,
+        )
         return None, _failed("JD_OUTPUT_TRUNCATED")
     if response.invalid_tool_calls:
         return None, _failed("JD_INVALID_TOOL_CALL")
-
+    
     if response.tool_calls:
         if (
             rounds >= MAX_TOOL_ROUNDS
@@ -369,7 +384,11 @@ def _draft_result(
     response, updates = invoke_jd_tool_model(
         state,
         node_name,
-        [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=prompt_input)],
+        [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=prompt_input),
+        ],
+        max_tokens=8192,
     )
     if response is None:
         return updates

@@ -129,6 +129,7 @@ def extract_jd_title(content: str) -> str:
 def description_summary(document: JobDescription) -> dict:
     return {
         "id": str(document.id),
+        "number": document.number,
         "title": document.title,
         "created_at": document.created_at,
     }

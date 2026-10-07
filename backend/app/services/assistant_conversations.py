@@ -195,7 +195,7 @@ async def send_assistant_jd_action(
     if document and snapshot.values.get("job_description_id") != document["id"]:
         updates["messages"] = [AIMessage(content=(
             f"Approved job description saved: {document['title']}. "
-            "You can now ask questions about it. Discord posting is not connected yet."
+            "You can now ask questions about it or ask to post it in Discord."
         ))]
     elif result["status"] == "cancelled" and snapshot.values.get("mode") == "jd_workflow":
         updates["messages"] = [AIMessage(content="The JD workflow was cancelled.")]

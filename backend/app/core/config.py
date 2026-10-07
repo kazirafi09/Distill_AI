@@ -39,6 +39,10 @@ class Settings(BaseSettings):
 
     rag_max_distance: float = Field(default=0.45, ge=0, le=2)
 
+    discord_webhook_url: SecretStr | None = None
+    discord_channel_name: str = "job-openings"
+    discord_timeout_seconds: int = Field(default=20, ge=1, le=60)
+
 
     @property
     def database_url(self) -> URL:

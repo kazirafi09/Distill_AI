@@ -1,4 +1,4 @@
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -46,8 +46,32 @@ def build_assistant_graph(checkpointer=None):
         },
     )
 
-    # The current tool requests a JD handoff. Stop here so the
-    # coordination service can start the existing JD workflow.
-    builder.add_edge("assistant_tools", END)
+    builder.add_conditional_edges(
+        "assistant_tools",
+        route_after_tools,
+        {
+            "assistant": "assistant",
+            END: END,
+        },
+    )
 
     return builder.compile(checkpointer=checkpointer)
+
+def route_after_tools(state: AssistantState) -> str:
+    if (
+        state.get("error_code")
+        or state.get("jd_start_requested")
+        or state.get("mode") == "jd_workflow"
+    ):
+        return END
+
+    messages = state.get("messages", [])
+
+    if (
+        messages
+        and isinstance(messages[-1], ToolMessage)
+        and messages[-1].name == "post_job_to_discord"
+    ):
+        return "assistant"
+
+    return END

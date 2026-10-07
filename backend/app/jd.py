@@ -98,6 +98,7 @@ async def list_descriptions(
             JobDescription.conversation_id,
             JobDescription.title,
             JobDescription.created_at,
+            JobDescription.number,
         )
         .join(
             JDConversation,
@@ -119,6 +120,7 @@ async def list_descriptions(
                 "conversation_id": str(row.conversation_id),
                 "title": row.title,
                 "created_at": row.created_at,
+                "number": row.number,
             }
             for row in result.all()
         ],

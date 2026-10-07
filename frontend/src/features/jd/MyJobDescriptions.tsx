@@ -197,7 +197,7 @@ export default function MyJobDescriptions({
                 }`}
               >
                 <span className="block font-semibold">
-                  {item.title}
+                  Job #{item.number} — {item.title}
                 </span>
 
                 <time
@@ -245,7 +245,9 @@ export default function MyJobDescriptions({
         >
           <div className="mb-4 flex items-center justify-between gap-3">
             <h3 id="saved-jd-detail-title" className="font-semibold">
-              Saved job description
+              {currentDetail?.document
+                ? `Job #${currentDetail.document.number} — ${currentDetail.document.title}`
+                : 'Saved job description'}
             </h3>
 
             <button
