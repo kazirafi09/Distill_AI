@@ -9,6 +9,8 @@ import {
 } from './api'
 import type { CandidateApplication, CVSource, FetchResult } from './api'
 import './CVScreening.css'
+import { CVParseControl } from './CVParsing'
+import CVResults from './CVResults'
 
 function errorMessage(error: unknown) {
   if (error instanceof ApiError && error.status === 401) return 'Your session expired. Sign out and sign in again.'
@@ -92,7 +94,7 @@ function ConnectionForm({ token, job, source, onLinked }: {
   )
 }
 
-function CandidateTable({ applications }: { applications: CandidateApplication[] }) {
+function CandidateTable({ applications, token }: { applications: CandidateApplication[]; token: string }) {
   const [page, setPage] = useState(0)
   const safePage = Math.min(page, Math.max(0, Math.ceil(applications.length / 10) - 1))
   const start = safePage * 10
@@ -102,7 +104,7 @@ function CandidateTable({ applications }: { applications: CandidateApplication[]
     <>
       <div className="cv-table-scroll">
         <table className="cv-candidate-table">
-          <thead><tr><th scope="col">Candidate</th><th scope="col">CV file</th><th scope="col">Submitted</th><th scope="col">Download status</th></tr></thead>
+          <thead><tr><th scope="col">Candidate</th><th scope="col">CV file</th><th scope="col">Submitted</th><th scope="col">Download status</th><th scope="col">Parsing</th></tr></thead>
           <tbody>{visible.map((application) => <tr key={application.id}>
             <td><strong>{application.full_name}</strong><span className="cv-email">{application.email}</span></td>
             <td>{application.cv_documents.length === 0 ? 'No linked CV' : application.cv_documents.map((cv) => (
@@ -116,13 +118,15 @@ function CandidateTable({ applications }: { applications: CandidateApplication[]
                 {cv.download_status ?? 'Unknown'}
               </span>
             ))}</td>
+            <td>{application.cv_documents.map(cv => cv.file_version_id && <CVParseControl readOnly key={cv.file_version_id} token={token} versionId={cv.file_version_id} filename={cv.original_filename ?? 'CV document'} enabled={cv.download_status === 'downloaded'} />)}</td>
           </tr>)}</tbody>
         </table>
       </div>
       <div className="cv-candidate-pagination">
         <span>Showing {start + 1}–{Math.min(start + 10, applications.length)} of {applications.length} candidates</span>
-        <div><button className="button-secondary" onClick={() => setPage(safePage - 1)} disabled={safePage === 0}>Previous</button>
-          <button className="button-secondary" onClick={() => setPage(safePage + 1)} disabled={start + 10 >= applications.length}>Next</button></div>
+        {applications.length > 10 && <label>Candidate page <select value={safePage} onChange={event => setPage(Number(event.target.value))}>
+          {Array.from({ length: Math.ceil(applications.length / 10) }, (_, i) => <option key={i} value={i}>{i + 1}</option>)}
+        </select></label>}
       </div>
     </>
   )
@@ -132,7 +136,6 @@ type CandidatesState = { jobId: string; applications: CandidateApplication[]; lo
 
 export default function CVScreening({ token }: { token: string }) {
   const [offset, setOffset] = useState(0)
-  const [refresh, setRefresh] = useState(0)
   const [activeId, setActiveId] = useState('')
   const [page, setPage] = useState<{ key: string; jobs: JobDescriptionSummary[]; sources: CVSource[]; error: string } | null>(null)
   const [candidates, setCandidates] = useState<CandidatesState | null>(null)
@@ -140,7 +143,7 @@ export default function CVScreening({ token }: { token: string }) {
   const [fetching, setFetching] = useState(false)
   const [feedback, setFeedback] = useState<{ jobId: string; result?: FetchResult; error?: string; time?: string } | null>(null)
   const fetchLock = useRef(false)
-  const key = `${offset}:${refresh}`
+  const key = `${offset}`
   const ready = page?.key === key
   const jobs = ready ? page.jobs : []
   const sources = ready ? page.sources : []
@@ -210,7 +213,7 @@ export default function CVScreening({ token }: { token: string }) {
           {feedback?.jobId === jobId && feedback.time && <span>Last fetched at {feedback.time}</span>}
         </div>
       </header>
-      <div className="cv-list-toolbar"><span>Job descriptions</span><button className="button-secondary" onClick={() => setRefresh((value) => value + 1)} disabled={!ready || fetching}>Refresh list</button></div>
+      <div className="cv-list-toolbar"><span>Job descriptions</span></div>
       {!ready && <p className="cv-empty" role="status">Loading jobs…</p>}
       {ready && page.error && <p className="cv-error" role="alert">{page.error}</p>}
       {ready && !page.error && jobs.length === 0 && <p className="cv-empty">No saved job descriptions. Create a job description first.</p>}
@@ -219,25 +222,26 @@ export default function CVScreening({ token }: { token: string }) {
         const source = sources.find((item) => item.job_description_id === job.id)
         const hasSheet = source?.spreadsheet_id != null && source.sheet_tab_id != null
         return <article key={job.id} className={`cv-job-card${expanded ? ' is-expanded' : ''}`}>
-          <h2><button className="cv-job-toggle" aria-expanded={expanded} aria-controls={`cv-job-${job.id}`} disabled={fetching} onClick={() => setActiveId(job.id)}>
+          <h2><a href={`#cv-job-${job.id}`} className="cv-job-toggle" aria-expanded={expanded} aria-controls={`cv-job-${job.id}`} onClick={event => { event.preventDefault(); if (!fetching) setActiveId(job.id) }}>
             <span className="cv-job-number">JD {job.number}</span><span className="cv-job-heading"><span>{job.title}</span>
               <small>{expanded && !candidatesLoading && !candidates?.error ? `${applications.length} candidates · ${applications.reduce((count, application) => count + application.cv_documents.length, 0)} CVs` : hasSheet ? 'Responses connected' : 'Connect responses to import candidates'}</small></span>
             <span className="cv-chevron" aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
-          </button></h2>
+          </a></h2>
           {expanded && <div id={`cv-job-${job.id}`} className="cv-job-body">
             {!hasSheet && <ConnectionForm key={`connection-${job.id}`} token={token} job={job} source={source} onLinked={handleLinked} />}
             {feedback?.jobId === job.id && feedback.error && <p className="cv-error" role="alert">{feedback.error}</p>}
             {feedback?.jobId === job.id && feedback.result && <FetchSummary result={feedback.result} />}
-            {candidatesLoading ? <p className="cv-empty" role="status">Loading candidates…</p> : candidates?.error ? <p className="cv-error" role="alert">{candidates.error}</p> : <CandidateTable key={`candidates-${job.id}`} applications={applications} />}
+            <CVResults key={`screening-${job.id}`} token={token} jobId={job.id} />
+            {candidatesLoading ? <p className="cv-empty" role="status">Loading candidates…</p> : candidates?.error ? <p className="cv-error" role="alert">{candidates.error}</p> : <CandidateTable key={`candidates-${job.id}-${candidateRefresh}`} token={token} applications={applications} />}
             {source && <footer className="cv-job-footer"><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(source.drive_folder_id)}`} target="_blank" rel="noopener noreferrer">Open Drive folder ↗</a>
               {hasSheet && <a href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(source.spreadsheet_id!)}/edit#gid=${source.sheet_tab_id}`} target="_blank" rel="noopener noreferrer">Open response Sheet ↗</a>}</footer>}
           </div>}
         </article>
       })}</div>
       {ready && <nav className="cv-jobs-pagination" aria-label="Job pages">
-        <button className="button-secondary" disabled={offset === 0 || fetching} onClick={() => setOffset((value) => Math.max(0, value - 10))}>Previous jobs</button>
+        {offset > 0 && <a href={`#job-page-${offset / 10}`} onClick={event => { event.preventDefault(); if (!fetching) setOffset(value => Math.max(0, value - 10)) }}>Previous jobs</a>}
         <span>Job page {Math.floor(offset / 10) + 1}</span>
-        <button className="button-secondary" disabled={jobs.length < 10 || fetching} onClick={() => setOffset((value) => value + 10)}>Next jobs</button>
+        {jobs.length === 10 && <a href={`#job-page-${offset / 10 + 2}`} onClick={event => { event.preventDefault(); if (!fetching) setOffset(value => value + 10) }}>Next jobs</a>}
       </nav>}
     </section>
   )

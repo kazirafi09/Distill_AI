@@ -20,7 +20,32 @@ export type CandidateApplication = {
     drive_file_id: string
     original_filename: string | null
     download_status: string | null
+    file_version_id: string | null
   }[]
+}
+
+export type ParseResult = {
+  file_version_id: string
+  status: string
+  ocr_used: boolean
+  extraction_method?: string
+  warnings: string[]
+  error_code?: string | null
+  profile: Record<string, unknown> | null
+  evidence: { claim_path: string; quote: string; source_id: string; ocr_derived: boolean }[]
+}
+
+export function parseCV(token: string, id: string) {
+  return apiRequest<ParseResult>(`/cv/versions/${encodeURIComponent(id)}/parse`, { method: 'POST', token })
+}
+
+export function getCVProfile(token: string, id: string, signal?: AbortSignal) {
+  return apiRequest<ParseResult>(`/cv/versions/${encodeURIComponent(id)}/profile`, { token, signal })
+}
+
+export function parseJobCVs(token: string, jobId: string, offset: number) {
+  return apiRequest<{ results: ParseResult[]; next_offset: number | null }>(
+    `/cv/jobs/${encodeURIComponent(jobId)}/parse?offset=${offset}&limit=1`, { method: 'POST', token })
 }
 
 export type FetchResult = {

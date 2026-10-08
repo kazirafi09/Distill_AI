@@ -10,6 +10,7 @@
 .cv-job-card { min-width: 0; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; overflow: hidden; }
 .cv-job-card.is-expanded { border-color: #6ee7b7; box-shadow: 0 0 0 1px #d1fae5; }
 .cv-job-toggle { display: flex; width: 100%; align-items: center; gap: 16px; padding: 24px; text-align: left; cursor: pointer; }
+.cv-job-toggle { color: inherit; text-decoration: none; box-sizing: border-box; }
 .cv-job-toggle:disabled { cursor: wait; }
 .cv-job-toggle:hover { background: #f8fafc; }
 .cv-job-number { flex-shrink: 0; border: 1px solid #e2e8f0; border-radius: 8px; padding: 6px 9px; color: #475569; font-size: 11px; font-weight: 700; }
@@ -67,3 +68,26 @@
   .cv-job-footer { justify-content: flex-start; padding: 16px; }
   .cv-jobs-pagination { flex-wrap: wrap; }
 }
+.cv-parsing { min-width: 220px; max-width: 440px; overflow-wrap: anywhere; }
+.cv-parsing p { margin: .5rem 0; }
+.cv-parsing dl { margin: .5rem 0; }
+.cv-parsing dt { font-weight: 600; text-transform: capitalize; }
+.cv-parsing dd { margin: .25rem 0 .75rem .75rem; }
+.cv-parsing blockquote { margin: .75rem 0; padding-left: .75rem; border-left: 3px solid #64748b; }
+.cv-parsing-filename { display: block; margin-bottom: .5rem; }
+.cv-parsing + .cv-parsing { margin-top: 1rem; }
+.cv-parsing ul { padding-left: 1rem; list-style: disc; }
+.cv-parsing details { max-height: 480px; overflow-y: auto; padding-right: .5rem; }
+.cv-batch-parsing { margin: 16px 24px; max-width: none; }
+.cv-batch-parsing button + button { margin-left: .5rem; }
+.cv-screening-results { margin: 20px 24px; padding: 20px; border: 1px solid #d8e6e1; border-radius: 12px; }
+.cv-screening-results h3, .cv-screening-results h4 { margin: 0 0 12px; }
+.cv-screening-results p { margin: 10px 0; }
+.cv-screening-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.cv-ranked-table, .cv-screening-details table { border-collapse: collapse; width: 100%; }
+.cv-ranked-table td, .cv-ranked-table th, .cv-screening-details td, .cv-screening-details th { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid #e3ebe7; }
+.cv-screening-details { min-width: 280px; max-width: 650px; max-height: 600px; overflow: auto; }
+.cv-screening-details summary { cursor: pointer; }
+.cv-screening-details blockquote { margin: 12px 0; padding: 10px 14px; background: #f5f9f7; border-left: 3px solid #59c7a8; overflow-wrap: anywhere; }
+.cv-criterion-result, .cv-incomplete-result { padding: 16px 0; border-top: 1px solid #e3ebe7; }
+.cv-review-flag { color: #856316; background: #fff8df; padding: 10px; border-radius: 8px; }
