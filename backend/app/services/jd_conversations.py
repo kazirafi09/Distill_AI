@@ -17,6 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.models.jd import JDConversation, JobDescription
+from app.services.screening_profiles import acceptance_errors
+
+
+def validate_acceptance(state: dict) -> None:
+    errors = acceptance_errors(state)
+    if errors:
+        raise HTTPException(status_code=422, detail=" ".join(errors))
 
 def workflow_config(
     conversation_id: UUID,
@@ -74,6 +81,9 @@ def conversation_response(conversation: JDConversation, snapshot) -> dict:
         "draft_jd": state.get("draft_jd"),
         "approved_jd": state.get("approved_jd"),
         "revision_count": state.get("revision_count", 0),
+        "screening_profile": state.get("screening_profile"),
+        "profile_version": state.get("profile_version"),
+        "acceptance_errors": acceptance_errors(state) if state.get("status") == "awaiting_review" else [],
         "error_code": state.get("error_code"),
         "rag_status": state.get("rag_status", "not_run"),
         "reference_sources": state.get("reference_sources", []),
@@ -152,6 +162,7 @@ async def save_approved_jd(
     if existing is not None:
         return existing
 
+    validate_acceptance(state)
     content = state["approved_jd"]
 
     document = JobDescription(
@@ -159,6 +170,9 @@ async def save_approved_jd(
         title=extract_jd_title(content),
         content=content,
         requirements=state["requirements"],
+        screening_profile=state["screening_profile"],
+        profile_version=state["profile_version"],
+        google_form_url=state["screening_profile"]["google_form_url"],
     )
 
     db.add(document)
@@ -289,6 +303,7 @@ async def act_on_jd_conversation(
         decision[key] = message
 
     if action == "approve":
+        validate_acceptance(snapshot.values)
         # Check the title before committing approval in the graph.
         extract_jd_title(snapshot.values["draft_jd"])
 

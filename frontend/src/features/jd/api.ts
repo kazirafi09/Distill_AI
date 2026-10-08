@@ -2,6 +2,20 @@ import { apiRequest } from '../../services/api'
 
 export type JDAction = 'reply' | 'revise' | 'approve' | 'cancel'
 
+export type ScreeningProfile = {
+  criteria: {
+    id: string
+    dimension: string
+    text: string
+    priority: 'Must have' | 'Preferred' | null
+  }[]
+  dimension_weights: Record<string, number>
+  weights_confirmed: boolean
+  minimum_years_experience: string | null
+  fresher_eligibility: string | null
+  google_form_url: string | null
+}
+
 export type JDConversation = {
   conversation_id: string
   created_at: string
@@ -25,6 +39,9 @@ export type JDConversation = {
   draft_jd: string | null
   approved_jd: string | null
   revision_count: number
+  screening_profile: ScreeningProfile | null
+  profile_version: number | null
+  acceptance_errors: string[]
   error_code: string | null
   job_description?: {
     id: string
@@ -98,6 +115,9 @@ export type JobDescriptionSummary = {
 
 export type SavedJobDescription = JobDescriptionSummary & {
   content: string
+  screening_profile: ScreeningProfile | null
+  profile_version: number | null
+  google_form_url: string | null
 }
 
 export function listJobDescriptions(

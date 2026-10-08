@@ -372,23 +372,53 @@ export default function RecruiterChat({
 
         {jd?.status === 'awaiting_review' && (
           <p className="text-sm text-slate-500">
-            Revisions used: {jd.revision_count}/3.
-            {canRevise
-              ? ' Send a message to request changes.'
-              : ' The revision limit has been reached.'}
+            Revisions: {jd.revision_count}. Send a message to request changes.
           </p>
+        )}
+
+        {document && jd?.screening_profile && (
+          <div className="rounded-xl border border-slate-200 p-4 text-sm">
+            <p className="font-semibold">Screening profile — version {jd.profile_version}</p>
+            <p className="text-slate-500">Recruiter review only. Dimension weights are excluded from the public advertisement.</p>
+            <table className="mt-3 w-full text-left">
+              <thead><tr><th>ID</th><th>Dimension</th><th>Criterion</th><th>Priority</th></tr></thead>
+              <tbody>{jd.screening_profile.criteria.map((criterion) => (
+                <tr key={criterion.id}>
+                  <td className="break-all pr-2">{criterion.id}</td>
+                  <td className="pr-2">{criterion.dimension.replaceAll('_', ' ')}</td>
+                  <td className="pr-2">{criterion.text}</td>
+                  <td>{criterion.priority ?? 'Needs confirmation'}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+            <p className="mt-3">Minimum experience: {jd.screening_profile.minimum_years_experience ?? 'Unspecified'}</p>
+            <p>Fresher eligibility: {jd.screening_profile.fresher_eligibility ?? 'Unspecified'}</p>
+            <p className="mt-3 font-semibold">Dimension weights {jd.screening_profile.weights_confirmed ? '(confirmed)' : '(needs confirmation)'}</p>
+            {Object.entries(jd.screening_profile.dimension_weights).map(([dimension, weight]) => (
+              <p key={dimension}>{dimension.replaceAll('_', ' ')}: {weight}%</p>
+            ))}
+            <p>Google Form: {jd.screening_profile.google_form_url ?? 'Required before acceptance'}</p>
+            <p className="text-slate-500">URL format is validated; form accessibility and configuration are not checked.</p>
+          </div>
+        )}
+
+        {jd?.status === 'awaiting_review' && (jd.acceptance_errors ?? []).length > 0 && (
+          <div role="status" className="text-sm text-amber-800">
+            <p>Before accepting, revise the draft to resolve:</p>
+            <ul>{jd.acceptance_errors.map((message) => <li key={message}>{message}</li>)}</ul>
+          </div>
         )}
 
         {(allowedActions.includes('approve') || canRecoverSave) && (
           <button
             type="button"
             className="button-primary"
-            disabled={isBusy}
+            disabled={isBusy || (!canRecoverSave && (jd?.acceptance_errors ?? []).length > 0)}
             onClick={() => performAction('approve')}
           >
             {canRecoverSave
               ? 'Recover approved JD save'
-              : 'Approve and save'}
+              : 'Accept and save'}
           </button>
         )}
 

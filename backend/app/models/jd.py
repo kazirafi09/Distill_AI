@@ -11,12 +11,14 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Identity,
+    Integer,
     String,
     Text,
     UniqueConstraint,
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 class JDConversation(Base):
     __tablename__ = "jd_conversations"
@@ -88,6 +90,12 @@ class JobDescription(Base):
         Identity(start=1),
         nullable=False,
     )
+
+    # Null on legacy JDs; no fabricated/backfilled screening profiles.
+    screening_profile: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    profile_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    google_form_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
 
 class DiscordJobPost(Base):
     __tablename__ = "discord_job_posts"

@@ -36,3 +36,6 @@ class JDState(TypedDict):
     reference_context: NotRequired[str]
     reference_sources: NotRequired[list[ReferenceSource]]
     rag_status: NotRequired[str]
+    screening_profile: NotRequired[dict]
+    profile_version: NotRequired[int]
+    draft_profile_version: NotRequired[int]

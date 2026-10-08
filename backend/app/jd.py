@@ -157,4 +157,7 @@ async def get_description(
         **description_summary(document),
         "conversation_id": str(document.conversation_id),
         "content": document.content,
+        "screening_profile": document.screening_profile,
+        "profile_version": document.profile_version,
+        "google_form_url": document.google_form_url,
     }

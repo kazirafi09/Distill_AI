@@ -26,7 +26,7 @@ def has_tool_call(state: JDState) -> bool:
 
 
 def route_start(state: JDState) -> str:
-    return "gather_requirements" if state.get("messages") else "generate_jd"
+    return "gather_requirements"
 
 
 def route_after_gathering(state: JDState) -> str:
@@ -52,7 +52,7 @@ def route_after_generation(state: JDState) -> str:
 
 
 def route_after_review(state: JDState) -> str:
-    return "revise_jd" if state.get("status") == "drafting" else END
+    return "gather_requirements" if state.get("status") == "gathering" else END
 
 
 def route_after_tools(state: JDState) -> str:
@@ -105,10 +105,13 @@ def build_jd_graph(checkpointer):
         "generate_jd", route_after_generation, generation_routes,
     )
     builder.add_conditional_edges(
-        "revise_jd", route_after_generation, generation_routes,
+        "revise_jd", route_after_gathering, {
+            "reference_tools": "reference_tools", "generate_jd": "generate_jd",
+            "receive_requirements": "receive_requirements", END: END,
+        },
     )
     builder.add_conditional_edges("review_jd", route_after_review, {
-        "revise_jd": "revise_jd", END: END,
+        "gather_requirements": "gather_requirements", END: END,
     })
     builder.add_edge("reference_tools", "record_reference_results")
     builder.add_conditional_edges("record_reference_results", route_after_tools, {
