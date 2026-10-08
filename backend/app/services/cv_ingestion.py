@@ -2,6 +2,7 @@ from hashlib import sha256
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +15,16 @@ from app.models.jd import JDConversation, JobDescription
 from app.services.google_drive import (
     SUPPORTED_TYPES,
     download_cv,
-    list_folder_files,
     validate_saved_document,
 )
 from app.services.document_extraction import MAX_FILE_BYTES
+from app.services.google_sheets import read_response_sheet
+from app.services.cv_sheet_import import (
+    import_response_rows,
+    list_source_cv_files,
+    parse_response_rows,
+    source_lock_key,
+)
 
 
 def verify_local_file(
@@ -41,12 +48,9 @@ def verify_local_file(
 async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
     counts = {"downloaded": 0, "skipped": 0, "failed": 0}
     errors: list[dict] = []
+    sheet_result = None
 
-    lock_key = int.from_bytes(
-        sha256(source_id.bytes).digest()[:8],
-        byteorder="big",
-        signed=True,
-    )
+    lock_key = source_lock_key(source_id)
 
     async with engine.connect() as connection:
         owned_source = await connection.scalar(
@@ -91,10 +95,27 @@ async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
                         detail="CV source not found.",
                     )
 
-                files = await run_in_threadpool(
-                    list_folder_files,
-                    source.drive_folder_id,
-                )
+                response_rows, response_errors = [], []
+                try:
+                    if source.spreadsheet_id is not None:
+                        sheet = await run_in_threadpool(
+                            read_response_sheet, source.spreadsheet_id, source.sheet_tab_id
+                        )
+                        response_rows, response_errors = parse_response_rows(sheet)
+                    files = await run_in_threadpool(
+                        list_source_cv_files, source.drive_folder_id,
+                        source.spreadsheet_id is not None,
+                    )
+                except httpx.HTTPError:
+                    raise HTTPException(status_code=502, detail="Could not read the response sheet or CV folder. Check service-account access.") from None
+                except ValueError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from None
+                except RuntimeError:
+                    raise HTTPException(status_code=503, detail="Google credentials are unavailable.") from None
+                allowed_file_ids = {item["id"] for item in files}
+                if source.spreadsheet_id is not None:
+                    requested_ids = {file_id for row in response_rows for file_id in row["drive_file_ids"]}
+                    files = [item for item in files if item["id"] in requested_ids]
 
                 for item in files:
                     suffix = Path(item["name"]).suffix.lower()
@@ -218,6 +239,12 @@ async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
 
                     await db.commit()
 
+                if source.spreadsheet_id is not None:
+                    sheet_result = await import_response_rows(
+                        db, source, recruiter_id, response_rows,
+                        allowed_file_ids, response_errors,
+                    )
+
         finally:
             await connection.rollback()
             await connection.execute(
@@ -230,4 +257,5 @@ async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
         "source_id": str(source_id),
         **counts,
         "errors": errors,
+        "sheet": sheet_result,
     }

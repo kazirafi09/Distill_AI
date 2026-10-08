@@ -18,6 +18,14 @@ from app.db.base import Base
 
 class CVSource(Base):
     __tablename__ = "cv_sources"
+    __table_args__ = (
+        UniqueConstraint("spreadsheet_id", "sheet_tab_id", name="uq_cv_sources_sheet_tab"),
+        CheckConstraint(
+            "(spreadsheet_id IS NULL AND sheet_tab_id IS NULL) OR "
+            "(spreadsheet_id IS NOT NULL AND sheet_tab_id IS NOT NULL AND sheet_tab_id >= 0)",
+            name="ck_cv_sources_sheet_mapping",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
@@ -30,6 +38,8 @@ class CVSource(Base):
     drive_folder_id: Mapped[str] = mapped_column(
         String(255), nullable=False, unique=True
     )
+    spreadsheet_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sheet_tab_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -62,6 +72,11 @@ class CVDocument(Base):
     )
     drive_file_id: Mapped[str] = mapped_column(
         String(255), nullable=False
+    )
+    application_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("candidate_applications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -133,4 +148,45 @@ class CVFileVersion(Base):
         nullable=False,
         server_default=func.now(),
         onupdate=func.now(),
+    )
+
+
+class Candidate(Base):
+    __tablename__ = "candidates"
+    __table_args__ = (
+        UniqueConstraint("recruiter_id", "email", name="uq_candidates_recruiter_email"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    recruiter_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class CandidateApplication(Base):
+    __tablename__ = "candidate_applications"
+    __table_args__ = (
+        UniqueConstraint("candidate_id", "job_description_id", name="uq_candidate_applications_candidate_job"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    candidate_id: Mapped[UUID] = mapped_column(
+        ForeignKey("candidates.id", ondelete="CASCADE"), nullable=False
+    )
+    job_description_id: Mapped[UUID] = mapped_column(
+        ForeignKey("job_descriptions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cv_sources.id", ondelete="CASCADE"), nullable=False
+    )
+    source_row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Keep the sheet's formatted timestamp without guessing its locale/timezone.
+    submitted_at_text: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
