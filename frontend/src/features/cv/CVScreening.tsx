@@ -1,365 +1,244 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-
-import { ApiError, apiRequest } from '../../services/api'
+import { ApiError } from '../../services/api'
 import { listJobDescriptions } from '../jd/api'
 import type { JobDescriptionSummary } from '../jd/api'
-
-type CVSource = {
-  id: string
-  job_description_id: string
-  drive_folder_id: string
-  created_at: string
-  updated_at: string
-}
-
-type FetchResult = {
-  source_id: string
-  downloaded: number
-  skipped: number
-  failed: number
-  errors: {
-    drive_file_id: string
-    filename: string
-    error_code: string
-    error_type: string
-  }[]
-}
-
-type PageData = {
-  key: string
-  jobs: JobDescriptionSummary[]
-  sources: CVSource[]
-  error: string | null
-}
+import {
+  fetchSource, linkSheet, linkSource, listApplications, listSources,
+  parseFolder, parseSheet,
+} from './api'
+import type { CandidateApplication, CVSource, FetchResult } from './api'
+import './CVScreening.css'
 
 function errorMessage(error: unknown) {
-  if (error instanceof ApiError && error.status === 401) {
-    return 'Your session expired. Sign out and sign in again.'
-  }
-
-  return error instanceof Error
-    ? error.message
-    : 'Unable to complete the request.'
+  if (error instanceof ApiError && error.status === 401) return 'Your session expired. Sign out and sign in again.'
+  return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
 }
 
-async function loadSources(token: string, signal: AbortSignal) {
-  const sources: CVSource[] = []
-
-  for (let offset = 0; ; offset += 100) {
-    const page = await apiRequest<CVSource[]>(
-      `/cv/sources?limit=100&offset=${offset}`,
-      { token, signal },
-    )
-    sources.push(...page)
-
-    if (page.length < 100) return sources
-  }
-}
-
-export default function CVScreening({ token }: { token: string }) {
-  const [offset, setOffset] = useState(0)
-  const [reloadCount, setReloadCount] = useState(0)
-  const [selectedId, setSelectedId] = useState('')
-  const [folderId, setFolderId] = useState('')
-  const [data, setData] = useState<PageData | null>(null)
-  const [busy, setBusy] = useState<'linking' | 'fetching' | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
-  const [result, setResult] = useState<FetchResult | null>(null)
-  const submittingRef = useRef(false)
-
-  const pageKey = `${offset}:${reloadCount}`
-  const loading = data?.key !== pageKey
-  const jobs = loading ? [] : data?.jobs ?? []
-  const sources = loading ? [] : data?.sources ?? []
-  const listError = loading ? null : data?.error
-  const job = jobs.find((item) => item.id === selectedId) ?? jobs[0]
-  const source = sources.find(
-    (item) => item.job_description_id === job?.id,
+function FetchSummary({ result }: { result: FetchResult }) {
+  const errors = [
+    ...result.errors.map((error) => `${error.filename ?? 'CV file'}: ${error.error_code}`),
+    ...(result.sheet?.errors ?? []).map((error) => `Sheet row ${error.row_number ?? '?'}: ${error.error_code}`),
+  ]
+  return (
+    <div className="cv-fetch-summary" role="status">
+      <strong>Fetch completed</strong>
+      <p>{result.downloaded} downloaded · {result.skipped} skipped · {result.failed} failed</p>
+      {result.sheet && <p>{result.sheet.rows_imported} responses imported · {result.sheet.rows_skipped} skipped · {result.sheet.rows_failed} failed</p>}
+      {errors.length > 0 && <ul>{errors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul>}
+    </div>
   )
-  const currentResult =
-    result?.source_id === source?.id ? result : null
+}
 
-  useEffect(() => {
-    const controller = new AbortController()
+function ConnectionForm({ token, job, source, onLinked }: {
+  token: string
+  job: JobDescriptionSummary
+  source?: CVSource
+  onLinked: (source: CVSource) => void
+}) {
+  const [folder, setFolder] = useState('')
+  const [sheet, setSheet] = useState('')
+  const [tab, setTab] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const submitting = useRef(false)
 
-    async function loadPage() {
-      try {
-        const [jobPage, sourceList] = await Promise.all([
-          listJobDescriptions(token, offset, controller.signal),
-          loadSources(token, controller.signal),
-        ])
-
-        if (!controller.signal.aborted) {
-          setData({
-            key: pageKey,
-            jobs: jobPage.items,
-            sources: sourceList,
-            error: null,
-          })
-        }
-      } catch (loadError) {
-        if (!controller.signal.aborted) {
-          setData({
-            key: pageKey,
-            jobs: [],
-            sources: [],
-            error: errorMessage(loadError),
-          })
-        }
-      }
-    }
-
-    void loadPage()
-    return () => controller.abort()
-  }, [token, offset, pageKey])
-
-  function clearFeedback() {
-    setError(null)
-    setNotice(null)
-    setResult(null)
-  }
-
-  function changePage(nextOffset: number) {
-    setOffset(nextOffset)
-    setSelectedId('')
-    setFolderId('')
-    clearFeedback()
-  }
-
-  async function handleLink(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!job || submittingRef.current) return
-
-    submittingRef.current = true
-    setBusy('linking')
-    clearFeedback()
-
+    if (submitting.current) return
+    submitting.current = true
+    setSaving(true)
+    setError('')
     try {
-      await apiRequest<CVSource>('/cv/sources', {
-        method: 'POST',
-        token,
-        body: {
-          job_description_id: job.id,
-          drive_folder_id: folderId.trim(),
-        },
-      })
-
-      setNotice('CV folder linked successfully.')
-      setFolderId('')
-      setReloadCount((value) => value + 1)
-    } catch (linkError) {
-      setError(errorMessage(linkError))
+      const mapping = parseSheet(sheet, tab)
+      let current = source
+      if (!current) {
+        current = await linkSource(token, job.id, parseFolder(folder))
+        onLinked(current) // Preserve the source even if linking the Sheet fails.
+      }
+      const linked = await linkSheet(token, current.id, mapping.spreadsheetId, mapping.tabId)
+      onLinked(linked)
+    } catch (caught) {
+      setError(errorMessage(caught))
     } finally {
-      submittingRef.current = false
-      setBusy(null)
-    }
-  }
-
-  async function handleFetch() {
-    if (!source || submittingRef.current) return
-
-    submittingRef.current = true
-    setBusy('fetching')
-    clearFeedback()
-
-    try {
-      const response = await apiRequest<FetchResult>(
-        `/cv/sources/${source.id}/fetch`,
-        { method: 'POST', token },
-      )
-      setResult(response)
-    } catch (fetchError) {
-      setError(errorMessage(fetchError))
-    } finally {
-      submittingRef.current = false
-      setBusy(null)
+      submitting.current = false
+      setSaving(false)
     }
   }
 
   return (
-    <section className="space-y-6">
-      <header className="workspace-header">
-        <div>
-          <p className="workspace-eyebrow">Recruitment workspace</p>
-          <h1 className="text-3xl font-bold">CV Screening</h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Fetch original CV files from the Drive folder linked to a job.
-            Parsing and scoring will be added later.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          className="button-secondary"
-          disabled={loading || busy !== null}
-          onClick={() => {
-            clearFeedback()
-            setReloadCount((value) => value + 1)
-          }}
-        >
-          Refresh list
-        </button>
-      </header>
-
-      <div className="rounded-xl border border-slate-200 bg-white p-5">
-        {loading ? (
-          <p role="status">Loading jobs and CV folders...</p>
-        ) : listError ? (
-          <p role="alert" className="text-red-700">{listError}</p>
-        ) : !job ? (
-          <p className="text-sm text-slate-500">
-            {offset === 0
-              ? 'Approve a job description before linking a CV folder.'
-              : 'No more job descriptions on this page.'}
-          </p>
-        ) : (
-          <>
-            <label htmlFor="cv-job" className="block font-semibold">
-              Job description
-            </label>
-            <select
-              id="cv-job"
-              value={job.id}
-              disabled={busy !== null}
-              onChange={(event) => {
-                setSelectedId(event.target.value)
-                setFolderId('')
-                clearFeedback()
-              }}
-              className="mt-2 w-full rounded-lg border border-slate-300 p-3"
-            >
-              {jobs.map((item) => (
-                <option key={item.id} value={item.id}>
-                  Job #{item.number} - {item.title}
-                </option>
-              ))}
-            </select>
-
-            {source ? (
-              <div className="mt-5 space-y-3">
-                <p className="text-sm text-slate-600">
-                  Linked Drive folder:{' '}
-                  <a
-                    href={`https://drive.google.com/drive/folders/${source.drive_folder_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="break-all text-emerald-700 underline"
-                  >
-                    Open folder
-                  </a>
-                </p>
-
-                <button
-                  type="button"
-                  className="button-secondary"
-                  disabled={busy !== null}
-                  onClick={() => void handleFetch()}
-                >
-                  {busy === 'fetching' ? 'Fetching CVs...' : 'Fetch CVs'}
-                </button>
-
-                <p className="text-sm text-slate-500">
-                  Completed, unchanged files are skipped.
-                  New or changed CVs are saved locally.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleLink} className="mt-5 space-y-3">
-                <label htmlFor="cv-folder" className="block font-semibold">
-                  Google Drive folder ID
-                </label>
-                <input
-                  id="cv-folder"
-                  value={folderId}
-                  onChange={(event) => setFolderId(event.target.value)}
-                  required
-                  maxLength={255}
-                  pattern="[A-Za-z0-9_-]+"
-                  disabled={busy !== null}
-                  placeholder="Paste the folder ID"
-                  className="w-full rounded-lg border border-slate-300 p-3"
-                />
-                <p className="text-sm text-slate-500">
-                  Enter the ID after /folders/ in the Drive URL.
-                  Use a direct child folder of your configured CV parent.
-                </p>
-                <button
-                  type="submit"
-                  className="button-secondary"
-                  disabled={busy !== null || !folderId.trim()}
-                >
-                  {busy === 'linking' ? 'Linking...' : 'Link CV folder'}
-                </button>
-              </form>
-            )}
-          </>
-        )}
-
-        <div className="mt-5 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            className="button-secondary"
-            disabled={loading || busy !== null || offset === 0}
-            onClick={() => changePage(Math.max(0, offset - 10))}
-          >
-            Previous
-          </button>
-          <span className="text-sm text-slate-500">
-            Page {offset / 10 + 1}
-          </span>
-          <button
-            type="button"
-            className="button-secondary"
-            disabled={
-              loading || busy !== null || Boolean(listError) || jobs.length < 10
-            }
-            onClick={() => changePage(offset + 10)}
-          >
-            Next
-          </button>
-        </div>
+    <form className="cv-connect" onSubmit={(event) => void handleSubmit(event)}>
+      <div>
+        <h3>Connect form responses</h3>
+        <p>Share the response Sheet and uploaded CV folder with your service account.</p>
       </div>
+      {!source && <label>CV upload folder URL or ID
+        <input required value={folder} onChange={(event) => setFolder(event.target.value)} placeholder="https://drive.google.com/drive/folders/…" disabled={saving} />
+        <span className="cv-hint">Use the Form’s upload folder inside your configured CV parent folder.</span>
+      </label>}
+      {source && <p className="cv-hint">CV folder is linked. Complete the response Sheet connection below.</p>}
+      <div className="cv-connect-fields">
+        <label>Response Sheet URL or ID
+          <input required value={sheet} onChange={(event) => setSheet(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=…" disabled={saving} />
+        </label>
+        <label>Response tab ID (gid)
+          <input value={tab} onChange={(event) => setTab(event.target.value)} placeholder="Optional when URL has gid" inputMode="numeric" disabled={saving} />
+        </label>
+      </div>
+      <p className="cv-hint">The response tab needs Name, Email and CV File columns. Timestamp is optional.</p>
+      {error && <p className="cv-error" role="alert">{error}</p>}
+      <button className="button-primary" disabled={saving}>{saving ? 'Connecting…' : 'Connect responses'}</button>
+    </form>
+  )
+}
 
-      {busy === 'fetching' && (
-        <p role="status" className="text-sm text-slate-600">
-          Downloading CVs. Please keep this page open until fetching finishes.
-        </p>
-      )}
+function CandidateTable({ applications }: { applications: CandidateApplication[] }) {
+  const [page, setPage] = useState(0)
+  const safePage = Math.min(page, Math.max(0, Math.ceil(applications.length / 10) - 1))
+  const start = safePage * 10
+  const visible = applications.slice(start, start + 10)
+  if (applications.length === 0) return <p className="cv-empty">No candidates imported yet. Connect the response Sheet, then click Fetch CVs.</p>
+  return (
+    <>
+      <div className="cv-table-scroll">
+        <table className="cv-candidate-table">
+          <thead><tr><th scope="col">Candidate</th><th scope="col">CV file</th><th scope="col">Submitted</th><th scope="col">Download status</th></tr></thead>
+          <tbody>{visible.map((application) => <tr key={application.id}>
+            <td><strong>{application.full_name}</strong><span className="cv-email">{application.email}</span></td>
+            <td>{application.cv_documents.length === 0 ? 'No linked CV' : application.cv_documents.map((cv) => (
+              <a className="cv-file" key={cv.id} href={`https://drive.google.com/file/d/${encodeURIComponent(cv.drive_file_id)}/view`} target="_blank" rel="noopener noreferrer">
+                <span className="cv-file-icon" aria-hidden="true">CV</span>{cv.original_filename ?? 'CV document'}<span className="cv-sr-only"> (opens in Google Drive)</span>
+              </a>
+            ))}</td>
+            <td className="cv-submitted">{application.submitted_at_text || 'Not provided'}</td>
+            <td>{application.cv_documents.length === 0 ? '—' : application.cv_documents.map((cv) => (
+              <span key={cv.id} className={`cv-status${cv.download_status === 'downloaded' ? ' cv-status-success' : cv.download_status === 'failed' ? ' cv-status-failed' : ''}`}>
+                {cv.download_status ?? 'Unknown'}
+              </span>
+            ))}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+      <div className="cv-candidate-pagination">
+        <span>Showing {start + 1}–{Math.min(start + 10, applications.length)} of {applications.length} candidates</span>
+        <div><button className="button-secondary" onClick={() => setPage(safePage - 1)} disabled={safePage === 0}>Previous</button>
+          <button className="button-secondary" onClick={() => setPage(safePage + 1)} disabled={start + 10 >= applications.length}>Next</button></div>
+      </div>
+    </>
+  )
+}
 
-      {error && (
-        <p role="alert" className="text-sm text-red-700">{error}</p>
-      )}
-      {notice && (
-        <p role="status" className="text-sm text-emerald-700">{notice}</p>
-      )}
+type CandidatesState = { jobId: string; applications: CandidateApplication[]; loading: boolean; error: string }
 
-      {currentResult && (
-        <section
-          aria-labelledby="cv-result-title"
-          className="rounded-xl border border-slate-200 bg-white p-5"
-        >
-          <h2 id="cv-result-title" className="font-semibold">
-            Latest fetch result
-          </h2>
-          <p role="status" className="mt-2 text-sm">
-            Downloaded: {currentResult.downloaded}
-            {' | '}Skipped: {currentResult.skipped}
-            {' | '}Failed: {currentResult.failed}
-          </p>
+export default function CVScreening({ token }: { token: string }) {
+  const [offset, setOffset] = useState(0)
+  const [refresh, setRefresh] = useState(0)
+  const [activeId, setActiveId] = useState('')
+  const [page, setPage] = useState<{ key: string; jobs: JobDescriptionSummary[]; sources: CVSource[]; error: string } | null>(null)
+  const [candidates, setCandidates] = useState<CandidatesState | null>(null)
+  const [candidateRefresh, setCandidateRefresh] = useState(0)
+  const [fetching, setFetching] = useState(false)
+  const [feedback, setFeedback] = useState<{ jobId: string; result?: FetchResult; error?: string; time?: string } | null>(null)
+  const fetchLock = useRef(false)
+  const key = `${offset}:${refresh}`
+  const ready = page?.key === key
+  const jobs = ready ? page.jobs : []
+  const sources = ready ? page.sources : []
+  const activeJob = jobs.find((job) => job.id === activeId) ?? jobs[0]
+  const jobId = activeJob?.id ?? ''
+  const activeSource = sources.find((source) => source.job_description_id === jobId)
+  const connected = activeSource?.spreadsheet_id != null && activeSource.sheet_tab_id != null
+  const applications = candidates?.jobId === jobId ? candidates.applications : []
+  const candidatesLoading = !!jobId && (candidates?.jobId !== jobId || candidates.loading)
 
-          {currentResult.errors.length > 0 && (
-            <ul className="mt-3 space-y-2 text-sm text-red-700">
-              {currentResult.errors.map((item) => (
-                <li key={item.drive_file_id}>
-                  {item.filename}: {item.error_code}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+  useEffect(() => {
+    const controller = new AbortController()
+    void Promise.all([listJobDescriptions(token, offset, controller.signal), listSources(token, controller.signal)])
+      .then(([descriptions, nextSources]) => {
+        if (!controller.signal.aborted) setPage({ key, jobs: descriptions.items, sources: nextSources, error: '' })
+      })
+      .catch((caught: unknown) => {
+        if (!controller.signal.aborted) setPage({ key, jobs: [], sources: [], error: errorMessage(caught) })
+      })
+    return () => controller.abort()
+  }, [token, offset, key])
+
+  useEffect(() => {
+    if (!jobId) return
+    const controller = new AbortController()
+    void (async () => {
+      setCandidates({ jobId, applications: [], loading: true, error: '' })
+      try {
+        const next = await listApplications(token, jobId, controller.signal)
+        if (!controller.signal.aborted) setCandidates({ jobId, applications: next, loading: false, error: '' })
+      } catch (caught) {
+        if (!controller.signal.aborted) setCandidates({ jobId, applications: [], loading: false, error: errorMessage(caught) })
+      }
+    })()
+    return () => controller.abort()
+  }, [token, jobId, candidateRefresh, key])
+
+  function handleLinked(source: CVSource) {
+    setPage((current) => current && ({ ...current, sources: [...current.sources.filter((item) => item.job_description_id !== source.job_description_id), source] }))
+  }
+
+  async function handleFetch() {
+    if (!activeSource || !connected || fetchLock.current) return
+    fetchLock.current = true
+    setFetching(true)
+    setFeedback(null)
+    try {
+      const result = await fetchSource(token, activeSource.id)
+      setFeedback({ jobId, result, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
+    } catch (caught) {
+      setFeedback({ jobId, error: errorMessage(caught) })
+    } finally {
+      setCandidateRefresh((value) => value + 1)
+      fetchLock.current = false
+      setFetching(false)
+    }
+  }
+
+  return (
+    <section className="cv-page">
+      <header className="cv-page-header">
+        <div><p className="workspace-eyebrow">Recruitment workspace</p><h1>CV Screening</h1>
+          <p className="cv-description">Connect form responses and view candidates for each job.</p></div>
+        <div className="cv-fetch-action"><button className="button-primary" onClick={() => void handleFetch()} disabled={!ready || !connected || fetching}>
+          {fetching ? 'Fetching CVs…' : 'Fetch CVs'}</button>
+          <span>{activeJob ? `For: ${activeJob.title}` : 'Select a job to get started'}</span>
+          {feedback?.jobId === jobId && feedback.time && <span>Last fetched at {feedback.time}</span>}
+        </div>
+      </header>
+      <div className="cv-list-toolbar"><span>Job descriptions</span><button className="button-secondary" onClick={() => setRefresh((value) => value + 1)} disabled={!ready || fetching}>Refresh list</button></div>
+      {!ready && <p className="cv-empty" role="status">Loading jobs…</p>}
+      {ready && page.error && <p className="cv-error" role="alert">{page.error}</p>}
+      {ready && !page.error && jobs.length === 0 && <p className="cv-empty">No saved job descriptions. Create a job description first.</p>}
+      <div className="cv-job-list">{jobs.map((job) => {
+        const expanded = job.id === jobId
+        const source = sources.find((item) => item.job_description_id === job.id)
+        const hasSheet = source?.spreadsheet_id != null && source.sheet_tab_id != null
+        return <article key={job.id} className={`cv-job-card${expanded ? ' is-expanded' : ''}`}>
+          <h2><button className="cv-job-toggle" aria-expanded={expanded} aria-controls={`cv-job-${job.id}`} disabled={fetching} onClick={() => setActiveId(job.id)}>
+            <span className="cv-job-number">JD {job.number}</span><span className="cv-job-heading"><span>{job.title}</span>
+              <small>{expanded && !candidatesLoading && !candidates?.error ? `${applications.length} candidates · ${applications.reduce((count, application) => count + application.cv_documents.length, 0)} CVs` : hasSheet ? 'Responses connected' : 'Connect responses to import candidates'}</small></span>
+            <span className="cv-chevron" aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
+          </button></h2>
+          {expanded && <div id={`cv-job-${job.id}`} className="cv-job-body">
+            {!hasSheet && <ConnectionForm key={`connection-${job.id}`} token={token} job={job} source={source} onLinked={handleLinked} />}
+            {feedback?.jobId === job.id && feedback.error && <p className="cv-error" role="alert">{feedback.error}</p>}
+            {feedback?.jobId === job.id && feedback.result && <FetchSummary result={feedback.result} />}
+            {candidatesLoading ? <p className="cv-empty" role="status">Loading candidates…</p> : candidates?.error ? <p className="cv-error" role="alert">{candidates.error}</p> : <CandidateTable key={`candidates-${job.id}`} applications={applications} />}
+            {source && <footer className="cv-job-footer"><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(source.drive_folder_id)}`} target="_blank" rel="noopener noreferrer">Open Drive folder ↗</a>
+              {hasSheet && <a href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(source.spreadsheet_id!)}/edit#gid=${source.sheet_tab_id}`} target="_blank" rel="noopener noreferrer">Open response Sheet ↗</a>}</footer>}
+          </div>}
+        </article>
+      })}</div>
+      {ready && <nav className="cv-jobs-pagination" aria-label="Job pages">
+        <button className="button-secondary" disabled={offset === 0 || fetching} onClick={() => setOffset((value) => Math.max(0, value - 10))}>Previous jobs</button>
+        <span>Job page {Math.floor(offset / 10) + 1}</span>
+        <button className="button-secondary" disabled={jobs.length < 10 || fetching} onClick={() => setOffset((value) => value + 10)}>Next jobs</button>
+      </nav>}
     </section>
   )
 }
