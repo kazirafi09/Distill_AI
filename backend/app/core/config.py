@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,18 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-20b"
     ollama_base_url: str = "http://127.0.0.1:11435"
+    cv_parser_model: str = "qwen3:4b"
+    gemini_api_key: SecretStr | None = None
+    gemini_cv_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^[a-zA-Z0-9._-]+$")
+    cv_model_provider: Literal["auto", "ollama", "gemini"] = "auto"
+    cv_gemini_context_tokens: int = Field(default=65536, ge=8192, le=1048576)
+    cv_mcp_url: str = "http://127.0.0.1:8000/mcp/"
+    cv_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
+    cv_model_context_tokens: int = Field(default=16384, ge=4096, le=32768)
+    cv_model_output_tokens: int = Field(default=4096, ge=1024, le=8192)
+    cv_ocr_language: str = Field(default="eng", pattern=r"^[A-Za-z0-9_]+(?:\+[A-Za-z0-9_]+)*$")
+    cv_ocr_timeout_seconds: int = Field(default=25, ge=1, le=60)
+    cv_document_timeout_seconds: int = Field(default=180, ge=10, le=600)
     embedding_model: str = Field(
         default="qwen3-embedding:0.6b",
         validation_alias="OLLAMA_EMBEDDING_MODEL",

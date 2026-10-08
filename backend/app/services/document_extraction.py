@@ -30,6 +30,16 @@ class ExtractedDocument:
     text: str
 
 
+def extract_pdf_page(page) -> str:
+    """Shared bounded page extraction for JD references and CV parsing."""
+    contents = page.get_contents()
+    if contents is None:
+        return ""
+    if len(contents.get_data()) > MAX_FILE_BYTES:
+        raise DocumentExtractionError("DOCUMENT_TOO_COMPLEX", "A PDF page is too large to process.")
+    return page.extract_text(extraction_mode="layout", layout_mode_space_vertically=False) or ""
+
+
 def extract_pdf(data: bytes) -> str:
     if b"%PDF-" not in data[:1024]:
         raise DocumentExtractionError(
@@ -55,22 +65,7 @@ def extract_pdf(data: bytes) -> str:
     text_length = 0
 
     for page in reader.pages:
-        contents = page.get_contents()
-
-        if contents is None:
-            parts.append("")
-            continue
-
-        if len(contents.get_data()) > MAX_FILE_BYTES:
-            raise DocumentExtractionError(
-                "DOCUMENT_TOO_COMPLEX",
-                "A PDF page is too large to process.",
-            )
-
-        text = page.extract_text(
-            extraction_mode="layout",
-            layout_mode_space_vertically=False,
-        ) or ""
+        text = extract_pdf_page(page)
 
         text_length += len(text)
 
