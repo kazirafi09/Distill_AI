@@ -15,6 +15,8 @@ from app.models.jd import JDConversation, JobDescription
 from app.models.jd_reference import JDReference
 from app.models.assistant import AssistantConversation
 from app.models.cv import CVSource, CVDocument, CVFileVersion
+from app.models.cv_parsing import CVParseResult
+from app.models.cv_screening import CVIndex, ScreeningRun, CVAssessment
 
 config = context.config
 
