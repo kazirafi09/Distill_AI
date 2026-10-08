@@ -20,6 +20,9 @@ from app.workflows.runtime import open_workflow_graphs
 from app.jd import router as jd_router
 from app.jd_reference_routes import router as jd_references_router
 from app.cv_routes import router as cv_router
+from app.cv_parsing_routes import router as cv_parsing_router
+from app.cv_screening_routes import router as cv_screening_router
+from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -41,7 +44,8 @@ async def lifespan(app: FastAPI):
         logger.info(
             "Application started; PostgreSQL JD and assistant graphs ready"
         )
-        yield
+        async with cv_mcp.session_manager.run():
+            yield
 
     finally:
         try:
@@ -62,6 +66,9 @@ app.include_router(jd_router)
 app.include_router(jd_references_router)
 app.include_router(assistant_router)
 app.include_router(cv_router)
+app.include_router(cv_parsing_router)
+app.include_router(cv_screening_router)
+app.mount("/mcp", cv_mcp_app)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):

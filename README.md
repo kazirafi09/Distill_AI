@@ -102,3 +102,12 @@ M02 remains partially complete. Upcoming increments will add:
 4. Connect the verified workflows to the UI.
 
 CV ingestion follows Google Form → Google Drive → Distill AI.
+
+The CV parsing stage adds local Tesseract OCR, Qwen3 4B extraction, versioned
+PostgreSQL results and authenticated MCP tools. Setup commands, limits and
+verification are in [the CV parsing guide](docs/cv-parsing-stage-verification.md).
+
+CV Screening now starts durable evidence indexing, MCP retrieval, semantic
+matching, deterministic scoring and ranking runs. The central chatbot remains
+unchanged. See [the screening setup and verification guide](docs/cv-screening-stages-verification.md)
+for the initial rubric, worker startup, recovery and review limitations.
