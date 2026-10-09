@@ -32,9 +32,27 @@ indexing, posting or candidate processing occur in this suite.
 
 ## Manual checklist
 
+- Request `Create a Senior HR job description from your knowledge`. Confirm
+  useful role responsibilities and labeled suggested skills, experience,
+  qualifications and additional criteria are produced. Salary, benefits,
+  company, location and application URLs must not be invented. Request more
+  detail and verify prior role content is preserved. Ask a question about the
+  draft and verify the chatbot answers without replacing it. Send
+  `Cancle this job description` and confirm cancellation is understood by the
+  model. On a provider failure, the last draft remains available and the same
+  chat supports retry or cancellation. Suggested weights are not silently
+  treated as recruiter-confirmed weights.
+- Use Conversation history above the central chat to reopen a previous chat.
+  Confirm only the signed-in recruiter's chats are listed, and older/newer pages
+  can be browsed. Reload after generating and revising a JD; each suggested
+  draft must appear beside the corresponding request in revision order, without
+  duplicating the latest draft. Chats from before this feature recover earlier
+  drafts from retained PostgreSQL checkpoints without calling the model.
 - Open http://localhost:5173 and sign in as an existing recruiter. In the central
-  chatbot, request a new JD with only a role. Confirm each turn asks at most two
-  related questions, and supplied answers are not repeatedly requested.
+  chatbot, request a new JD with only a role. Confirm it generates a draft
+  without requiring screening categories, priorities, weights or a form. If the
+  role is unknown or ambiguous, confirm at most two short clarification questions
+  are asked. Supplied answers must not be repeatedly requested.
 - Use this role: Junior Python Developer; responsibility: assist senior
   developers; technical skills: knowledge of Python (Must have), Docker
   familiarity (Preferred); work experience: no minimum years, freshers eligible;
@@ -46,19 +64,23 @@ indexing, posting or candidate processing occur in this suite.
   experience` and `freshers are not eligible`. Check the exact wording in the
   structured profile and advertisement. Revise these to `no minimum years`
   and `freshers eligible`; verify the earlier restrictions disappear together.
-- Supply a skill without a priority. Confirm clarification is requested and an
-  early draft, if requested, cannot be accepted with unresolved priorities.
+- Supply a skill without a priority. Confirm the draft is generated with its
+  priority unresolved and can still be accepted and saved.
 - Ask for a suggested weight distribution. Confirm the displayed proposal is
   not confirmed until you explicitly accept it. Alternatively supply weights
   yourself. Use technical skills 60%, qualifications 25%, additional criteria
   15% for the example without an experience criterion. Zero weights are allowed;
   dimensions without criteria can have only zero weight. Try a total of 90%
-  and confirm acceptance is blocked until corrected to 100%.
+  and confirm saving succeeds while candidate screening requires valid weights.
 - Draft before creating a form. Confirm the draft and criteria/priority/weight
-  panel are visible, Accept is disabled with an explanation, Cancel remains
-  available, and internal weights/criterion IDs are absent from the advertisement.
+  panel are visible, the chatbot explains what is required before saving,
+  and internal weights/criterion IDs are absent from the advertisement.
+  Confirm there are no Accept and Save or Cancel buttons. Send `accept and save`
+  and verify unresolved fields do not prevent saving. Send
+  `cancel` in gathering or review and verify the workflow ends. Other messages
+  must continue gathering or revise the draft.
 - Revise using a non-form URL, HTTP URL, Google Form edit URL or lookalike domain.
-  Confirm acceptance remains blocked. Add your actual public form URL using
+  Confirm saving remains available. Add your actual public form URL using
   `https://forms.gle/<id>`, `https://docs.google.com/forms/d/<id>/viewform`, or
   `https://docs.google.com/forms/d/e/<id>/viewform`. Confirm it appears in the draft
   and the UI describes format validation without asserting accessibility or
@@ -67,17 +89,20 @@ indexing, posting or candidate processing occur in this suite.
   weights and form URL. Confirm the same criterion keeps its ID when edited,
   new criteria receive new IDs, deleted criteria disappear, revision_count
   increases, and no revision limit appears. Add/remove a dimension and confirm
-  the new weight distribution requires confirmation. Reload during gathering
+  the new weight distribution requires confirmation before candidate screening, while
+  the revised draft still generates immediately. A title-only revision of an
+  incomplete draft must return to review without asking for screening weights.
+  Reload during gathering
   and review to confirm PostgreSQL checkpoint restoration.
-- Accept the complete draft. Confirm it saves once, appears in Your Job
-  Descriptions and reloads correctly. Cancel another draft and confirm no JD is
+- Send `accept and save` for the complete draft. Confirm it saves once, appears in Your Job
+  Descriptions and reloads correctly. Send `cancel` for another draft and confirm no JD is
   saved. Open an old JD and confirm its original text remains readable.
 - Use a second recruiter to request the first recruiter's JD/conversation URLs;
   expect 404. Unauthenticated requests must remain rejected.
 - In browser DevTools, inspect the response and replay approval on both endpoints
-  below using their current checkpoint and interrupt IDs. For missing form,
-  unconfirmed priorities/weights, invalid total, or stale draft/profile, expect
-  422 even if the UI is bypassed. A stale checkpoint/interrupt must return 409.
+  below using their current checkpoint and interrupt IDs. Missing form,
+  unconfirmed priorities/weights and an invalid total must not block saving.
+  A stale draft/profile must return 422; a stale checkpoint/interrupt must return 409.
   Approval retry after successful save must reuse the same document; the
   automated PostgreSQL test also simulates failure after graph approval and
   proves recovery from persisted checkpoints after rebuilding the graph.

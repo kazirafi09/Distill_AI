@@ -10,14 +10,14 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import HTTPException
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
 
 from app.models.jd import JDConversation, JobDescription
-from app.services.screening_profiles import acceptance_errors
+from app.services.jd.screening_profiles import acceptance_errors, profile_errors
 
 
 def validate_acceptance(state: dict) -> None:
@@ -65,6 +65,8 @@ def conversation_response(conversation: JDConversation, snapshot) -> dict:
             "id": message.id,
             "role": "user" if message.type == "human" else "assistant",
             "content": message.content,
+            **({"draft_revision": message.additional_kwargs["jd_draft_revision"]}
+               if "jd_draft_revision" in message.additional_kwargs else {}),
         }
         for message in state.get("messages", [])
         if message.type in {"human", "ai"}
@@ -83,7 +85,9 @@ def conversation_response(conversation: JDConversation, snapshot) -> dict:
         "revision_count": state.get("revision_count", 0),
         "screening_profile": state.get("screening_profile"),
         "profile_version": state.get("profile_version"),
+        "use_role_knowledge": state.get("use_role_knowledge", False),
         "acceptance_errors": acceptance_errors(state) if state.get("status") == "awaiting_review" else [],
+        "screening_warnings": profile_errors(state.get("screening_profile")),
         "error_code": state.get("error_code"),
         "rag_status": state.get("rag_status", "not_run"),
         "reference_sources": state.get("reference_sources", []),
@@ -170,9 +174,9 @@ async def save_approved_jd(
         title=extract_jd_title(content),
         content=content,
         requirements=state["requirements"],
-        screening_profile=state["screening_profile"],
-        profile_version=state["profile_version"],
-        google_form_url=state["screening_profile"]["google_form_url"],
+        screening_profile=state.get("screening_profile"),
+        profile_version=state.get("profile_version"),
+        google_form_url=(state.get("screening_profile") or {}).get("google_form_url"),
     )
 
     db.add(document)
@@ -228,6 +232,27 @@ async def load_jd_conversation(
         )
     )
 
+    # Older checkpoints saved each draft as state but not as a chat message.
+    # Recover those suggestions without changing workflow state or invoking LLMs.
+    values = snapshot.values
+    if values:
+        history = await run_in_threadpool(
+            lambda: list(graph.get_state_history(workflow_config(conversation.id, recruiter_id))),
+        )
+        messages = list(values.get("messages", []))
+        drafts = {}
+        represented = {(m.additional_kwargs.get("jd_draft_revision"), m.content)
+                       for m in messages if isinstance(m.content, str) and "jd_draft_revision" in m.additional_kwargs}
+        for previous in reversed(history):
+            content = previous.values.get("draft_jd")
+            revision = previous.values.get("revision_count", 0)
+            if content and (revision, content) not in represented and previous.values.get("status") in {"awaiting_review", "approved", "cancelled"}:
+                drafts.setdefault((revision, content), previous.values.get("messages", []))
+        for (revision, content), preceding in reversed(list(drafts.items())):
+            anchor = preceding[-1].id if preceding else None
+            position = next((i + 1 for i, m in enumerate(messages) if anchor and m.id == anchor), len(messages))
+            messages.insert(position, AIMessage(content=content, additional_kwargs={"jd_draft_revision": revision}))
+        snapshot = snapshot._replace(values={**values, "messages": messages})
     response = conversation_response(conversation, snapshot)
     response["job_description"] = (
         description_summary(document) if document else None
@@ -240,6 +265,7 @@ async def act_on_jd_conversation(
     db: AsyncSession, graph: Any, recruiter_id: UUID, conversation_id: UUID,
     *, checkpoint_id: str, interrupt_id: str, action: str,
     message: str | None = None,
+    chat_context: list[dict] | None = None,
 ) -> dict:
     conversation = await get_owned_conversation(
         db,
@@ -271,6 +297,23 @@ async def act_on_jd_conversation(
 
     current = conversation_response(conversation, snapshot)
     pending = current["interrupt"]
+
+    if snapshot.values.get("status") == "failed" and action in {"cancel", "reply", "revise"}:
+        if checkpoint_id != current["checkpoint_id"]:
+            raise HTTPException(409, "Conversation changed. Reload it before continuing.")
+        if action == "cancel":
+            await run_in_threadpool(graph.update_state, config,
+                {"status": "cancelled", "error_code": None}, as_node="review_jd")
+        else:
+            if not message or not message.strip():
+                raise HTTPException(422, "A retry requires a message.")
+            await run_in_threadpool(graph.invoke,
+                {"messages": [HumanMessage(content=message)], "status": "gathering",
+                 "feedback": message, "error_code": None, "assistant_context": chat_context or []}, config)
+        snapshot = await run_in_threadpool(graph.get_state, config)
+        response = conversation_response(conversation, snapshot)
+        await db.commit()
+        return response
 
     if (
         pending is None
@@ -309,7 +352,7 @@ async def act_on_jd_conversation(
 
     await run_in_threadpool(
         graph.invoke,
-        Command(resume=decision),
+        Command(resume=decision, update={"assistant_context": chat_context} if chat_context is not None else None),
         config,
     )
 

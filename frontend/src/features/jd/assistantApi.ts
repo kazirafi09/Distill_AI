@@ -109,3 +109,15 @@ export function sendAssistantAction(
     },
   )
 }
+
+export type ConversationSummary = {
+  conversation_id: string
+  created_at: string
+  title: string
+}
+
+export function listAssistantConversations(token: string, offset = 0, signal?: AbortSignal) {
+  return apiRequest<{ items: ConversationSummary[]; limit: number; offset: number }>(
+    `/assistant/conversations?limit=20&offset=${offset}`, { token, signal },
+  )
+}

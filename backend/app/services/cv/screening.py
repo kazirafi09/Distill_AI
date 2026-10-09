@@ -16,11 +16,11 @@ from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVer
 from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVAssessment, ScreeningRun
 from app.models.jd import JDConversation, JobDescription
-from app.services.cv_index import INDEX_VERSION, digest
-from app.services.cv_matching import MATCH_PROMPT, MATCH_VERSION, RequirementMatch
-from app.services.cv_parsing import local_versions, verify_integrity
-from app.services.cv_model import model_version, provider, model_name, context_tokens
-from app.services.cv_scoring import RUBRIC, calculate_scores, rank_assessments, validate_scoring_profile
+from app.services.cv.indexing import INDEX_VERSION, digest
+from app.services.cv.matching import MATCH_PROMPT, MATCH_VERSION, RequirementMatch
+from app.services.cv.parsing import local_versions, verify_integrity
+from app.integrations.cv_model import model_version, provider, model_name, context_tokens
+from app.services.cv.scoring import RUBRIC, calculate_scores, rank_assessments, validate_scoring_profile
 
 WORKER_LOCK = 73101984023
 _versions_cache = None
@@ -103,7 +103,6 @@ def run_public(run, assessments):
 async def start_job_screening(job_id, recruiter_id):
     async with SessionFactory() as db:
         job = await owned_job(db, job_id, recruiter_id)
-        # Serialize duplicate start/resume transactions for this JD.
         await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": job_id.int % (2**63 - 1)})
         try:
             inputs = await inputs_for(db, job, recruiter_id)
@@ -239,8 +238,6 @@ async def retrieve_through_mcp(job_id, application_id, query, recruiter_id, asse
                         result = await session.call_tool("search_cv_evidence", {"job_id": str(job_id), "application_id": str(application_id), "query": query})
     except Exception:
         raise ValueError("MCP_EVIDENCE_RETRIEVAL_FAILED") from None
-    # Validate outside SDK task-group contexts so failures retain safe single
-    # error codes rather than nested ExceptionGroups containing transport state.
     if result.isError or not result.structuredContent:
         raise ValueError("MCP_EVIDENCE_RETRIEVAL_FAILED")
     content = result.structuredContent

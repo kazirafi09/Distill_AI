@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace
 from decimal import Decimal
-from app.services.cv_scoring import calculate_scores, rank_assessments, validate_scoring_profile
-from app.services.cv_matching import validate_match
+from app.services.cv.scoring import calculate_scores, rank_assessments, validate_scoring_profile
+from app.services.cv.matching import validate_match
 
 
 def profile():

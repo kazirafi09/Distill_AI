@@ -9,7 +9,7 @@ from app.auth import DatabaseSession, require_recruiter
 from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
 
-from app.services.jd_conversations import (
+from app.services.jd.conversations import (
     act_on_jd_conversation,
     create_jd_conversation,
     description_summary,

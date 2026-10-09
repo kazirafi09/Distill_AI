@@ -11,12 +11,12 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
-from app.services.screening_profiles import (
+from app.services.jd.screening_profiles import (
     DIMENSIONS, ScreeningProfile, acceptance_errors, normalize_profile,
     profile_errors, public_profile_section, supported_form_url,
 )
-from app.services.jd_conversations import act_on_jd_conversation, save_approved_jd
-from app.services.assistant_conversations import send_assistant_jd_action
+from app.services.jd.conversations import act_on_jd_conversation, save_approved_jd
+from app.services.assistant.conversations import send_assistant_jd_action
 from app.workflows.jd.graph import build_jd_graph
 from app.workflows.jd.nodes import RequirementGatheringResult, gather_requirements
 
@@ -62,15 +62,9 @@ class ProfileTests(unittest.TestCase):
 
     def test_invalid_acceptance_cases(self):
         mutations = [
-            lambda s: s["screening_profile"].update(google_form_url=None),
-            lambda s: s["screening_profile"].update(weights_confirmed=False),
-            lambda s: s["screening_profile"].update(dimension_weights={"technical_skills": 90}),
-            lambda s: s["screening_profile"].update(dimension_weights={"technical_skills": 100, "qualifications": 1}),
-            lambda s: s["screening_profile"]["criteria"][0].update(priority=None),
             lambda s: s.update(draft_profile_version=0),
             lambda s: s.update(draft_jd="# Outdated draft"),
-            lambda s: s.update(screening_profile=None),
-            lambda s: s["screening_profile"].update(addressed_dimensions=[]),
+            lambda s: s.update(draft_jd=""),
             lambda s: s.update(draft_jd=s["draft_jd"] + "\nDimension weights: 100%"),
         ]
         for mutate in mutations:
@@ -78,6 +72,24 @@ class ProfileTests(unittest.TestCase):
                 s = state()
                 mutate(s)
                 self.assertTrue(acceptance_errors(s))
+
+    def test_incomplete_screening_allows_acceptance(self):
+        from app.services.cv.scoring import validate_scoring_profile
+
+        s = state()
+        p = s["screening_profile"]
+        p.update(google_form_url=None, weights_confirmed=False, weights_confirmation_quote=None,
+                 addressed_dimensions=["technical_skills"])
+        p["criteria"][0].update(priority=None, priority_quote=None)
+        p["dimension_weights"]["technical_skills"] = 90
+        s["draft_jd"] = "# Python Developer\n\n" + public_profile_section(p)
+        self.assertEqual(acceptance_errors(s), [])
+        self.assertTrue(profile_errors(p))
+        with self.assertRaises(ValueError):
+            validate_scoring_profile(p, 1)
+
+    def test_jd_without_screening_profile_can_be_saved(self):
+        self.assertEqual(acceptance_errors({"draft_jd": "# Developer", "screening_profile": None}), [])
 
     def test_decimal_weights(self):
         p = profile()
@@ -252,7 +264,7 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(gather_requirements({"messages": messages})["status"], "failed")
             self.assertEqual(model.return_value.with_structured_output.call_args.kwargs["method"], "function_calling")
 
-    def test_gathering_cannot_skip_weight_confirmation(self):
+    def test_unconfirmed_weights_allow_drafting_with_screening_warnings(self):
         p = profile()
         p["google_form_url"] = None
         result = RequirementGatheringResult(requirements="x", requirements_ready=True,
@@ -263,8 +275,68 @@ class ProfileTests(unittest.TestCase):
             model.return_value.with_structured_output.return_value.invoke.return_value = {"parsed": result}
             messages = [HumanMessage(content="Must have Knowledge of Python; minimum 1.5 years; freshers are not eligible; qualifications: none; additional selection criteria: none")]
             gathered = gather_requirements({"messages": messages})
-            self.assertEqual(gathered["status"], "gathering")
-            self.assertIn("weights", gathered["follow_up_question"])
+            self.assertEqual(gathered["status"], "drafting")
+            self.assertEqual(gathered["follow_up_question"], "")
+            self.assertFalse(gathered["screening_profile"]["weights_confirmed"])
+            self.assertTrue(profile_errors(gathered["screening_profile"]))
+
+    def test_incomplete_screening_does_not_override_draft_readiness(self):
+        p = profile()
+        p.update(minimum_years_experience=None, fresher_eligibility=None,
+                 google_form_url=None, weights_confirmed=False,
+                 weights_confirmation_quote=None)
+        p["criteria"][0].update(priority=None, priority_quote=None)
+        p["dimension_weights"]["technical_skills"] = 0
+        result = RequirementGatheringResult(
+            requirements="Python developer", requirements_ready=True,
+            follow_up_question="Confirm weights?",
+            screening_profile=ScreeningProfile.model_validate(p),
+            allow_incomplete_draft=False,
+        )
+        with patch("app.workflows.jd.nodes.invoke_jd_tool_model", return_value=(AIMessage(content="done"), {})), \
+             patch("app.workflows.jd.nodes._make_model") as model:
+            model.return_value.with_structured_output.return_value.invoke.return_value = {"parsed": result}
+            gathered = gather_requirements({"messages": [HumanMessage(content="Python developer; Knowledge of Python")]})
+        self.assertEqual(gathered["status"], "drafting")
+        self.assertEqual(gathered["screening_profile"]["addressed_dimensions"], ["technical_skills"])
+        self.assertIsNone(gathered["screening_profile"]["criteria"][0]["priority"])
+        self.assertTrue(profile_errors(gathered["screening_profile"]))
+
+    def test_explicit_early_draft_bypasses_screening_follow_up(self):
+        for allowed, request in ((False, "Draft now."), (True, "Use what you have.")):
+            with self.subTest(allow_incomplete_draft=allowed):
+                p = profile()
+                p.update(criteria=[], minimum_years_experience=None, fresher_eligibility=None,
+                         google_form_url=None, weights_confirmed=False, weights_confirmation_quote=None)
+                result = RequirementGatheringResult(
+                    requirements="Python developer", requirements_ready=False,
+                    follow_up_question="Qualifications?", screening_profile=ScreeningProfile.model_validate(p),
+                    allow_incomplete_draft=allowed,
+                )
+                with patch("app.workflows.jd.nodes.invoke_jd_tool_model", return_value=(AIMessage(content="done"), {})), \
+                     patch("app.workflows.jd.nodes._make_model") as model:
+                    model.return_value.with_structured_output.return_value.invoke.return_value = {"parsed": result}
+                    gathered = gather_requirements({"messages": [HumanMessage(content="Python developer"), HumanMessage(content=request)]})
+                self.assertEqual(gathered["status"], "drafting")
+                self.assertFalse(gathered["screening_profile"]["weights_confirmed"])
+
+    def test_role_clarification_is_not_bypassed_by_old_or_negated_request(self):
+        for latest in ("The role could be Python developer or recruiter.", "Do not draft until we choose the role."):
+            with self.subTest(latest=latest):
+                p = profile()
+                p.update(criteria=[], minimum_years_experience=None, fresher_eligibility=None,
+                         google_form_url=None, weights_confirmed=False, weights_confirmation_quote=None)
+                result = RequirementGatheringResult(
+                    requirements="Unclear role", requirements_ready=False,
+                    follow_up_question="Which role should this JD describe?",
+                    screening_profile=ScreeningProfile.model_validate(p), allow_incomplete_draft=False,
+                )
+                with patch("app.workflows.jd.nodes.invoke_jd_tool_model", return_value=(AIMessage(content="done"), {})), \
+                     patch("app.workflows.jd.nodes._make_model") as model:
+                    model.return_value.with_structured_output.return_value.invoke.return_value = {"parsed": result}
+                    gathered = gather_requirements({"messages": [HumanMessage(content="Generate a JD."), HumanMessage(content=latest)]})
+                self.assertEqual(gathered["status"], "gathering")
+                self.assertIn("Which role", gathered["follow_up_question"])
 
     def test_missing_form_allows_drafting(self):
         p = profile()
@@ -305,6 +377,39 @@ class ProfileTests(unittest.TestCase):
 
 
 class GraphTests(unittest.TestCase):
+    def test_role_only_draft_and_revision_reach_review_with_incomplete_profile(self):
+        p = profile()
+        p.update(criteria=[], minimum_years_experience=None, fresher_eligibility=None,
+                 google_form_url=None, weights_confirmed=False, weights_confirmation_quote=None)
+        results = [RequirementGatheringResult(
+            requirements="Python developer", requirements_ready=ready,
+            follow_up_question="" if ready else "Confirm weights?",
+            screening_profile=ScreeningProfile.model_validate(p), allow_incomplete_draft=False,
+        ) for ready in (True, False)]
+        with patch("app.workflows.jd.nodes.invoke_jd_tool_model", return_value=(AIMessage(content="done"), {})), \
+             patch("app.workflows.jd.nodes._make_model") as model, \
+             patch("app.workflows.jd.nodes._draft_result", side_effect=[
+                 {"draft_jd": "# Python Developer", "status": "awaiting_review"},
+                 {"draft_jd": "# Junior Python Developer", "status": "awaiting_review"},
+             ]):
+            model.return_value.with_structured_output.return_value.invoke.side_effect = [{"parsed": item} for item in results]
+            graph = build_jd_graph(InMemorySaver())
+            config = {"configurable": {"thread_id": str(uuid4())}}
+            graph.invoke({"messages": [HumanMessage(content="The role is Python developer.")]}, config)
+            first = graph.get_state(config)
+            self.assertEqual(first.values["status"], "awaiting_review")
+            self.assertEqual(acceptance_errors(first.values), [])
+            self.assertTrue(profile_errors(first.values["screening_profile"]))
+            graph.invoke(Command(resume={"action": "revise", "feedback": "Change the title to Junior Python Developer."}), config)
+            revised = graph.get_state(config)
+            self.assertEqual(revised.values["status"], "awaiting_review")
+            self.assertIn("# Junior Python Developer", revised.values["draft_jd"])
+            self.assertEqual(revised.values["revision_count"], 1)
+            self.assertEqual(revised.values["draft_profile_version"], revised.values["profile_version"])
+            self.assertEqual(acceptance_errors(revised.values), [])
+            graph.invoke(Command(resume={"action": "approve"}), config)
+            self.assertEqual(graph.get_state(config).values["status"], "approved")
+
     def test_unlimited_revision_updates_profile_and_draft(self):
         def gather(s):
             p = copy.deepcopy(s.get("screening_profile") or profile())
@@ -328,7 +433,7 @@ class GraphTests(unittest.TestCase):
             graph.invoke(Command(resume={"action": "approve"}), config)
             self.assertEqual(graph.get_state(config).values["status"], "approved")
 
-    def test_graph_itself_blocks_missing_form(self):
+    def test_graph_allows_approval_without_form(self):
         with patch("app.workflows.jd.graph.gather_requirements", return_value={**state(), "requirements_ready": True}), \
              patch("app.workflows.jd.nodes._draft_result", return_value={"draft_jd": "# Developer", "status": "awaiting_review"}):
             graph = build_jd_graph(InMemorySaver())
@@ -337,10 +442,11 @@ class GraphTests(unittest.TestCase):
             snapshot = graph.get_state(config)
             s = copy.deepcopy(snapshot.values)
             s["screening_profile"]["google_form_url"] = None
+            s["draft_jd"] = "# Developer\n\n" + public_profile_section(s["screening_profile"])
             graph.update_state(config, s, as_node="generate_jd")
             graph.invoke(None, config)
-            with self.assertRaises(ValueError):
-                graph.invoke(Command(resume={"action": "approve"}), config)
+            graph.invoke(Command(resume={"action": "approve"}), config)
+            self.assertEqual(graph.get_state(config).values["status"], "approved")
 
 
 class ServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -350,13 +456,13 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             await act_on_jd_conversation(db, None, uuid4(), uuid4(), checkpoint_id="x", interrupt_id="y", action="approve")
         self.assertEqual(error.exception.status_code, 404)
 
-    async def test_direct_api_blocks_acceptance_before_graph_resume(self):
+    async def test_direct_api_blocks_inconsistent_draft_before_graph_resume(self):
         s = state()
-        s["screening_profile"]["google_form_url"] = None
+        s["draft_jd"] = "# Outdated draft"
         snapshot = SimpleNamespace(values=s, config={"configurable": {"checkpoint_id": "cp"}},
             tasks=[SimpleNamespace(interrupts=[SimpleNamespace(id="pause", value={"allowed_actions": ["approve", "revise", "cancel"]})])])
         graph = SimpleNamespace(get_state=lambda config: snapshot, invoke=AsyncMock())
-        with patch("app.services.jd_conversations.get_owned_conversation", new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), created_at=None))):
+        with patch("app.services.jd.conversations.get_owned_conversation", new=AsyncMock(return_value=SimpleNamespace(id=uuid4(), created_at=None))):
             with self.assertRaises(HTTPException) as error:
                 await act_on_jd_conversation(None, graph, uuid4(), uuid4(), checkpoint_id="cp", interrupt_id="pause", action="approve")
             self.assertEqual(error.exception.status_code, 422)
@@ -364,9 +470,9 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_central_chatbot_uses_same_validator(self):
         assistant = SimpleNamespace(jd_conversation_id=uuid4())
-        graph = SimpleNamespace(get_state=lambda config: SimpleNamespace(config={"configurable": {"checkpoint_id": "cp"}}))
-        with patch("app.services.assistant_conversations.get_owned_assistant", new=AsyncMock(return_value=assistant)), \
-             patch("app.services.assistant_conversations.act_on_jd_conversation", new=AsyncMock(side_effect=HTTPException(422, "Google Form required"))) as shared:
+        graph = SimpleNamespace(get_state=lambda config: SimpleNamespace(values={}, config={"configurable": {"checkpoint_id": "cp"}}))
+        with patch("app.services.assistant.conversations.get_owned_assistant", new=AsyncMock(return_value=assistant)), \
+             patch("app.services.assistant.conversations.act_on_jd_conversation", new=AsyncMock(side_effect=HTTPException(422, "Google Form required"))) as shared:
             with self.assertRaises(HTTPException):
                 await send_assistant_jd_action(None, graph, None, uuid4(), uuid4(), checkpoint_id="cp", jd_checkpoint_id="jdcp", interrupt_id="i", action="approve")
             self.assertEqual(shared.call_args.kwargs["action"], "approve")
@@ -378,7 +484,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(result, existing)
         self.assertIsNone(result.screening_profile)
 
-    async def test_retry_missing_save_requires_valid_profile(self):
+    async def test_retry_missing_save_requires_valid_document(self):
         db = SimpleNamespace(scalar=AsyncMock(return_value=None))
         with self.assertRaises(HTTPException):
             await save_approved_jd(db, SimpleNamespace(id=uuid4()), {"status": "approved"})

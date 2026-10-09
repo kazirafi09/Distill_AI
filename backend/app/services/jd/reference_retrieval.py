@@ -6,7 +6,7 @@ import psycopg
 from psycopg.conninfo import make_conninfo
 
 from app.core.config import get_settings
-from app.services.jd_reference_index import (
+from app.services.jd.reference_index import (
     embed_texts,
     get_reference_collection,
 )

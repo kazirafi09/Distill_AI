@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from app.auth import require_recruiter
 from app.models.user import User
-from app.services.cv_screening import get_screening_results, resume_run, run_status, start_job_screening
+from app.services.cv.screening import get_screening_results, resume_run, run_status, start_job_screening
 
 router = APIRouter(prefix="/cv/screening", tags=["CV Screening"])
 Recruiter = Annotated[User, Depends(require_recruiter)]

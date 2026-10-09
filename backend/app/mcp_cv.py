@@ -21,8 +21,8 @@ from app.auth import get_current_user
 from app.core.config import get_settings
 from app.core.security import ALGORITHM
 from app.db.session import SessionFactory
-from app.services.cv_parsing import get_cv_profile as retrieve, parse_cv as process
-from app.services.cv_profile_schema import CVParsingResponse
+from app.services.cv.parsing import get_cv_profile as retrieve, parse_cv as process
+from app.services.cv.profile_schema import CVParsingResponse
 
 recruiter_context: ContextVar[UUID] = ContextVar("cv_mcp_recruiter")
 evidence_assessment_context: ContextVar[UUID | None] = ContextVar("cv_mcp_assessment", default=None)
@@ -67,7 +67,7 @@ class ScreeningToolResponse(BaseModel):
 @mcp.tool(structured_output=True)
 async def search_cv_evidence(job_id: str, application_id: str, query: str) -> EvidenceResponse:
     """Retrieve owned application evidence from exact assessed versions; distances are not scores."""
-    from app.services.cv_index import search_evidence
+    from app.services.cv.indexing import search_evidence
     return EvidenceResponse.model_validate(await search_evidence(UUID(job_id), UUID(application_id), query,
         recruiter_context.get(), evidence_assessment_context.get()))
 
@@ -76,7 +76,7 @@ async def search_cv_evidence(job_id: str, application_id: str, query: str) -> Ev
 async def start_job_screening(job_id: str) -> ScreeningToolResponse:
     """Persist a selected-JD screening run; the durable worker processes it."""
     require_general_tools()
-    from app.services.cv_screening import start_job_screening as start
+    from app.services.cv.screening import start_job_screening as start
     return ScreeningToolResponse(result=await start(UUID(job_id), recruiter_context.get()))
 
 
@@ -84,7 +84,7 @@ async def start_job_screening(job_id: str) -> ScreeningToolResponse:
 async def get_screening_results(job_id: str) -> ScreeningToolResponse:
     """Read current ranks, scores, evidence, incomplete results and outdated history."""
     require_general_tools()
-    from app.services.cv_screening import get_screening_results as results
+    from app.services.cv.screening import get_screening_results as results
     return ScreeningToolResponse(result=await results(UUID(job_id), recruiter_context.get()))
 
 

@@ -15,7 +15,7 @@ from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 
 from app.core.config import get_settings
-from app.services.document_extraction import (
+from app.services.documents.extraction import (
     MAX_DOCX_EXPANDED_BYTES,
     MAX_FILE_BYTES,
 )

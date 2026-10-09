@@ -12,14 +12,14 @@ from app.core.config import get_settings
 from app.db.session import engine
 from app.models.cv import CVDocument, CVFileVersion, CVSource
 from app.models.jd import JDConversation, JobDescription
-from app.services.google_drive import (
+from app.integrations.google_drive import (
     SUPPORTED_TYPES,
     download_cv,
     validate_saved_document,
 )
-from app.services.document_extraction import MAX_FILE_BYTES
-from app.services.google_sheets import read_response_sheet
-from app.services.cv_sheet_import import (
+from app.services.documents.extraction import MAX_FILE_BYTES
+from app.integrations.google_sheets import read_response_sheet
+from app.services.cv.sheet_import import (
     import_response_rows,
     list_source_cv_files,
     parse_response_rows,

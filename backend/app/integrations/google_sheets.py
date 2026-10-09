@@ -1,6 +1,6 @@
 from urllib.parse import quote
 
-from app.services.google_drive import drive_client, validate_drive_id
+from app.integrations.google_drive import drive_client, validate_drive_id
 
 
 SHEETS_API_URL = "https://sheets.googleapis.com/v4/spreadsheets"

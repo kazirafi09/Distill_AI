@@ -2,6 +2,16 @@
 
 AI-powered CV screening, candidate scoring and interview assessment.
 
+## Repository layout
+
+- `backend/`: FastAPI API, feature services, integrations, workflows, workers,
+  database models, migrations, and tests. See the
+  [backend structure guide](backend/README.md) for module responsibilities.
+- `frontend/`: React application, organized into features and shared components.
+- `docs/`: Architecture diagrams, planning artifacts, and verification guides.
+- `storage/`: Local runtime files; downloaded CVs are ignored by Git.
+- `compose.yaml`: Development services and persistent Docker volumes.
+
 ## Current foundation
 
 - React, Vite and TypeScript frontend.

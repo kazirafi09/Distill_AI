@@ -39,3 +39,7 @@ class JDState(TypedDict):
     screening_profile: NotRequired[dict]
     profile_version: NotRequired[int]
     draft_profile_version: NotRequired[int]
+    use_role_knowledge: NotRequired[bool]
+    knowledge_authorization_quote: NotRequired[str | None]
+    previous_draft_jd: NotRequired[str]
+    assistant_context: NotRequired[list[dict]]

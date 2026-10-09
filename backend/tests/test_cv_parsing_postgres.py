@@ -20,8 +20,8 @@ from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVer
 from app.models.cv_parsing import CVParseResult
 from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
-from app.services.cv_parsing import PROCESSING_LOCK, get_cv_profile, parse_cv, parse_job
-from app.services.cv_profile_schema import validate_profile
+from app.services.cv.parsing import PROCESSING_LOCK, get_cv_profile, parse_cv, parse_job
+from app.services.cv.profile_schema import validate_profile
 from test_cv_parsing import claim, readable_pdf
 
 
@@ -76,7 +76,7 @@ class PersistenceTests(unittest.IsolatedAsyncioTestCase):
         return validate_profile({"contact": {"name": claim("Alice Example")}, "skills": [claim("Python")]}, text, sources)
 
     def mocks(self):
-        return patch("app.services.cv_parsing.model_version", AsyncMock(return_value={"model": "test-model", "model_digest": "synthetic"}))
+        return patch("app.services.cv.parsing.model_version", AsyncMock(return_value={"model": "test-model", "model_digest": "synthetic"}))
 
     async def test_persistence_cache_integrity_scope_duplicates_and_batch(self):
         with self.mocks(), patch("app.workflows.cv_parsing.extract_profile", side_effect=self.fake_extract) as model:
@@ -175,7 +175,7 @@ class PersistenceTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(parsed.isError, parsed)
                     payload = parsed.structuredContent
                     self.assertEqual(payload["status"], "completed", payload)
-                    from app.services.cv_model import model_name
+                    from app.integrations.cv_model import model_name
                     self.assertEqual(payload["versions"]["model"], model_name())
                     async with SessionFactory() as db:
                         saved = await db.get(CVParseResult, UUID(payload["id"]))

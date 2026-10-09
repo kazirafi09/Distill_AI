@@ -21,6 +21,7 @@ class Criterion(BaseModel):
     priority: Literal["Must have", "Preferred"] | None
     source_quote: str = Field(min_length=1)
     priority_quote: str | None
+    source: Literal["recruiter", "suggested"] = "recruiter"
 
 
 class DimensionWeights(BaseModel):
@@ -63,11 +64,25 @@ def contains_internal_metadata(content: str) -> bool:
     ) is not None
 
 
-def normalize_profile(incoming: ScreeningProfile, previous: dict | None, messages: list) -> dict:
+def normalize_profile(incoming: ScreeningProfile, previous: dict | None, messages: list, *, allow_suggestions: bool = False,
+                      suggestion_authorization_quote: str | None = None) -> dict:
     """Retain IDs and require recruiter evidence, never model suggestions alone."""
     sources = [m.content for m in messages if m.type == "human" and isinstance(m.content, str)]
     def supplied(quote):
         return bool(quote and any(quote in source for source in sources))
+
+    # Some models put suggested experience in the verbatim-only fields. Keep
+    # that useful proposal as a labeled criterion, never as a supplied fact.
+    if allow_suggestions and supplied(suggestion_authorization_quote):
+        for field, label in (("minimum_years_experience", "Minimum experience"), ("fresher_eligibility", "Fresher eligibility")):
+            value = getattr(incoming, field)
+            if value is not None and not supplied(value):
+                if not any(c.dimension == "work_experience" and value.casefold() in c.text.casefold() for c in incoming.criteria):
+                    incoming.criteria.append(Criterion(id="", dimension="work_experience", text=f"{label}: {value}",
+                        priority=None, source_quote=suggestion_authorization_quote, priority_quote=None, source="suggested"))
+                setattr(incoming, field, None)
+        if incoming.google_form_url is not None and not supplied(incoming.google_form_url):
+            incoming.google_form_url = None
 
     def exact_text(value: str) -> tuple[str, str] | None:
         """Return the source and exact source substring, allowing case changes only."""
@@ -182,13 +197,19 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
             criterion.priority = priority
             criterion.priority_quote = priority_quote
             grounded.append(criterion)
-        incoming.criteria = grounded
+        incoming.criteria = grounded + [c for c in remaining if c.source == "suggested" and allow_suggestions]
 
     old = (previous or {}).get("criteria", [])
     by_id = {c["id"]: c for c in old}
     by_text = {(c["dimension"], c["text"]): c["id"] for c in old}
     used = set()
     for index, criterion in enumerate(incoming.criteria):
+        if (allow_suggestions and suggestion_authorization_quote and criterion.source_quote
+            and criterion.source_quote in suggestion_authorization_quote and exact_text(criterion.text) is None):
+            criterion.source = "suggested"
+        suggested = criterion.source == "suggested" and allow_suggestions
+        if criterion.source == "suggested" and not allow_suggestions:
+            raise ProfileValidationError(f"criteria.{index}.source", "role_knowledge_not_authorized")
         evidence = exact_text(criterion.text)
         if evidence is not None:
             criterion.text = evidence[1]
@@ -202,7 +223,7 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
             "Must have": r"\b(must[ -]?have|required|mandatory|essential)\b",
             "Preferred": r"\b(preferred|optional|nice[ -]?to[ -]?have)\b",
         }
-        if criterion.priority is not None:
+        if criterion.priority is not None and not suggested:
             priority_quote = criterion.priority_quote or ""
             if supplied(priority_quote) and re.search(
                 priority_markers[criterion.priority], priority_quote, re.I,
@@ -317,18 +338,18 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
 
 def profile_errors(profile: dict | None) -> list[str]:
     if profile is None:
-        return ["A recruiter-confirmed screening profile is required. Revise this JD to gather it."]
+        return ["Screening details have not been configured."]
     try:
         parsed = ScreeningProfile.model_validate(profile)
     except ValueError:
-        return ["The screening profile is invalid. Revise it before acceptance."]
+        return ["The screening profile is invalid. Revise it before screening candidates."]
     errors = []
     if set(parsed.addressed_dimensions) != set(DIMENSIONS):
         errors.append("Gather technical skills, work experience, qualifications and additional selection criteria (or explicitly specify none).")
     ids = [c.id for c in parsed.criteria]
     if any(not identifier for identifier in ids) or len(ids) != len(set(ids)):
         errors.append("Every criterion must have a unique stable ID.")
-    if any(c.priority is None or not c.priority_quote for c in parsed.criteria):
+    if any(c.priority is None or (c.source == "recruiter" and not c.priority_quote) for c in parsed.criteria):
         errors.append("Confirm Must have or Preferred for every criterion.")
     active = {c.dimension for c in parsed.criteria}
     weights = parsed.dimension_weights.model_dump()
@@ -339,7 +360,7 @@ def profile_errors(profile: dict | None) -> list[str]:
     if not parsed.weights_confirmed or not parsed.weights_confirmation_quote:
         errors.append("Recruiter confirmation of dimension weights is required.")
     if not supported_form_url(parsed.google_form_url):
-        errors.append("Supply a supported Google Form URL before accepting (format validation only).")
+        errors.append("Application information is incomplete: the Google Form URL is missing or unsupported.")
     return errors
 
 
@@ -361,19 +382,25 @@ def public_profile_section(profile: dict) -> str:
 
 
 def acceptance_errors(state: dict) -> list[str]:
-    errors = profile_errors(state.get("screening_profile"))
+    # Saving preserves an incomplete profile. Only document integrity blocks it;
+    # screening readiness is validated independently when screening is started.
+    errors = []
     profile = state.get("screening_profile")
-    if not isinstance(state.get("profile_version"), int) or state["profile_version"] < 1:
+    if profile is not None and (not isinstance(state.get("profile_version"), int) or state["profile_version"] < 1):
         errors.append("A screening profile version is required.")
     draft = state.get("approved_jd") if state.get("status") == "approved" else state.get("draft_jd")
+    lines = (draft or "").strip().splitlines()
+    title = lines[0][2:].strip() if lines and lines[0].startswith("# ") else ""
+    if not title or len(title) > 255:
+        errors.append("A draft with a valid job title is required before saving.")
     try:
         section = public_profile_section(profile) if profile else None
     except (KeyError, TypeError):
         section = None
-    if not section or section not in (draft or ""):
+    if profile is not None and (not section or section not in (draft or "")):
         errors.append("The draft and screening profile must be updated together before acceptance.")
     if contains_internal_metadata(draft or ""):
         errors.append("Remove internal screening weights and IDs from the public advertisement.")
-    if state.get("draft_profile_version") != state.get("profile_version"):
+    if profile is not None and state.get("draft_profile_version") != state.get("profile_version"):
         errors.append("The draft does not reflect the current screening profile version.")
     return errors

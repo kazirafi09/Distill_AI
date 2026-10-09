@@ -6,7 +6,7 @@ from sqlalchemy import select, text
 from app.db.session import SessionFactory, engine
 from app.models.cv_screening import ScreeningRun
 from app.models.user import User
-from app.services.cv_screening import WORKER_LOCK, digest, inputs_for, owned_job
+from app.services.cv.screening import WORKER_LOCK, digest, inputs_for, owned_job
 from app.workflows.cv_screening import build_screening_graph
 from app.workflows.runtime import open_async_workflow_checkpointer
 

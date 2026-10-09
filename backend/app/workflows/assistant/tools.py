@@ -4,7 +4,7 @@ from langgraph.prebuilt import ToolRuntime
 from langgraph.types import Command
 from uuid import UUID
 
-from app.services.discord_job_posts import (
+from app.services.jd.discord_job_posts import (
     post_job_to_discord as post_saved_job_to_discord,
 )
 

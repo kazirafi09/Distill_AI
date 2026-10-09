@@ -18,7 +18,7 @@ from PIL import Image
 from pypdf import PdfReader
 from pypdf.generic import ContentStream
 
-from app.services.document_extraction import (
+from app.services.documents.extraction import (
     DocumentExtractionError, MAX_FILE_BYTES, MAX_PDF_PAGES, MAX_TEXT_CHARACTERS,
     extract_docx, extract_pdf_page,
 )
@@ -38,8 +38,6 @@ def readable(text: str) -> bool:
         return False
     if len(words) > 10 and sum(len(w) == 1 for w in words) / len(words) > .7:
         return False
-    # PDF layout extraction can contain long runs of spaces or rule characters.
-    # Only repeated letters/digits indicate this particular corruption signal.
     if re.search(r"([^\W_])\1{15,}", text):
         return False
     return printable >= .95 and any(len(w) >= 2 and any(c.isalpha() for c in w) for w in words)
@@ -94,8 +92,6 @@ def pdf_image_coverage(page) -> tuple[bool, bool]:
 
 
 def run_ocr(image_path: Path, language: str, timeout: int) -> str:
-    # Both rasterization and OCR have individual timeouts; the parent additionally
-    # kills the entire process group at the document deadline.
     with Image.open(image_path) as image:
         if image.width * image.height > MAX_IMAGE_PIXELS:
             ratio = (MAX_IMAGE_PIXELS / (image.width * image.height)) ** .5
@@ -146,7 +142,6 @@ def extract_native(path: Path) -> dict:
             if len(images) > MAX_EMBEDDED_IMAGES:
                 raise DocumentExtractionError("TOO_MANY_IMAGES", "Too many embedded images")
             for number, name in enumerate(images, 1):
-                # Large embedded images may contain CV sections even in readable DOCX.
                 try:
                     with Image.open(BytesIO(archive.read(name))) as image:
                         large = image.width * image.height >= 250_000
@@ -230,7 +225,7 @@ def isolated_extract(path: Path, mode: str, language: str, page_timeout: int, do
         snapshot_path = Path(directory) / ("source" + path.suffix.lower())
         snapshot_path.write_bytes(data)
         input_path.write_text(json.dumps(extracted), encoding="utf-8")
-        process = subprocess.Popen([sys.executable, "-m", "app.services.cv_extract_worker", str(snapshot_path), mode,
+        process = subprocess.Popen([sys.executable, "-m", "app.workers.cv_extract", str(snapshot_path), mode,
                                     str(input_path), str(output_path), language, str(page_timeout), str(document_timeout), str(os.getpid())],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    start_new_session=os.name != "nt")

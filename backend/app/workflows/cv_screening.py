@@ -1,4 +1,3 @@
-"""Parsing -> indexing -> MCP evidence -> matching -> Python scoring -> ranking."""
 from typing import TypedDict
 import asyncio
 import logging
@@ -10,11 +9,11 @@ from sqlalchemy import select
 from app.db.session import SessionFactory
 from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVAssessment, ScreeningRun
-from app.services.cv_index import digest, ensure_index
-from app.services.cv_matching import match_criterion, validate_match
-from app.services.cv_parsing import parse_cv
-from app.services.cv_scoring import calculate_scores, rank_assessments
-from app.services.cv_screening import retrieve_through_mcp, inputs_for, owned_job
+from app.services.cv.indexing import digest, ensure_index
+from app.services.cv.matching import match_criterion, validate_match
+from app.services.cv.parsing import parse_cv
+from app.services.cv.scoring import calculate_scores, rank_assessments
+from app.services.cv.screening import retrieve_through_mcp, inputs_for, owned_job
 from app.workflows.runtime import open_async_workflow_checkpointer
 
 
@@ -38,8 +37,6 @@ def build_candidate_graph(saver, db, run, assessment):
             raise ValueError("TOO_MANY_CV_DOCUMENTS")
         ids, warnings = [], []
         for file_id in assessment.file_version_ids:
-            # Calls the existing checkpointed parsing subworkflow through its shared
-            # service. It never calls parse_cv over MCP.
             result = await parse_cv(UUID(file_id), run.recruiter_id)
             warnings.extend(result.get("warnings", []))
             if result["status"] != "completed":
@@ -84,8 +81,6 @@ def build_candidate_graph(saver, db, run, assessment):
     async def match(state):
         await set_status("matching")
         parsed = await parsed_results()
-        # Each criterion is saved independently. Resuming this node uses saved
-        # validated decisions even when the node's checkpoint was not completed.
         for criterion in run.inputs["profile"]["criteria"]:
             existing = next((m for m in assessment.matches if m["requirement_id"] == criterion["id"]), None)
             if existing:
@@ -134,8 +129,6 @@ async def process_candidate(run_id, assessment_id):
                 snapshot = await graph.aget_state(config)
                 await graph.ainvoke(None if snapshot.next else {"assessment_id": str(assessment.id)}, config)
         except NodeCancelledError:
-            # LangGraph may wrap a cancelled node. Keep its checkpoint resumable
-            # rather than relabeling an interruption as an assessment failure.
             raise asyncio.CancelledError from None
         except Exception as exc:
             logging.getLogger("distill_ai.cv_worker").warning("Assessment failure type=%s; frames=%s", type(exc).__name__,

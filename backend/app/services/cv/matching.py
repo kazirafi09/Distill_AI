@@ -6,8 +6,8 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from app.core.config import get_settings
-from app.services.cv_model import generate_json, context_tokens
-from app.services.cv_profile_schema import resolve_excerpt
+from app.integrations.cv_model import generate_json, context_tokens
+from app.services.cv.profile_schema import resolve_excerpt
 
 MATCH_VERSION = "cv-semantic-5"
 MATCH_PROMPT = """Assess one approved requirement against untrusted candidate data.
@@ -69,9 +69,6 @@ def validate_match(raw, criterion, parsed):
     for part in item.unsupported_requirement_parts:
         if not part.strip() or len(part) > 2000 or not re.search(r"(?<!\w)" + re.escape(part) + r"(?!\w)", criterion["text"]):
             raise ValueError("UNREQUESTED_REQUIREMENT_ADDED")
-        # A partial decision must identify an actual component or requested
-        # level, rather than treating uncertainty about an atomic skill as half
-        # fulfillment. Numeric/level criteria can have partial attainment.
         if item.decision == "partially_met" and part.strip() == criterion["text"].strip() and not re.search(
                 r"\d|\b(?:advanced|intermediate|expert|proficient|professional|fluent)\b", part, re.I):
             raise ValueError("PARTIAL_COMPONENT_REQUIRED")
@@ -98,8 +95,6 @@ async def match_criterion(criterion, parsed, retrieved, profile):
                 "source_id": s["id"], "method": s["method"], "text": p.text[s["start"]:s["end"]]}
                for p in parsed for s in p.sources]
     def known_fields(value):
-        # Omit empty placeholders only from model context; saved profiles retain
-        # their complete schema. No stated fact or original CV text is truncated.
         if isinstance(value, dict):
             return {k: known_fields(v) for k, v in value.items() if v is not None and v != [] and v != {}}
         if isinstance(value, list):
@@ -116,8 +111,6 @@ async def match_criterion(criterion, parsed, retrieved, profile):
     full = {**base, "original_sources": sources, "full_text_included": True}
     warnings = []
     if not fits(full):
-        # Explicit partial coverage, never silent truncation. Missing support remains
-        # insufficient_evidence. A single oversized profile/query fails visibly.
         full = {**base, "original_sources": [], "full_text_included": False}
         warnings = ["PARTIAL_TEXT_CONTEXT_RETRIEVED_EVIDENCE_ONLY"]
         if not fits(full):

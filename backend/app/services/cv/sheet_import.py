@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion, CVSource
-from app.services.google_drive import SUPPORTED_TYPES, list_folder_files, validate_drive_id
+from app.integrations.google_drive import SUPPORTED_TYPES, list_folder_files, validate_drive_id
 
 
 _email = TypeAdapter(EmailStr)

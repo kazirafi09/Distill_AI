@@ -8,6 +8,7 @@ export type ScreeningProfile = {
     dimension: string
     text: string
     priority: 'Must have' | 'Preferred' | null
+    source?: 'recruiter' | 'suggested'
   }[]
   dimension_weights: Record<string, number>
   weights_confirmed: boolean
@@ -25,6 +26,8 @@ export type JDConversation = {
     id: string | null
     role: 'user' | 'assistant'
     content: string
+    draft_revision?: number
+    jd_after_message_id?: string
   }[]
   interrupt: {
     id: string
@@ -42,6 +45,7 @@ export type JDConversation = {
   screening_profile: ScreeningProfile | null
   profile_version: number | null
   acceptance_errors: string[]
+  screening_warnings?: string[]
   error_code: string | null
   job_description?: {
     id: string

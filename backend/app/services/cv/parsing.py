@@ -16,10 +16,10 @@ from app.db.session import SessionFactory, engine
 from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion
 from app.models.cv_parsing import CVParseResult
 from app.models.jd import JDConversation, JobDescription
-from app.services.cv_llm import PARSER_VERSION, PROMPT_VERSION, SYSTEM_PROMPT, model_version
-from app.services.cv_model import model_name, provider, context_tokens, ADAPTER_VERSION
-from app.services.cv_profile_schema import CandidateProfile, SCHEMA_VERSION
-from app.services.document_extraction import MAX_FILE_BYTES
+from app.services.cv.llm import PARSER_VERSION, PROMPT_VERSION, SYSTEM_PROMPT, model_version
+from app.integrations.cv_model import model_name, provider, context_tokens, ADAPTER_VERSION
+from app.services.cv.profile_schema import CandidateProfile, SCHEMA_VERSION
+from app.services.documents.extraction import MAX_FILE_BYTES
 from app.workflows.runtime import open_async_workflow_checkpointer
 
 EXTRACTOR_VERSION = "cv-text-3"

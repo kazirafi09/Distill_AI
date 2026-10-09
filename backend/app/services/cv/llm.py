@@ -4,8 +4,8 @@ import json
 import httpx
 
 from app.core.config import get_settings
-from app.services.cv_profile_schema import CandidateProfile, validate_profile, retain_supported_claims
-from app.services.cv_model import model_version, generate_json, context_tokens
+from app.services.cv.profile_schema import CandidateProfile, validate_profile, retain_supported_claims
+from app.integrations.cv_model import model_version, generate_json, context_tokens
 
 PARSER_VERSION = "cv-parser-3"
 PROMPT_VERSION = "cv-extraction-2"

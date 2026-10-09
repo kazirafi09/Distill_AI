@@ -5,7 +5,7 @@ from uuid import UUID
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
 
-from app.services.jd_reference_retrieval import retrieve_reference_context
+from app.services.jd.reference_retrieval import retrieve_reference_context
 
 
 logger = logging.getLogger("distill_ai.workflows.jd")

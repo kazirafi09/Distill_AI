@@ -5,7 +5,7 @@ from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 
 from app.core.config import get_settings
-from app.services.discord_webhook import (
+from app.integrations.discord_webhook import (
     DiscordWebhookError,
     get_webhook_url,
     send_discord_job,

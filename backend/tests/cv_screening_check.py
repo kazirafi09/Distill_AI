@@ -19,9 +19,9 @@ from app.models.cv import Candidate, CandidateApplication, CVDocument, CVSource
 from app.models.jd import JobDescription
 from app.models.user import User
 from app.models.cv_screening import CVAssessment, CVIndex, ScreeningRun
-from app.services.cv_index import collection, search_evidence
-from app.services.cv_scoring import calculate_scores
-from app.services.cv_screening import get_screening_results, resume_run, retrieve_through_mcp, start_job_screening
+from app.services.cv.indexing import collection, search_evidence
+from app.services.cv.scoring import calculate_scores
+from app.services.cv.screening import get_screening_results, resume_run, retrieve_through_mcp, start_job_screening
 from app.workflows.cv_screening import process_candidate
 from test_cv_parsing_postgres import PersistenceTests
 from test_cv_scoring import profile

@@ -82,7 +82,6 @@ export default function CVResults({ token, jobId }: { token: string; jobId: stri
   const active = !!run && ['queued', 'running'].includes(run.status)
   return <section className="cv-screening-results" aria-label="Screening results">
     <h3>Screening and scores</h3>
-    <p>Initial rubric: met 1, partially met 0.5, unmet or insufficient evidence 0. Must-have weight 2; Preferred weight 1. Uses approved dimension weights.</p>
     <div className="cv-screening-actions"><button className="button-primary" disabled={!results || busy || active} onClick={() => void action(!!run && ['failed', 'completed_with_issues'].includes(run.status))}>{busy ? 'Saving request…' : active ? 'Screening in progress…' : 'Screening'}</button>
     </div>
     {error && <p role="alert" className="cv-error">{error}</p>}

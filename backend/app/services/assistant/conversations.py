@@ -8,11 +8,12 @@ from starlette.concurrency import run_in_threadpool
 
 from app.models.assistant import AssistantConversation
 from app.models.jd import JDConversation, JobDescription
-from app.services.jd_conversations import (
+from app.services.jd.conversations import (
     act_on_jd_conversation,
     initialize_jd_conversation,
     load_jd_conversation,
 )
+from app.workflows.jd.intent import interpret_jd_message
 
 
 def assistant_config(conversation_id: UUID, user_id: UUID) -> dict:
@@ -54,7 +55,7 @@ def context_updates(jd):
     if jd is None:
         return {"mode": "chat", "jd_conversation_id": None, "job_description_id": None}
     document = jd.get("job_description")
-    active = jd["status"] in {"gathering", "drafting", "awaiting_review"}
+    active = jd["status"] in {"gathering", "drafting", "awaiting_review", "failed"}
     # An approved checkpoint without a saved document still needs save recovery.
     active = active or (jd["status"] == "approved" and not document)
     return {
@@ -75,6 +76,8 @@ async def assistant_response(db, assistant_graph, jd_graph, conversation):
             "id": message.id,
             "role": "user" if message.type == "human" else "assistant",
             "content": message.content,
+            **({"jd_after_message_id": message.additional_kwargs["jd_after_message_id"]}
+               if "jd_after_message_id" in message.additional_kwargs else {}),
         }
         for message in snapshot.values.get("messages", [])
         if message.type in {"human", "ai"}
@@ -99,6 +102,20 @@ async def create_assistant_conversation(db, user_id):
     await db.commit()
     await db.refresh(conversation)
     return conversation
+
+
+async def list_assistant_conversations(db, graph, user_id, *, limit=20, offset=0):
+    conversations = list(await db.scalars(select(AssistantConversation).where(
+        AssistantConversation.user_id == user_id,
+    ).order_by(AssistantConversation.created_at.desc(), AssistantConversation.id.desc()).limit(limit).offset(offset)))
+    items = []
+    for conversation in conversations:
+        snapshot = await run_in_threadpool(graph.get_state, assistant_config(conversation.id, user_id))
+        title = next((m.content for m in snapshot.values.get("messages", [])
+                      if isinstance(m, HumanMessage) and isinstance(m.content, str) and m.content.strip()), "New conversation")
+        items.append({"conversation_id": str(conversation.id), "created_at": conversation.created_at,
+                      "title": title[:100]})
+    return {"items": items, "limit": limit, "offset": offset}
 
 
 async def start_linked_jd(db, jd_graph, user_id, assistant_id, message):
@@ -153,7 +170,50 @@ async def send_assistant_message(
     jd = await linked_jd(db, jd_graph, assistant)
     updates = context_updates(jd)
     if updates["mode"] == "jd_workflow":
-        raise HTTPException(409, "Use the JD reply or review controls to continue.")
+        try:
+            chat_context = [{"role": m.type, "content": m.content} for m in snapshot.values.get("messages", [])
+                            if m.type in {"human", "ai"} and isinstance(m.content, str) and not getattr(m, "tool_calls", None)]
+            intent = await run_in_threadpool(interpret_jd_message, message, {**jd, "central_messages": chat_context})
+        except Exception:
+            # A failed interpretation must never turn a cancel/question into
+            # a destructive draft revision. Preserve the workflow for retry.
+            intent = None
+        if intent is None or intent.action == "chat":
+            answer = intent.response if intent else "I could not interpret that message. Please try again; your draft is unchanged."
+            anchor = next((m["id"] for m in reversed(jd.get("messages", [])) if m.get("id")), "jd-end")
+            await run_in_threadpool(assistant_graph.update_state, config,
+                {"messages": [HumanMessage(content=message, additional_kwargs={"jd_after_message_id": anchor}),
+                              AIMessage(content=answer, additional_kwargs={"jd_after_message_id": anchor})]},
+                as_node="assistant_tools")
+            await db.commit()
+            return await assistant_response(db, assistant_graph, jd_graph, assistant)
+        action = intent.action
+        if action in {"reply", "revise"}:
+            action = "reply" if jd["status"] == "gathering" else "revise"
+        if action == "approve":
+            errors = jd.get("acceptance_errors", [])
+            if jd["status"] == "gathering":
+                errors = ["Provide the job role so I can generate a draft for review first."]
+            if jd["status"] == "failed":
+                errors = ["The latest draft attempt failed. Ask me to retry or cancel this workflow."]
+            if errors:
+                await run_in_threadpool(
+                    assistant_graph.update_state, config,
+                    {"messages": [HumanMessage(content=message), AIMessage(content=(
+                        "Before I can accept and save this JD, please resolve:\n\n"
+                        + "\n".join(f"- {error}" for error in errors)
+                    ))]},
+                    as_node="assistant_tools",
+                )
+                await db.commit()
+                return await assistant_response(db, assistant_graph, jd_graph, assistant)
+        pending = jd.get("interrupt")
+        return await send_assistant_jd_action(
+            db, assistant_graph, jd_graph, user_id, assistant_id,
+            checkpoint_id=checkpoint_id, jd_checkpoint_id=jd["checkpoint_id"],
+            interrupt_id=pending["id"] if pending else "workflow-recovery",
+            action=action, message=message,
+        )
     if jd and jd.get("job_description"):
         # Fetch approved content from the ownership-checked database association.
         document = await db.scalar(select(JobDescription).where(
@@ -187,18 +247,24 @@ async def send_assistant_jd_action(
         db, jd_graph, user_id, assistant.jd_conversation_id,
         checkpoint_id=jd_checkpoint_id, interrupt_id=interrupt_id,
         action=action, message=message,
+        chat_context=[{"role": m.type, "content": m.content} for m in snapshot.values.get("messages", [])
+                      if m.type in {"human", "ai"} and isinstance(m.content, str) and not getattr(m, "tool_calls", None)],
     )
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     snapshot = await run_in_threadpool(assistant_graph.get_state, config)
     updates = {**context_updates(result), "jd_start_requested": False, "error_code": None}
     document = result.get("job_description")
+    action_messages = [HumanMessage(content=message)] if message and action in {"approve", "cancel"} else []
     if document and snapshot.values.get("job_description_id") != document["id"]:
-        updates["messages"] = [AIMessage(content=(
+        action_messages.append(AIMessage(content=(
             f"Approved job description saved: {document['title']}. "
+            f"It appears as Job #{document['number']} in Your Job Descriptions. "
             "You can now ask questions about it or ask to post it in Discord."
-        ))]
+        )))
     elif result["status"] == "cancelled" and snapshot.values.get("mode") == "jd_workflow":
-        updates["messages"] = [AIMessage(content="The JD workflow was cancelled.")]
+        action_messages.append(AIMessage(content="The JD workflow was cancelled."))
+    if action_messages:
+        updates["messages"] = action_messages
     await run_in_threadpool(
         assistant_graph.update_state, config, updates, as_node="assistant_tools",
     )

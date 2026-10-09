@@ -16,10 +16,10 @@ from app.db.session import get_db
 from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion, CVSource
 from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
-from app.services.google_drive import list_folder_files
-from app.services.cv_ingestion import fetch_cv_source
-from app.services.cv_sheet_import import response_columns, source_lock_key
-from app.services.google_sheets import read_response_sheet
+from app.integrations.google_drive import list_folder_files
+from app.services.cv.ingestion import fetch_cv_source
+from app.services.cv.sheet_import import response_columns, source_lock_key
+from app.integrations.google_sheets import read_response_sheet
 
 router = APIRouter(prefix="/cv", tags=["CV Ingestion"])
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]

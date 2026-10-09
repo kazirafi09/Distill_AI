@@ -20,7 +20,7 @@ from app.auth import require_recruiter
 from app.db.session import get_db
 from app.models.jd_reference import JDReference
 from app.models.user import User
-from app.services.document_extraction import (
+from app.services.documents.extraction import (
     MAX_FILE_BYTES,
     DocumentExtractionError,
     extract_document,
@@ -28,7 +28,7 @@ from app.services.document_extraction import (
 
 import logging
 
-from app.services.jd_reference_index import index_reference_document
+from app.services.jd.reference_index import index_reference_document
 
 router = APIRouter(
     prefix="/jd/references",

@@ -1,14 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 
 import ChatInput from '../../components/chat/ChatInput'
 import ChatMessage from '../../components/chat/ChatMessage'
 import ChatWindow from '../../components/chat/ChatWindow'
+import ConversationHistory from './ConversationHistory'
 import { ApiError } from '../../services/api'
-import type { JDAction } from './api'
 import {
   createAssistant,
   getAssistant,
-  sendAssistantAction,
   sendAssistantMessage,
 } from './assistantApi'
 import type { AssistantConversation } from './assistantApi'
@@ -61,7 +60,9 @@ export default function RecruiterChat({
       !conversation ||
       conversation.mode === 'chat' ||
       canReply ||
-      canRevise
+      canRevise ||
+      canRecoverSave ||
+      jd?.status === 'failed'
     )
 
   const document = jd?.approved_jd || jd?.draft_jd
@@ -92,7 +93,9 @@ export default function RecruiterChat({
 
       if (updated.error_code) {
         setError(
-          `Assistant request failed: ${updated.error_code}. Reload before retrying.`,
+          updated.error_code === 'ASSISTANT_MODEL_RATE_LIMITED'
+            ? 'The model provider is rate-limiting requests. Your conversation is saved. Try again when the provider limit resets.'
+            : `Assistant request failed: ${updated.error_code}. Reload before retrying.`,
         )
       } else if (clearInput) {
         setInput('')
@@ -159,45 +162,8 @@ export default function RecruiterChat({
         setConversation(current)
       }
 
-      if (current.mode === 'jd_workflow') {
-        const action = canReply ? 'reply' : canRevise ? 'revise' : null
-
-        if (!action) {
-          throw new Error('Use the JD review controls to continue.')
-        }
-
-        return sendAssistantAction(
-          token,
-          current,
-          action,
-          message,
-          signal,
-        )
-      }
-
       return sendAssistantMessage(token, current, message, signal)
     }, true)
-  }
-
-  function performAction(action: JDAction) {
-    if (!conversation) return
-
-    const available =
-      allowedActions.includes(action) ||
-      (action === 'approve' && canRecoverSave)
-
-    if (!available) return
-
-    void runRequest(
-      (signal) => sendAssistantAction(
-        token,
-        conversation,
-        action,
-        undefined,
-        signal,
-      ),
-      true,
-    )
   }
 
   function startNewConversation() {
@@ -242,6 +208,9 @@ export default function RecruiterChat({
 
   return (
     <div className="jd-chat">
+      <ConversationHistory token={token} activeId={conversation?.conversation_id}
+        refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
+        onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal), true) }} />
       <ChatWindow
         title="Distill AI Assistant"
         description={
@@ -305,7 +274,7 @@ export default function RecruiterChat({
               disabled={isBusy}
               placeholder={
                 canRevise
-                  ? 'Describe the changes you want...'
+                  ? 'Request changes, accept and save, or cancel...'
                   : canReply
                     ? 'Answer the JD question...'
                     : 'Ask a question or request a job description...'
@@ -321,7 +290,7 @@ export default function RecruiterChat({
           />
         )}
 
-        {beforeJD.map((message, index) => (
+        {beforeJD.filter((message) => !message.jd_after_message_id).map((message, index) => (
           <ChatMessage
             key={message.id ?? `assistant-before-${index}`}
             role={message.role}
@@ -330,11 +299,20 @@ export default function RecruiterChat({
         ))}
 
         {jdMessages.map((message, index) => (
+          <Fragment key={message.id ?? `jd-message-${index}`}>
           <ChatMessage
             key={message.id ?? `jd-message-${index}`}
             role={message.role}
             content={message.content}
+            name={message.draft_revision !== undefined ? (message.draft_revision === 0 ? 'Suggested JD — initial draft' : `Suggested JD — revision ${message.draft_revision}`) : undefined}
           />
+          {messages.filter((entry) => entry.jd_after_message_id === message.id).map((entry, entryIndex) => (
+            <ChatMessage key={entry.id ?? `context-${index}-${entryIndex}`} role={entry.role} content={entry.content} />
+          ))}
+          </Fragment>
+        ))}
+        {messages.filter((message) => message.jd_after_message_id === 'jd-end').map((message, index) => (
+          <ChatMessage key={message.id ?? `jd-end-${index}`} role={message.role} content={message.content} />
         ))}
 
         {jd?.rag_status === 'retrieved' && (
@@ -358,7 +336,7 @@ export default function RecruiterChat({
           </div>
         )}
 
-        {document && (
+        {document && !jdMessages.some((message) => message.draft_revision !== undefined && message.content === document) && (
           <ChatMessage
             role="assistant"
             name={
@@ -371,10 +349,13 @@ export default function RecruiterChat({
         )}
 
         {jd?.status === 'awaiting_review' && (
-          <p className="text-sm text-slate-500">
-            Revisions: {jd.revision_count}. Send a message to request changes.
-          </p>
+          <ChatMessage
+            role="assistant"
+            content={'Review the draft above. Tell me what to change, say **accept and save** to save it, or **cancel** to discard this workflow.'}
+          />
         )}
+        {canReply && <ChatMessage role="assistant" content="Reply with the job details, or say **cancel** to stop this workflow." />}
+        {canRecoverSave && <ChatMessage role="assistant" content="Your JD was approved but its save needs to be recovered. Say **save** to retry." />}
 
         {document && jd?.screening_profile && (
           <div className="rounded-xl border border-slate-200 p-4 text-sm">
@@ -386,7 +367,7 @@ export default function RecruiterChat({
                 <tr key={criterion.id}>
                   <td className="break-all pr-2">{criterion.id}</td>
                   <td className="pr-2">{criterion.dimension.replaceAll('_', ' ')}</td>
-                  <td className="pr-2">{criterion.text}</td>
+                  <td className="pr-2">{criterion.text}{criterion.source === 'suggested' && <span className="block text-xs text-slate-500">Suggested from role knowledge — review this criterion</span>}</td>
                   <td>{criterion.priority ?? 'Needs confirmation'}</td>
                 </tr>
               ))}</tbody>
@@ -397,46 +378,22 @@ export default function RecruiterChat({
             {Object.entries(jd.screening_profile.dimension_weights).map(([dimension, weight]) => (
               <p key={dimension}>{dimension.replaceAll('_', ' ')}: {weight}%</p>
             ))}
-            <p>Google Form: {jd.screening_profile.google_form_url ?? 'Required before acceptance'}</p>
+            <p>Google Form: {jd.screening_profile.google_form_url ?? 'Not provided (optional)'}</p>
             <p className="text-slate-500">URL format is validated; form accessibility and configuration are not checked.</p>
           </div>
         )}
 
         {jd?.status === 'awaiting_review' && (jd.acceptance_errors ?? []).length > 0 && (
-          <div role="status" className="text-sm text-amber-800">
-            <p>Before accepting, revise the draft to resolve:</p>
-            <ul>{jd.acceptance_errors.map((message) => <li key={message}>{message}</li>)}</ul>
-          </div>
+          <ChatMessage role="assistant" content={'Before I can save this JD, please send the missing details:\n\n' + jd.acceptance_errors.map((message) => `- ${message}`).join('\n')} />
         )}
-
-        {(allowedActions.includes('approve') || canRecoverSave) && (
-          <button
-            type="button"
-            className="button-primary"
-            disabled={isBusy || (!canRecoverSave && (jd?.acceptance_errors ?? []).length > 0)}
-            onClick={() => performAction('approve')}
-          >
-            {canRecoverSave
-              ? 'Recover approved JD save'
-              : 'Accept and save'}
-          </button>
-        )}
-
-        {allowedActions.includes('cancel') && (
-          <button
-            type="button"
-            className="button-secondary"
-            disabled={isBusy}
-            onClick={() => performAction('cancel')}
-          >
-            Cancel
-          </button>
+        {document && (jd?.screening_warnings ?? []).length > 0 && (
+          <ChatMessage role="assistant" content={(jd?.status === 'approved' ? 'This JD was saved with incomplete requirements.' : 'You can save this JD now, even with incomplete requirements.') + ' These details remain unresolved:\n\n' + (jd?.screening_warnings ?? []).map((message) => `- ${message}`).join('\n')} />
         )}
 
         {jd?.status === 'approved' && (
           <p role="status" className="text-sm text-emerald-700">
             {jd.job_description
-              ? `Saved: ${jd.job_description.title} — ${
+              ? `Saved Job #${jd.job_description.number}: ${jd.job_description.title} — ${
                   new Date(
                     jd.job_description.created_at,
                   ).toLocaleString('en-GB', {
@@ -455,12 +412,13 @@ export default function RecruiterChat({
 
         {jd?.status === 'failed' && (
           <p role="alert" className="text-sm text-red-700">
-            The JD workflow could not finish. Start a new conversation
-            to try again.
+            {jd.error_code === 'JD_MODEL_RATE_LIMITED'
+              ? 'The model provider is rate-limiting requests. Your conversation is saved. Try again later by asking me to retry, or cancel this workflow.'
+              : 'The last draft attempt failed. Ask me to retry, or cancel this workflow.'}
           </p>
         )}
 
-        {afterJD.map((message, index) => (
+        {afterJD.filter((message) => !message.jd_after_message_id).map((message, index) => (
           <ChatMessage
             key={message.id ?? `assistant-after-${index}`}
             role={message.role}

@@ -1,6 +1,6 @@
 """Initial recruiter-supplied rubric; documented support is not proven ability."""
 from decimal import Decimal, localcontext
-from app.services.screening_profiles import DIMENSIONS, ScreeningProfile
+from app.services.jd.screening_profiles import DIMENSIONS, ScreeningProfile
 
 RUBRIC = {"version": "initial-1", "credit": {"met": "1", "partially_met": "0.5", "unmet": "0", "insufficient_evidence": "0"},
           "priority_weights": {"Must have": 2, "Preferred": 1}, "description": "Initial configurable rubric; not scientifically validated."}
@@ -58,8 +58,6 @@ def calculate_scores(profile, matches, rubric=RUBRIC):
 
 
 def rank_assessments(items):
-    # Negating a Decimal would apply the ambient precision and round its key.
-    # Stable two-pass sorting compares the full saved value without arithmetic.
     ordered = sorted(items, key=lambda item: item["application_id"])
     ordered.sort(key=lambda item: Decimal(item["score"]["aggregate"]), reverse=True)
     previous, rank = None, 0

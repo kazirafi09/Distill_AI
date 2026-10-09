@@ -4,9 +4,9 @@ from langgraph.graph import END, START, StateGraph
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
-from app.services.cv_llm import extract_profile, check_input_size
-from app.services.cv_profile_schema import identity_warnings, validate_profile
-from app.services.cv_text import finalize_text, isolated_extract
+from app.services.cv.llm import extract_profile, check_input_size
+from app.services.cv.profile_schema import identity_warnings, validate_profile
+from app.services.cv.text import finalize_text, isolated_extract
 
 
 class ParsingState(TypedDict, total=False):
@@ -36,14 +36,14 @@ def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
         return {}
 
     async def verify(state):
-        from app.services.cv_parsing import verify_integrity
+        from app.services.cv.parsing import verify_integrity
         await run_in_threadpool(verify_integrity, file_version)
         return {}
 
     async def extract(state):
         if result.text is not None:
             return {"saved_text": True}
-        from app.services.cv_parsing import stored_path
+        from app.services.cv.parsing import stored_path
         await status("extracting")
         extracted = await run_in_threadpool(isolated_extract, stored_path(file_version), "native", settings.cv_ocr_language,
                                             settings.cv_ocr_timeout_seconds, settings.cv_document_timeout_seconds, None, file_version.file_sha256)
@@ -53,17 +53,15 @@ def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
         return {"ocr_needed": not state.get("saved_text") and any(s.get("ocr_needed") for s in state["extracted"]["sources"])}
 
     async def ocr(state):
-        from app.services.cv_parsing import stored_path
+        from app.services.cv.parsing import stored_path
         await status("ocr")
-        from app.services.document_extraction import DocumentExtractionError
+        from app.services.documents.extraction import DocumentExtractionError
         try:
             extracted = await run_in_threadpool(isolated_extract, stored_path(file_version), "ocr", settings.cv_ocr_language,
                                                 settings.cv_ocr_timeout_seconds, settings.cv_document_timeout_seconds, state["extracted"], file_version.file_sha256)
         except DocumentExtractionError as exc:
             if exc.code == "FILE_HASH_MISMATCH":
                 raise
-            # Retain native text and mark incomplete instead of losing all text
-            # when the OCR worker exceeds the document deadline.
             extracted = state["extracted"]
             extracted["warnings"] = extracted["warnings"] + [exc.code]
             for source in extracted["sources"]:
@@ -78,7 +76,7 @@ def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
             result.warnings, result.extraction_method = document["warnings"], document["extraction_method"]
             usable = document["usable"]
         else:
-            from app.services.cv_text import readable
+            from app.services.cv.text import readable
             usable = any(readable(result.text[s["start"]:s["end"]]) for s in result.sources) and not any(s.get("ocr_failed") for s in result.sources)
         result.status = "text_saved" if usable else "needs_review"
         result.error_code = None if usable else "TEXT_UNUSABLE_OR_INCOMPLETE"

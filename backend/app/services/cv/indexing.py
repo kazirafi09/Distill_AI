@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.models.cv import CVDocument, CVFileVersion
 from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVIndex
-from app.services.jd_reference_index import embed_texts
+from app.services.jd.reference_index import embed_texts
 
 INDEX_VERSION = "cv-chunks-1"
 
@@ -83,7 +83,7 @@ async def ensure_index(db, parsed, recruiter_id, job_id, application_id, version
 async def search_evidence(job_id, application_id, query, recruiter_id, assessment_id=None):
     from app.db.session import SessionFactory
     from app.models.cv_screening import CVAssessment, ScreeningRun
-    from app.services.cv_screening import owned_application
+    from app.services.cv.screening import owned_application
     if not query.strip() or len(query.encode()) > 8000:
         raise ValueError("INVALID_EVIDENCE_QUERY")
     async with SessionFactory() as db:

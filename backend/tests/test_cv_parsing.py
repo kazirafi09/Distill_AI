@@ -14,9 +14,9 @@ from PIL import Image, ImageDraw, ImageFont
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from app.services.cv_profile_schema import identity_warnings, validate_profile
-from app.services.cv_text import extract_native, finalize_text, isolated_extract, needs_ocr, ocr_sources, readable
-from app.services.document_extraction import DocumentExtractionError, extract_document
+from app.services.cv.profile_schema import identity_warnings, validate_profile
+from app.services.cv.text import extract_native, finalize_text, isolated_extract, needs_ocr, ocr_sources, readable
+from app.services.documents.extraction import DocumentExtractionError, extract_document
 
 
 def readable_pdf(words="Alice Example Python developer alice@example.com"):
@@ -115,7 +115,7 @@ class TextTests(unittest.TestCase):
         with TemporaryDirectory() as root:
             path = Path(root) / "scan.pdf"; cv_image().save(path, "PDF")
             for error in (subprocess.TimeoutExpired("ocr", 1), RuntimeError("ocr failed")):
-                with patch("app.services.cv_text.subprocess.run", side_effect=error):
+                with patch("app.services.cv.text.subprocess.run", side_effect=error):
                     final = finalize_text(ocr_sources(path, extract_native(path), "eng", 1))
                 self.assertFalse(final["usable"])
                 self.assertTrue(final["warnings"])
@@ -148,12 +148,12 @@ class SchemaTests(unittest.TestCase):
 
 class LLMTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.provider_patch = patch("app.services.cv_model.provider", return_value="ollama")
+        self.provider_patch = patch("app.integrations.cv_model.provider", return_value="ollama")
         self.provider_patch.start()
         self.addCleanup(self.provider_patch.stop)
 
     def test_layout_whitespace_restores_original_excerpts_without_accepting_paraphrases(self):
-        from app.services.cv_profile_schema import resolve_excerpt
+        from app.services.cv.profile_schema import resolve_excerpt
         source_text = "Header\nPython      developer\nBuilt reporting\n  tools."
         quote = "Python developer\nBuilt reporting tools."
         offset, restored = resolve_excerpt(source_text, quote)
@@ -168,7 +168,7 @@ class LLMTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ValueError): resolve_excerpt("Python  developer; Python\ndeveloper", "Python developer")
 
     def test_unsupported_claims_become_unknown_without_losing_verified_claims(self):
-        from app.services.cv_profile_schema import retain_supported_claims
+        from app.services.cv.profile_schema import retain_supported_claims
         content = "Python developer"
         sources = [{"id": "pdf-page-1", "start": 0, "end": len(content), "page": 1, "method": "native"}]
         payload = {"skills": [claim("Python"), claim("Invented")], "education": [{"qualification": claim("PhD")}]}
@@ -179,20 +179,20 @@ class LLMTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(evidence), 1)
         with self.assertRaises(ValueError): retain_supported_claims(json.dumps({"skills": [claim("Invented")]}), content, sources)
     async def test_bounded_malformed_repair_and_oversized(self):
-        from app.services.cv_llm import extract_profile, check_input_size
+        from app.services.cv.llm import extract_profile, check_input_size
         source = [{"id": "pdf-page-1", "start": 0, "end": 6, "page": 1, "method": "native"}]
         response = unittest.mock.Mock()
         response.json.return_value = {"message": {"content": "malformed"}}
         client = AsyncMock(); client.post.return_value = response
         context = AsyncMock(); context.__aenter__.return_value = client
-        with patch("app.services.cv_llm.httpx.AsyncClient", return_value=context):
+        with patch("app.services.cv.llm.httpx.AsyncClient", return_value=context):
             with self.assertRaisesRegex(ValueError, "MODEL_SCHEMA_OR_EVIDENCE_INVALID"):
                 await extract_profile("Python", source)
         self.assertEqual(client.post.await_count, 2)
         client.post.reset_mock()
         response.json.side_effect = [{"message": {"content": "malformed"}},
                                     {"message": {"content": json.dumps({"skills": [claim("Python")]})}}]
-        with patch("app.services.cv_llm.httpx.AsyncClient", return_value=context):
+        with patch("app.services.cv.llm.httpx.AsyncClient", return_value=context):
             profile, evidence = await extract_profile("Python", source)
         self.assertEqual(profile["skills"][0]["value"], "Python")
         self.assertEqual(len(evidence), 1)

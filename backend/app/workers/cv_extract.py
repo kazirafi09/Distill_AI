@@ -3,8 +3,8 @@ import json
 import sys
 from pathlib import Path
 
-from app.services.cv_text import extract_native, ocr_sources
-from app.services.document_extraction import DocumentExtractionError
+from app.services.cv.text import extract_native, ocr_sources
+from app.services.documents.extraction import DocumentExtractionError
 
 
 def main():

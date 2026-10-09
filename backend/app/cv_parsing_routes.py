@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.auth import require_recruiter
 from app.models.user import User
-from app.services.cv_parsing import get_cv_profile, parse_cv, parse_job
+from app.services.cv.parsing import get_cv_profile, parse_cv, parse_job
 
 router = APIRouter(prefix="/cv", tags=["CV Parsing"])
 Recruiter = Annotated[User, Depends(require_recruiter)]

@@ -13,11 +13,14 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from app.core.config import get_settings
 from app.models.user import User
 from app.models.jd import JDConversation, JobDescription
-from app.services.jd_conversations import (
+from app.models.assistant import AssistantConversation
+from app.services.assistant.conversations import list_assistant_conversations
+from app.services.jd.conversations import (
     act_on_jd_conversation, get_owned_conversation, save_approved_jd, workflow_config,
 )
 from app.workflows.jd.graph import build_jd_graph
 from app.workflows.runtime import open_workflow_checkpointer
+from app.services.jd.screening_profiles import public_profile_section
 from test_jd_profiles import state
 
 
@@ -58,6 +61,39 @@ class PostgreSQLTests(unittest.IsolatedAsyncioTestCase):
                     self.assertIsNone(legacy.screening_profile)
                     self.assertIsNone(legacy.profile_version)
                     self.assertIsNone(legacy.google_form_url)
+                    incomplete_conversation = JDConversation(recruiter_id=recruiter.id)
+                    db.add(incomplete_conversation)
+                    await db.flush()
+                    incomplete = state()
+                    incomplete["screening_profile"].update(
+                        google_form_url=None, weights_confirmed=False,
+                        weights_confirmation_quote=None, addressed_dimensions=["technical_skills"],
+                    )
+                    incomplete["screening_profile"]["criteria"][0].update(priority=None, priority_quote=None)
+                    incomplete.update(status="approved", approved_jd=(
+                        "# Incomplete Developer\n\n" + public_profile_section(incomplete["screening_profile"])
+                    ))
+                    incomplete_document = await save_approved_jd(db, incomplete_conversation, incomplete)
+                    incomplete_id = incomplete_document.id
+                    await db.commit()
+                    db.expire(incomplete_document)
+                    persisted = await db.get(JobDescription, incomplete_id)
+                    self.assertEqual(persisted.screening_profile, incomplete["screening_profile"])
+                    self.assertIsNone(persisted.google_form_url)
+                    self.assertFalse(persisted.screening_profile["weights_confirmed"])
+                    other_recruiter = User(email=f"jd-other-{uuid4()}@example.invalid", password_hash="test-only", role="recruiter")
+                    db.add(other_recruiter)
+                    await db.flush()
+                    own_chat = AssistantConversation(user_id=recruiter.id)
+                    other_chat = AssistantConversation(user_id=other_recruiter.id)
+                    db.add_all([own_chat, other_chat])
+                    await db.flush()
+                    graph = SimpleNamespace(get_state=lambda config: SimpleNamespace(values={"messages": [HumanMessage(content="My JD history")]}))
+                    listed = await list_assistant_conversations(db, graph, recruiter.id)
+                    self.assertEqual([item["conversation_id"] for item in listed["items"]], [str(own_chat.id)])
+                    self.assertEqual(listed["items"][0]["title"], "My JD history")
+                    empty_page = await list_assistant_conversations(db, graph, recruiter.id, offset=20)
+                    self.assertEqual(empty_page["items"], [])
                 await transaction.rollback()
         finally:
             await engine.dispose()
@@ -74,8 +110,8 @@ class PostgreSQLTests(unittest.IsolatedAsyncioTestCase):
                     graph.invoke({"messages": [HumanMessage(content="create")]}, config)
                     snapshot = graph.get_state(config)
                     conversation = SimpleNamespace(id=conversation_id, created_at=None)
-                    with patch("app.services.jd_conversations.get_owned_conversation", new=AsyncMock(return_value=conversation)), \
-                         patch("app.services.jd_conversations.save_approved_jd", new=AsyncMock(side_effect=RuntimeError("Simulated SQL save interruption"))):
+                    with patch("app.services.jd.conversations.get_owned_conversation", new=AsyncMock(return_value=conversation)), \
+                         patch("app.services.jd.conversations.save_approved_jd", new=AsyncMock(side_effect=RuntimeError("Simulated SQL save interruption"))):
                         with self.assertRaises(RuntimeError):
                             await act_on_jd_conversation(None, graph, recruiter_id, conversation_id,
                                 checkpoint_id=snapshot.config["configurable"]["checkpoint_id"],
@@ -87,8 +123,8 @@ class PostgreSQLTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(recovered_state["screening_profile"], s["screening_profile"])
                     saved = SimpleNamespace(id=uuid4(), title="Developer", number=1, created_at=None)
                     db = SimpleNamespace(commit=AsyncMock())
-                    with patch("app.services.jd_conversations.get_owned_conversation", new=AsyncMock(return_value=conversation)), \
-                         patch("app.services.jd_conversations.save_approved_jd", new=AsyncMock(return_value=saved)) as persist:
+                    with patch("app.services.jd.conversations.get_owned_conversation", new=AsyncMock(return_value=conversation)), \
+                         patch("app.services.jd.conversations.save_approved_jd", new=AsyncMock(return_value=saved)) as persist:
                         response = await act_on_jd_conversation(db, recovered_graph, recruiter_id, conversation_id,
                             checkpoint_id="old", interrupt_id="old", action="approve")
                         self.assertEqual(response["job_description"]["id"], str(saved.id))

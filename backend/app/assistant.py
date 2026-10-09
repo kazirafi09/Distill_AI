@@ -1,14 +1,15 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import DatabaseSession, require_recruiter
 from app.models.user import User
-from app.services.assistant_conversations import (
+from app.services.assistant.conversations import (
     assistant_response, create_assistant_conversation, get_owned_assistant,
     open_saved_jd, send_assistant_jd_action, send_assistant_message,
+    list_assistant_conversations,
 )
 
 router = APIRouter(prefix="/assistant", tags=["Assistant"])
@@ -36,6 +37,14 @@ async def create_conversation(request: Request, user: Recruiter, db: DatabaseSes
     return await assistant_response(
         db, request.app.state.assistant_graph, request.app.state.jd_graph, conversation,
     )
+
+
+@router.get("/conversations")
+async def list_conversations(
+    request: Request, user: Recruiter, db: DatabaseSession,
+    limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0),
+):
+    return await list_assistant_conversations(db, request.app.state.assistant_graph, user.id, limit=limit, offset=offset)
 
 
 @router.get("/conversations/{conversation_id}")

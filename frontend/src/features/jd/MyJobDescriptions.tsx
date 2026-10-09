@@ -37,7 +37,15 @@ export default function MyJobDescriptions({
   token,
   refreshKey,
 }: MyJobDescriptionsProps) {
-  const [offset, setOffset] = useState(0)
+  const [pagination, setPagination] = useState({ offset: 0, refreshKey })
+  // New saves are sorted first. Return to that page when the chat saves a JD.
+  const offset = pagination.refreshKey === refreshKey ? pagination.offset : 0
+  function setOffset(next: number | ((current: number) => number)) {
+    setPagination((current) => {
+      const currentOffset = current.refreshKey === refreshKey ? current.offset : 0
+      return { offset: typeof next === 'function' ? next(currentOffset) : next, refreshKey }
+    })
+  }
   const [reloadCount, setReloadCount] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const detailDialogRef = useRef<HTMLDialogElement>(null)
