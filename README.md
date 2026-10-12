@@ -2,6 +2,9 @@
 
 AI-powered CV screening, candidate scoring and interview assessment.
 
+See the [project progress tracker](docs/PROJECT_PROGRESS.md) for current features,
+project flows, verification status, and remaining work.
+
 ## Repository layout
 
 - `backend/`: FastAPI API, feature services, integrations, workflows, workers,
