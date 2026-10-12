@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends
 
 from app.auth import require_recruiter
 from app.models.user import User
+from app.services.interviews.schemas import SaveShortlistRequest
+from app.services.interviews.selections import load_shortlist, save_shortlist
 from app.services.interviews.shortlisting import (
     ShortlistRequest,
     preview_shortlist,
@@ -23,3 +25,20 @@ async def shortlist_preview(
     recruiter: Recruiter,
 ):
     return await preview_shortlist(job_id, recruiter.id, filters)
+
+
+@router.put("/jobs/{job_id}/shortlist")
+async def update_shortlist(
+    job_id: UUID,
+    request: SaveShortlistRequest,
+    recruiter: Recruiter,
+):
+    return await save_shortlist(job_id, recruiter.id, request)
+
+
+@router.get("/jobs/{job_id}/shortlist")
+async def get_shortlist(
+    job_id: UUID,
+    recruiter: Recruiter,
+):
+    return await load_shortlist(job_id, recruiter.id)
