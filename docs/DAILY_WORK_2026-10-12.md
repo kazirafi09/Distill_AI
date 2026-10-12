@@ -4,7 +4,7 @@
 
 Build interviewee shortlisting so a recruiter can choose a job description, review the candidates who applied for it, and select recipients. Let the recruiter send invitation emails through either a button in the Interviews UI or the central chatbot, generating a unique interview link for each selected candidate application.
 
-**Current status:** shortlist preview, screening refactor and save/load services implemented. Saved-selection tables applied and schema verified. 39 tests passed across the recorded suites, including 14 save-request/PostgreSQL checks with mocked screening responses. Save/load API routes, actual screening-worker concurrency verification, Interviews UI, unique links, email delivery and chatbot invitation tools remain pending.
+**Current status:** shortlist preview, screening refactor, save/load services and authenticated routes implemented. Saved-selection tables applied and schema verified. Interviews UI implemented and connected to the frontend API helpers; build, lint and browser flows with mocked API responses passed. 39 tests passed across the recorded suites, including 14 save-request/PostgreSQL checks. Actual screening-worker concurrency, live full-stack UI verification, preview backend edge cases, unique links, email delivery and chatbot invitation tools remain pending.
 
 This file tracks today's scope and progress. The broader project baseline is in [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md).
 
@@ -28,6 +28,8 @@ Shortlisting belongs in the Interviews UI and its backend API; today's scope doe
 ## Working agreement
 
 Before adding or changing code, explain what it does, which existing files/functions it connects to, and how data flows through the change. Show the proposed file or edits for review, then wait for the recruiter/developer's explicit instruction to add them. Keep implementation readable and proceed in small steps. Documentation updates can be made when requested.
+
+The developer explicitly waived review for completing the Interviews UI: "Complete the UI code. No need for review." That authorization covers this UI implementation and its supporting frontend changes.
 
 ## Proposed user flow
 
@@ -107,7 +109,8 @@ No new AI scoring is needed for shortlisting. The filter uses the screening resu
 
 - [x] Define initial preview request and response shape: JD, filter mode, K, minimum score, proposed applications, count and exclusion reasons.
 - [x] Implement validated filtering against the current ranked results returned by the existing screening service.
-- [ ] Extend preview to include applications never assessed, explicitly handle missing scores, and show ties at the cutoff for review.
+- [ ] Extend the backend preview to include applications never assessed and explicitly handle missing scores. The UI independently lists all imported applications and flags those without a returned assessment.
+- [x] Show ties at the cutoff in the Interviews UI using the existing exact backend ranks.
 - [x] Add saved-selection models and migration associated with the JD/application and recruiter; import models in Alembic's environment.
 - [x] Apply the migration to PostgreSQL and verify the actual schema. Applied by the developer; revision, columns, foreign keys, unique constraints and indexes checked.
 - [x] Add service code to persist selection provenance: screening assessment/run, score snapshot, filter inputs and manual additions/removals. Synthetic PostgreSQL save/reload tests passed.
@@ -116,7 +119,7 @@ No new AI scoring is needed for shortlisting. The filter uses the screening resu
 - [x] Return a preview fingerprint bound to recruiter, JD, run, filters, ranked/incomplete assessments and warnings.
 - [x] Add `load_shortlist()` service to read saved members, candidate details and outdated indicators; syntax checked, behavioral/database tests pending.
 - [x] Add `save_shortlist()` with preview-key comparisons, ownership/membership/eligibility validation and reuse of existing member records; syntax checked.
-- [ ] Expose authenticated save/load API routes.
+- [x] Expose authenticated save/load API routes. Ad hoc HTTP checks passed for request forwarding, null load, authentication, role restrictions, validation and service errors.
 - [ ] Verify save-time ownership, job membership, eligibility and freshness, including concurrent screening changes.
 - [x] Verify repeated and simultaneous saves reuse records and prevent duplicate interviewees for a job using synthetic PostgreSQL fixtures.
 
@@ -148,13 +151,13 @@ No new AI scoring is needed for shortlisting. The filter uses the screening resu
 
 ### Frontend
 
-- [ ] Replace the Interviews placeholder with the initial interviewee-selection workspace.
-- [ ] Add JD selection and candidate/results loading.
-- [ ] Add Top K, Minimum score and Both filter modes with input validation.
-- [ ] Show preview count, names, scores, ranks and evidence/review details.
-- [ ] Add candidate checkboxes, manual adjustments and final selected count.
-- [ ] Save and restore the job's selected interviewees.
-- [ ] Handle no jobs, no candidates, no current screening results, no matches, loading and API errors.
+- [x] Replace the Interviews placeholder with the initial interviewee-selection workspace.
+- [x] Add JD selection and candidate/results loading, including existing paginated JD/application APIs.
+- [x] Add Top K, Minimum score and Both filter modes with input validation.
+- [x] Show preview count, names, scores, ranks and reused CV evidence/review details.
+- [x] Add candidate checkboxes, manual adjustments and final selected count; disable automatic selection for incomplete/unassessed applications.
+- [x] Save and restore the job's selected interviewees; switching jobs mounts a fresh job workspace.
+- [x] Handle no jobs, no candidates, no current screening results, no matches, loading, stale selections and API errors.
 - [ ] Add a **Send interview invitations** button for the chosen JD's saved interviewees, with recipient/message preview and explicit confirmation before queueing emails.
 - [ ] Show invitation status alongside saved interviewees and support both UI and chatbot preview/confirmation flows.
 
@@ -216,11 +219,11 @@ Full interview execution and assessment remain separate project scope unless add
 | Shortlist preview backend | Implemented; focused tests passed | `shortlisting.py` uses existing screening results and returns `preview_key`; `interview_routes.py` exposes `POST /interviews/jobs/{job_id}/shortlist/preview`; router registered in `main.py` |
 | Saved-selection database definitions | Applied; schema verified | Developer applied the migration. Database is at `e7c142d9a630 (head)`; both tables, expected columns, foreign keys, unique constraints and indexes verified |
 | Save-request contract | Added; validation tests passed | `schemas.py` validates filters, preview key and UUID IDs; empty selections accepted and duplicate/invalid IDs rejected |
-| Load-selection service | Added; PostgreSQL tests passed | Reads saved members with names/emails and detects changed scores/runs using mocked screening responses; API route pending |
+| Load-selection service | Added; PostgreSQL tests passed | Reads saved members with names/emails and detects changed scores/runs using mocked screening responses; authenticated GET route added |
 | Save-selection service | Added; PostgreSQL tests passed | Persistence, manual adjustments, repeated/simultaneous saves, ownership, cross-job rejection, stale previews and rollback tested; actual screening-worker concurrency pending |
-| Save/load endpoints | Pending | Expose the services to the frontend through authenticated routes |
-| Interviews UI | Pending | Placeholder still present; connect JD selection, preview, manual adjustments and save/load |
-| Verification | Focused and PostgreSQL checks passed; UI/worker checks pending | 39 tests passed across five suites, including 14 save-request/PostgreSQL checks; ad hoc fingerprints and schema inspection passed. Actual worker concurrency and UI verification pending |
+| Save/load endpoints | Implemented; HTTP checks passed | Authenticated PUT/GET `/interviews/jobs/{job_id}/shortlist`; ad hoc HTTP checks used mocked services |
+| Interviews UI | Implemented; build/lint and mocked browser checks passed | JD selection, all filter modes, candidate/evidence review, manual choices, save/restore, stale errors, cutoff ties, empty states and responsive layout; invitation button remains disabled pending delivery backend |
+| Verification | Focused, PostgreSQL and mocked UI checks passed | 39 tests across five suites; ad hoc HTTP/fingerprint checks and schema inspection; production build and lint; desktop/mobile browser checks with synthetic mocked APIs. Actual worker concurrency and live full-stack UI checks pending |
 | Interview-link sending | Planned; requested scope recorded | Unique per-candidate links and email delivery initiated by either the UI button or central chatbot through shared backend operations; implementation pending |
 
 ### Files added or changed on 12 October 2026
@@ -230,7 +233,7 @@ Full interview execution and assessment remain separate project scope unless add
 | [Screening service](../backend/app/services/cv/screening.py) | Refactored freshness checks, parse validation and result formatting into helpers; existing route/frontend continue calling the same function |
 | [Shortlisting service](../backend/app/services/interviews/shortlisting.py) | Validates filters and consumes `get_screening_results()`; returns proposed assessed applications, exclusions and a preview fingerprint using existing `indexing.digest()` |
 | [Selection request schema](../backend/app/services/interviews/schemas.py) | Reuses `ShortlistRequest` and defines final application IDs plus the reviewed preview key for the future save service |
-| [Selection service](../backend/app/services/interviews/selections.py) | Save/load functions use existing ownership/screening helpers, preview key, shortlist models and candidate/application models; no save/load routes yet |
+| [Selection service](../backend/app/services/interviews/selections.py) | Save/load functions use existing ownership/screening helpers, preview key, shortlist models and candidate/application models; authenticated routes call both services |
 | [Interview routes](../backend/app/interview_routes.py) | Uses existing recruiter authentication to call the shortlist preview service |
 | [FastAPI application](../backend/app/main.py) | Registers the interview router beside existing feature routers |
 | [Interview models](../backend/app/models/interviews.py) | Defines one saved shortlist per JD and unique application members, linked to existing jobs, users, screening runs, applications and assessments |
@@ -240,6 +243,13 @@ Full interview execution and assessment remain separate project scope unless add
 | [Shortlisting tests](../backend/tests/test_shortlisting.py) | Sample screening responses exercise filtering, precision, ties, exclusions and validation |
 | [Interview route tests](../backend/tests/test_interview_routes.py) | Isolated FastAPI app uses real auth dependencies/JWT handling with a fake user store and mocked preview service |
 | [Selection tests](../backend/tests/test_interview_selections.py) | Save-request validation and opt-in PostgreSQL service tests with synthetic fixtures and mocked screening responses |
+| [Frontend Interviews API](../frontend/src/features/interviews/api.ts) | Uses the existing `apiRequest()` for preview, save and load; reuses exported screening assessment/score types |
+| Screening display before preview | `loadScreeningResults()` reads the existing screening-results endpoint independently of shortlist preview. Scores, ranks and evidence stay visible when filters change or a stale preview is cleared; saving still requires a fresh preview |
+| Saved interviewees display | Added a separate saved-selection panel with server-returned names/emails, score/rank snapshots, saved count and manual/outdated flags; checkbox edits are marked unsaved until a successful save |
+| [Interviews workspace](../frontend/src/features/interviews/Interviews.tsx) | Connects existing JD and candidate APIs to preview/save/load, selection controls and current evidence details |
+| [Interviews styles](../frontend/src/features/interviews/Interviews.css) | Responsive layout consistent with the recruiter workspace |
+| [Frontend application routes](../frontend/src/app/App.tsx) | Replaces the Interviews placeholder with the new authenticated workspace |
+| [CV evidence display](../frontend/src/features/cv/CVResults.tsx) | Exports existing assessment/score types and `AssessmentDetails` for reuse; criterion priority type now permits the existing nullable JD priority |
 
 ### Verification recorded on 12 October 2026
 
@@ -258,8 +268,15 @@ Commands were run from `backend/` using its existing virtual environment. Async 
 | Shortlisting test suite rerun after adding `preview_key` | PASS — same 7 tests; does not increase the unique test count |
 | Ad hoc preview-key checks with mocked screening results | PASS — hexadecimal key length, identical results, reordered incomplete assessments, changed score, changed filters and changed assessment status |
 | Selection-service AST syntax check and shortlisting suite rerun after adding save | PASS — selection file parses and existing 7 filtering tests pass; save/load behavior itself not tested |
+| Ad hoc save/load HTTP checks | PASS — forwarding, null load, missing login, wrong role, invalid preview key and 409/404 service errors; services mocked |
+| `npm run build` from `frontend/` after completing UI | PASS — TypeScript and production build |
+| `npm run lint` from `frontend/` after completing UI | PASS |
+| Headless Chrome UI verification on temporary local Vite server | PASS — all filter modes, zero/invalid threshold, manual choices, save payload, saved selection restore, job isolation, evidence, cutoff ties, stale-save error, empty selection/jobs/candidates, desktop/mobile layout; API responses mocked |
+| Browser regression for screening display before preview | PASS — rank and score visible with zero preview requests and remain visible while editing filters; existing mocked UI flows rerun successfully |
+| Read-only persistence check after recruiter reported missing saved UI | PostgreSQL contained a saved shortlist for JD 81 with two members. Added a visible saved-interviewees panel; real data was not modified by this check |
+| Saved-selection panel checks | PASS — production build, lint, and mocked browser checks for saved names/count, restoration, unsaved-checkbox indication and an explicitly saved empty selection |
 
-Python AST syntax checks also passed for the shortlisting service, interview routes, FastAPI registration, interview models, save-request schema and save/load selection service. Selection tests now verify real PostgreSQL persistence and ownership with mocked screening responses. Preview route tests mock the service ownership rejection. Save uses the existing per-job advisory lock, but screening workers do not share that lock; the second preview comparison is not yet verified against concurrent worker changes. The recruiter UI remains pending.
+Python AST syntax checks also passed for the shortlisting service, interview routes, FastAPI registration, interview models, save-request schema and save/load selection service. Selection tests verify real PostgreSQL persistence and ownership with mocked screening responses. Preview route tests mock the service ownership rejection. Save uses the existing per-job advisory lock, but screening workers do not share that lock; the second preview comparison is not yet verified against concurrent worker changes. UI browser verification used mocked API responses; live full-stack verification remains pending.
 
 ### Remaining work assessment
 
@@ -267,8 +284,8 @@ The shortlist backend foundation is in place, but the full recruiter flow is not
 
 | Remaining work block | Scope |
 | --- | --- |
-| Finish shortlist backend | Verify save/load behavior, current-preview comparison, ownership/membership/eligibility, provenance, duplicate prevention and concurrency; expose save/load routes; close preview edge cases; test request validation and real persistence |
-| Build Interviews workspace | JD selection, candidate/evidence review, filters, checkboxes, saved selection restore, stale-state handling and errors |
+| Finish shortlist verification and backend edge cases | Close missing-score/never-assessed preview edge cases, verify actual screening-worker concurrency, add persistent save/load HTTP coverage and run the live full-stack recruiter flow |
+| Interviews workspace integration | UI code completed; verify against the running backend and database with controlled records. Invitation send/confirmation/status controls still depend on the invitation backend |
 | Build unique interview links | Invitation records/migration, secure token generation and verification, expiry/revocation/replacement, working candidate entry page |
 | Build email delivery and controls | Settle provider/sender/public URL/instructions/expiry; individual messages, durable queue, retries and outcome tracking; shared preview/confirmation API used by UI button and chatbot |
 | Complete integration verification | Recruiter UI flow, candidate links, controlled email transport, confirmation changes, duplicate prevention across both entry points and queue recovery |
@@ -283,6 +300,6 @@ The first database run failed before fixture creation because Psycopg cannot use
 .\.venv\Scripts\python.exe -c "import asyncio, os, unittest; asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy()); os.environ['RUN_INTERVIEW_DB_TESTS'] = '1'; suite = unittest.defaultTestLoader.discover('tests', pattern='test_interview_selections.py'); result = unittest.TextTestRunner(verbosity=2).run(suite); raise SystemExit(not result.wasSuccessful())"
 ```
 
-Next, review/add authenticated save/load routes in `interview_routes.py`, then test those HTTP operations and build the Interviews UI. Explain each change and obtain approval before adding code.
+Authenticated save/load routes, frontend API helpers and Interviews UI are now implemented. Next, verify the real frontend/backend/database integration and close remaining preview/freshness cases, then implement invitation records, secure unique links, the candidate entry page and shared email delivery/confirmation operations for the button and chatbot. The invitation button currently renders disabled and no emails are sent by this UI.
 
 Update this log as work progresses; mark implementation and verification separately.

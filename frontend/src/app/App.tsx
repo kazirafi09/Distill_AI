@@ -11,6 +11,7 @@ import LoginForm from '../features/auth/LoginForm'
 import RecruiterChat from '../features/jd/RecruiterChat'
 import MyJobDescriptions from '../features/jd/MyJobDescriptions'
 import CVScreening from '../features/cv/CVScreening'
+import Interviews from '../features/interviews/Interviews'
 import type { RecruiterSession } from '../services/api'
 import './App.css'
 
@@ -202,11 +203,16 @@ export default function App() {
               />
             }
           />
+          <Route
+            path="/recruiter/interviews"
+            element={<Interviews key={session.user.id} token={session.token} />}
+          />
           {navigation
             .filter(
               (item) =>
                 item.path !== '/recruiter/job-descriptions' &&
-                item.path !== '/recruiter/cv-screening',
+                item.path !== '/recruiter/cv-screening' &&
+                item.path !== '/recruiter/interviews',
             )
             .map((item) => (
               <Route

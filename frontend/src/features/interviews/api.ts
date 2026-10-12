@@ -1,4 +1,5 @@
 import { apiRequest } from '../../services/api'
+import type { Assessment, Score } from '../cv/CVResults'
 
 export type ShortlistFilters = {
   mode: 'top_k' | 'minimum_score' | 'both'
@@ -11,18 +12,13 @@ type ScreeningRun = {
   status: string
 }
 
-type ScreeningScore = {
-  aggregate: string
-}
+export type PreviewCandidate = Assessment
 
-export type PreviewCandidate = {
-  id: string
-  application_id: string
-  name: string
-  rank?: number
-  status: string
-  outdated: boolean
-  score: ScreeningScore | null
+export type ScreeningResults = {
+  run: ScreeningRun | null
+  ranked: Assessment[]
+  incomplete: Assessment[]
+  warnings: string[]
 }
 
 export type ExcludedCandidate = PreviewCandidate & {
@@ -50,7 +46,7 @@ export type SavedInterviewee = {
   assessment_id: string
   name: string
   email: string
-  score: ScreeningScore
+  score: Score
   rank: number
   manually_added: boolean
   outdated: boolean
@@ -66,6 +62,17 @@ export type SavedShortlist = {
   selected_count: number
   outdated: boolean
   warnings: string[]
+}
+
+export function loadScreeningResults(
+  token: string,
+  jobId: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<ScreeningResults>(
+    `/cv/screening/jobs/${encodeURIComponent(jobId)}/results`,
+    { token, signal },
+  )
 }
 
 export function previewShortlist(
