@@ -1,8 +1,46 @@
 import { useEffect, useState } from 'react'
+import {
+  Navigate,
+  NavLink,
+  Route,
+  Routes,
+  useNavigate,
+} from 'react-router-dom'
+
+import LoginForm from '../features/auth/LoginForm'
+import RecruiterChat from '../features/jd/RecruiterChat'
+import MyJobDescriptions from '../features/jd/MyJobDescriptions'
+import CVScreening from '../features/cv/CVScreening'
+import type { RecruiterSession } from '../services/api'
 import './App.css'
 
+
+const navigation = [
+  { path: '/recruiter/dashboard', label: 'Dashboard', mark: 'D' },
+  { path: '/recruiter/job-descriptions', label: 'Job Descriptions', mark: 'JD' },
+  { path: '/recruiter/cv-screening', label: 'CV Screening', mark: 'CV' },
+  { path: '/recruiter/candidates', label: 'Candidates', mark: 'C' },
+  { path: '/recruiter/interviews', label: 'Interviews', mark: 'I' },
+  { path: '/recruiter/assessments', label: 'Assessments', mark: 'A' },
+]
+
+function FeaturePlaceholder({ title }: { title: string }) {
+  return (
+    <section className="feature-placeholder">
+      <h1 className="text-2xl font-bold">{title}</h1>
+      <p className="mt-2 text-sm text-slate-500">
+        This feature is planned. Its workspace will be added here.
+      </p>
+    </section>
+  )
+}
+
 export default function App() {
+  const navigate = useNavigate()
+
   const [connection, setConnection] = useState('Checking connection…')
+  const [session, setSession] = useState<RecruiterSession | null>(null)
+  const [jdRefreshKey, setJDRefreshKey] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -34,15 +72,156 @@ export default function App() {
     }
 
     void checkConnection()
-
     return () => controller.abort()
   }, [])
 
+  function handleLogin(nextSession: RecruiterSession) {
+    setSession(nextSession)
+    navigate('/recruiter/job-descriptions', { replace: true })
+  }
+
+  function handleSignOut() {
+    setSession(null)
+    navigate('/', { replace: true })
+  }
+
+  if (!session) {
+    return (
+      <main className="app">
+        <h1 className="text-3xl font-bold">Distill AI</h1>
+        <p>Recruitment & Interview Intelligence Platform</p>
+
+        <p role="status" className="text-sm text-slate-500">
+          {connection}
+        </p>
+
+        <Routes>
+          <Route path="/" element={<LoginForm onLogin={handleLogin} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    )
+  }
+
   return (
-    <main className="app">
-      <h1>Distill AI</h1>
-      <p>Recruitment & Interview Intelligence Platform</p>
-      <p role="status">{connection}</p>
-    </main>
+    <div className="workspace-shell">
+      <aside className="workspace-sidebar">
+        <NavLink
+          to="/recruiter/job-descriptions"
+          className="sidebar-brand"
+          aria-label="Distill AI home"
+        >
+          <span className="brand-mark" aria-hidden="true">D</span>
+          <span>Distill AI</span>
+        </NavLink>
+
+        <p className="sidebar-caption">Recruiter workspace</p>
+
+        <nav aria-label="Main navigation" className="sidebar-navigation">
+          {navigation.map((item) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              className={({ isActive }) =>
+                `sidebar-link${isActive ? ' is-active' : ''}`
+              }
+            >
+              <span className="navigation-mark" aria-hidden="true">
+                {item.mark}
+              </span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="sidebar-account">
+          <div className="account-avatar" aria-hidden="true">
+            {session.user.email.charAt(0).toUpperCase()}
+          </div>
+
+          <div className="account-details">
+            <p className="font-semibold">Recruiter</p>
+            <p className="account-email" title={session.user.email}>
+              {session.user.email}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="sidebar-signout"
+            onClick={handleSignOut}
+          >
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      <main className="workspace-main">
+        <Routes>
+          <Route
+            path="/recruiter/job-descriptions"
+            element={
+              <section className="jd-page">
+                <header className="workspace-header">
+                  <div>
+                    <p className="workspace-eyebrow">Recruitment workspace</p>
+                    <h1 className="text-3xl font-bold">Job Descriptions</h1>
+                    <p className="mt-2 text-sm text-slate-500">
+                      Create and manage job descriptions with Distill AI.
+                    </p>
+                  </div>
+
+                  <p role="status" className="connection-status">
+                    {connection}
+                  </p>
+                </header>
+
+                <div className="jd-workspace">
+                  <MyJobDescriptions
+                    key={session.user.id}
+                    token={session.token}
+                    refreshKey={jdRefreshKey}
+                  />
+
+                  <RecruiterChat
+                    key={session.user.id}
+                    token={session.token}
+                    userId={session.user.id}
+                    onSaved={() => setJDRefreshKey((value) => value + 1)}
+                  />
+                </div>
+              </section>
+            }
+          />
+          <Route
+            path="/recruiter/cv-screening"
+            element={
+              <CVScreening
+                key={session.user.id}
+                token={session.token}
+              />
+            }
+          />
+          {navigation
+            .filter(
+              (item) =>
+                item.path !== '/recruiter/job-descriptions' &&
+                item.path !== '/recruiter/cv-screening',
+            )
+            .map((item) => (
+              <Route
+                key={item.path}
+                path={item.path}
+                element={<FeaturePlaceholder title={item.label} />}
+              />
+            ))}
+
+          <Route
+            path="*"
+            element={<Navigate to="/recruiter/job-descriptions" replace />}
+          />
+        </Routes>
+      </main>
+    </div>
   )
 }

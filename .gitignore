@@ -27,3 +27,7 @@ logs/
 *.db
 
 backend/logs/
+
+backend/.data/
+
+/storage/cvs/
