@@ -3,6 +3,8 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from pydantic import ValidationError
 
@@ -25,7 +27,7 @@ class ShortlistingTests(unittest.IsolatedAsyncioTestCase):
             "outdated": False,
         }
 
-    async def preview(self, ranked, filters, incomplete=None):
+    async def preview(self, ranked, filters, incomplete=None, roster=None):
         results = {
             "job_id": str(self.job_id),
             "run": {"id": "test-run"},
@@ -34,6 +36,10 @@ class ShortlistingTests(unittest.IsolatedAsyncioTestCase):
             "warnings": [],
         }
 
+        db = AsyncMock()
+        rows = MagicMock()
+        rows.all.return_value = roster or []
+        db.execute.return_value = rows
         with patch(
             "app.services.interviews.shortlisting.get_screening_results",
             new_callable=AsyncMock,
@@ -43,11 +49,13 @@ class ShortlistingTests(unittest.IsolatedAsyncioTestCase):
                 self.job_id,
                 self.recruiter_id,
                 ShortlistRequest(**filters),
+                db=db,
             )
 
         screening.assert_awaited_once_with(
             self.job_id,
             self.recruiter_id,
+            db=db,
         )
         self.assertEqual(response["job_id"], str(self.job_id))
         self.assertEqual(response["run"], results["run"])
@@ -178,8 +186,26 @@ class ShortlistingTests(unittest.IsolatedAsyncioTestCase):
             "c": "below_minimum_score",
             "d": "outdated_assessment",
             "e": "assessment_not_completed",
-            "f": "current_ranking_unavailable",
+            "f": "score_missing",
         })
+
+    async def test_missing_and_invalid_scores_are_explicitly_excluded(self):
+        incomplete = [self.application(str(index), value) for index, value in
+                      enumerate((None, "bad", "NaN", "Infinity", "-1", "101"))]
+        response = await self.preview([], {"mode": "top_k", "k": 2}, incomplete)
+        self.assertEqual([item["exclusion_reason"] for item in response["excluded"]],
+                         ["score_missing"] + ["score_invalid"] * 5)
+
+    async def test_unassessed_roster_is_excluded_and_changes_fingerprint(self):
+        candidate = SimpleNamespace(full_name="Unassessed", email="test@example.invalid")
+        application = SimpleNamespace(id=uuid4())
+        empty = await self.preview([], {"mode": "top_k", "k": 2})
+        response = await self.preview([], {"mode": "top_k", "k": 2},
+                                      roster=[(application, candidate)])
+        self.assertEqual(response["proposed"], [])
+        self.assertEqual(response["excluded"][0]["application_id"], str(application.id))
+        self.assertEqual(response["excluded"][0]["exclusion_reason"], "assessment_missing")
+        self.assertNotEqual(empty["preview_key"], response["preview_key"])
 
     def test_invalid_filter_inputs(self):
         invalid_inputs = [

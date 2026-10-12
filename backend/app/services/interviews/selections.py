@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.db.session import SessionFactory
 from app.models.cv import Candidate, CandidateApplication
@@ -14,6 +14,7 @@ from app.models.interviews import (
 from app.services.cv.screening import (
     get_screening_results,
     owned_job,
+    lock_screening_job,
 )
 from app.services.interviews.schemas import SaveShortlistRequest
 from app.services.interviews.shortlisting import preview_shortlist
@@ -25,18 +26,15 @@ async def save_shortlist(
     request: SaveShortlistRequest,
 ):
     async with SessionFactory() as db:
-        await owned_job(db, job_id, recruiter_id)
-
         # Serialize saves for this JD using the existing screening lock.
-        await db.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"),
-            {"key": job_id.int % (2**63 - 1)},
-        )
+        await lock_screening_job(db, job_id)
+        await owned_job(db, job_id, recruiter_id)
 
         preview = await preview_shortlist(
             job_id,
             recruiter_id,
             request.filters,
+            db=db,
         )
 
         if preview["preview_key"] != request.preview_key:
@@ -154,6 +152,7 @@ async def save_shortlist(
             job_id,
             recruiter_id,
             request.filters,
+            db=db,
         )
         if latest_preview["preview_key"] != request.preview_key:
             raise HTTPException(

@@ -4,9 +4,12 @@ from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+from sqlalchemy import select
 
+from app.db.session import SessionFactory
+from app.models.cv import Candidate, CandidateApplication
 from app.services.cv.indexing import digest
-from app.services.cv.screening import get_screening_results
+from app.services.cv.screening import get_screening_results, valid_aggregate_score
 
 
 class ShortlistRequest(BaseModel):
@@ -31,9 +34,20 @@ class ShortlistRequest(BaseModel):
         return self
 
 
-async def preview_shortlist(job_id, recruiter_id, filters: ShortlistRequest):
+async def preview_shortlist(job_id, recruiter_id, filters: ShortlistRequest, *, db=None):
+    if db is None:
+        async with SessionFactory() as session:
+            response = await preview_shortlist(job_id, recruiter_id, filters, db=session)
+            await session.commit()
+            return response
     # Existing code checks ownership, freshness, and ranking.
-    results = await get_screening_results(job_id, recruiter_id)
+    results = await get_screening_results(job_id, recruiter_id, db=db)
+    roster = (await db.execute(
+        select(CandidateApplication, Candidate).join(Candidate).where(
+            CandidateApplication.job_description_id == job_id,
+            Candidate.recruiter_id == recruiter_id,
+        ).order_by(CandidateApplication.id)
+    )).all()
     qualifying = results["ranked"]
 
     if filters.mode in {"minimum_score", "both"}:
@@ -68,10 +82,28 @@ async def preview_shortlist(job_id, recruiter_id, filters: ShortlistRequest):
             reason = "outdated_assessment"
         elif application["status"] != "completed":
             reason = "assessment_not_completed"
+        elif not isinstance(application.get("score"), dict) or application["score"].get("aggregate") is None:
+            reason = "score_missing"
+        elif not valid_aggregate_score(application["score"]):
+            reason = "score_invalid"
         else:
             reason = "current_ranking_unavailable"
 
         excluded.append({**application, "exclusion_reason": reason})
+
+    assessed_ids = {item["application_id"] for item in results["ranked"] + results["incomplete"]}
+    application_roster = []
+    for application, candidate in roster:
+        application_id = str(application.id)
+        application_roster.append({"application_id": application_id,
+                                   "name": candidate.full_name, "email": candidate.email})
+        if application_id not in assessed_ids:
+            excluded.append({
+                "id": application_id, "application_id": application_id,
+                "name": candidate.full_name, "status": "not_assessed", "outdated": False,
+                "score": None, "matches": [], "warnings": [], "error_code": None,
+                "exclusion_reason": "assessment_missing",
+            })
 
     filter_inputs = filters.model_dump(mode="json")
 
@@ -80,6 +112,7 @@ async def preview_shortlist(job_id, recruiter_id, filters: ShortlistRequest):
         "recruiter_id": str(recruiter_id),
         "run": results["run"],
         "filters": filter_inputs,
+        "application_roster": application_roster,
         "ranked": results["ranked"],
         "incomplete": sorted(
             results["incomplete"],

@@ -28,6 +28,9 @@ export type ExcludedCandidate = PreviewCandidate & {
     | 'outdated_assessment'
     | 'assessment_not_completed'
     | 'current_ranking_unavailable'
+    | 'assessment_missing'
+    | 'score_missing'
+    | 'score_invalid'
 }
 
 export type ShortlistPreview = {

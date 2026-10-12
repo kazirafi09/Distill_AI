@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     google_application_credentials: Path | None = None
     google_drive_cv_root_folder_id: str | None = None
     google_drive_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
+    email_mcp_url: str = "http://127.0.0.1:8003/mcp/"
+    email_mcp_secret: SecretStr | None = None
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 
     @property

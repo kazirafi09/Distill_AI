@@ -6,7 +6,10 @@ from sqlalchemy import select, text
 from app.db.session import SessionFactory, engine
 from app.models.cv_screening import ScreeningRun
 from app.models.user import User
-from app.services.cv.screening import WORKER_LOCK, digest, inputs_for, owned_job
+from app.services.cv.screening import (
+    WORKER_LOCK, digest, inputs_for, owned_job, lock_screening_job,
+    commit_screening_write,
+)
 from app.workflows.cv_screening import build_screening_graph
 from app.workflows.runtime import open_async_workflow_checkpointer
 
@@ -22,7 +25,14 @@ async def run_once():
         run_id = None
         try:
             async with SessionFactory() as db:
-                run = await db.scalar(select(ScreeningRun).where(ScreeningRun.status.in_(["queued", "running"]))
+                job_id = await db.scalar(select(ScreeningRun.job_id).where(
+                    ScreeningRun.status.in_(["queued", "running"]))
+                    .order_by(ScreeningRun.created_at).limit(1))
+                if job_id is None:
+                    return False
+                await lock_screening_job(db, job_id)
+                run = await db.scalar(select(ScreeningRun).where(
+                    ScreeningRun.job_id == job_id, ScreeningRun.status.in_(["queued", "running"]))
                     .order_by(ScreeningRun.created_at).limit(1).with_for_update(skip_locked=True))
                 if not run:
                     return False
@@ -30,15 +40,15 @@ async def run_once():
                 user = await db.get(User, run.recruiter_id)
                 if not user or not user.is_active or user.role != "recruiter":
                     run.status, run.error_code = "failed", "RECRUITER_ACCESS_REVOKED"
-                    await db.commit()
+                    await commit_screening_write(db, run.job_id)
                     return True
                 job = await owned_job(db, run.job_id, run.recruiter_id)
                 if digest(await inputs_for(db, job, run.recruiter_id)) != run.input_key:
                     run.status = "outdated"
-                    await db.commit()
+                    await commit_screening_write(db, run.job_id)
                     return True
                 run.status = "running"
-                await db.commit()
+                await commit_screening_write(db, run.job_id)
             async with open_async_workflow_checkpointer() as saver:
                 graph = build_screening_graph(saver)
                 config = {"configurable": {"thread_id": f"cv-screen:{run_id}:{attempt}"}, "recursion_limit": 10000}
@@ -53,7 +63,7 @@ async def run_once():
                     run = await db.get(ScreeningRun, run_id)
                     if run.status != "outdated":
                         run.status, run.error_code = "failed", "SCREENING_WORKER_FAILED"
-                        await db.commit()
+                        await commit_screening_write(db, run.job_id)
             return True
         finally:
             await connection.rollback()

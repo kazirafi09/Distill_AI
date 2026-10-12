@@ -106,6 +106,22 @@ services:
       backend:
         condition: service_healthy
 
+  email-mcp:
+    <<: *backend_runtime
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.mcp_email:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8003"
+    ports:
+      - "127.0.0.1:8003:8003"
+    healthcheck:
+      disable: true
+
   frontend:
     build:
       context: ./frontend

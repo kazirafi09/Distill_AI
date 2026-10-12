@@ -105,13 +105,15 @@ class SelectionDatabaseTests(unittest.IsolatedAsyncioTestCase):
             await db.commit()
         self.job_id = self.job_ids[0]
         self.filters = ShortlistRequest(mode="top_k", k=2)
-        self.screening = AsyncMock(side_effect=lambda *args: deepcopy(self.results))
+        self.screening = AsyncMock(side_effect=lambda *args, **kwargs: deepcopy(self.results))
+        self.screening_patches = []
         for target in (
             "app.services.interviews.shortlisting.get_screening_results",
             "app.services.interviews.selections.get_screening_results",
         ):
             mocked = patch(target, self.screening)
             mocked.start()
+            self.screening_patches.append(mocked)
             self.addCleanup(mocked.stop)
 
     async def cleanup_records(self):
@@ -208,7 +210,7 @@ class SelectionDatabaseTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as denied:
             await save_shortlist(self.job_id, self.owner, request)
         self.assertEqual(denied.exception.status_code, 409)
-        self.screening.side_effect = lambda *args: deepcopy(self.results)
+        self.screening.side_effect = lambda *args, **kwargs: deepcopy(self.results)
         self.assertEqual(original, await load_shortlist(self.job_id, self.owner))
 
     async def test_unavailable_or_outdated_results_rejected(self):

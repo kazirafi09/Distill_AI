@@ -2,7 +2,7 @@
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -37,6 +37,8 @@ class ScreeningResultsTests(unittest.IsolatedAsyncioTestCase):
     async def results(self, runs=None, inputs_error=None, parse_status="completed", integrity_error=None):
         runs = [self.run] if runs is None else runs
         db = AsyncMock()
+        db.no_autoflush = MagicMock()
+        db.expire_all = MagicMock()
         # Run list, assessments for each run, then refreshed latest assessments.
         db.scalars.side_effect = [runs] + [self.assessments for _ in runs] + (
             [self.assessments] if runs else []
@@ -87,6 +89,18 @@ class ScreeningResultsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["versions"], self.inputs["versions"])
         self.assertEqual(result["warnings"], [])
 
+    async def test_missing_invalid_scores_are_withheld_and_zero_is_ranked(self):
+        self.assessments = [self.assessment(value) for value in
+                            (None, "bad", "NaN", "Infinity", "-1", "101", "0")]
+        result = await self.results()
+        self.assertEqual(len(result["ranked"]), 1)
+        self.assertEqual(result["ranked"][0]["score"]["aggregate"], "0")
+        self.assertEqual(len(result["incomplete"]), 6)
+
+    def test_score_validation_handles_non_objects_and_booleans(self):
+        for score in (None, [], {}, {"aggregate": True}):
+            self.assertFalse(screening.valid_aggregate_score(score))
+
     async def test_changed_inputs_mark_runs_and_results_outdated(self):
         self.run.input_key = "old inputs"
         result = await self.results()
@@ -133,6 +147,8 @@ class ScreeningResultsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_ownership_is_checked_before_loading_results(self):
         db = AsyncMock()
+        db.no_autoflush = MagicMock()
+        db.expire_all = MagicMock()
         context = AsyncMock()
         context.__aenter__.return_value = db
         with patch.object(screening, "SessionFactory", return_value=context), \

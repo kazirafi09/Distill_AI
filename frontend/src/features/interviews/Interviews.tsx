@@ -19,6 +19,9 @@ const exclusionLabels: Record<ExcludedCandidate['exclusion_reason'], string> = {
   outdated_assessment: 'Outdated assessment · screen again',
   assessment_not_completed: 'Assessment incomplete · review in CV Screening',
   current_ranking_unavailable: 'Current screening results could not be verified',
+  assessment_missing: 'No assessment in the latest run · screen this application',
+  score_missing: 'Screening score missing · screen again',
+  score_invalid: 'Screening score invalid · screen again',
 }
 
 function errorMessage(error: unknown) {
@@ -239,6 +242,7 @@ function JobWorkspace({ token, job }: { token: string; job: JobDescriptionSummar
         <tbody>{visible.map(application => {
           const assessment = assessments.get(application.id)
           const previewAssessment = previewAssessments.get(application.id)
+          const score = assessment?.score?.aggregate == null ? NaN : Number(assessment.score.aggregate)
           const isSelected = selected.includes(application.id)
           const eligible = eligibleIds.has(application.id)
           let reason = 'No current assessment · complete CV Screening'
@@ -256,7 +260,7 @@ function JobWorkspace({ token, job }: { token: string; job: JobDescriptionSummar
           return <tr key={application.id} className={isSelected ? 'is-selected' : ''}>
             <td><input type="checkbox" aria-label={`Select ${application.full_name}`} checked={isSelected} disabled={!!busy || (!eligible && !isSelected)} onChange={() => toggleCandidate(application.id)} /></td>
             <td><strong>{application.full_name}</strong><span className="interview-email">{application.email}</span><span className={`interview-badge${proposedIds.has(application.id) ? ' is-proposed' : ''}`}>{proposedIds.has(application.id) ? 'Proposed' : eligible ? 'Eligible' : 'Needs review'}</span></td>
-            <td>{assessment?.rank ?? '—'}</td><td>{assessment?.score ? `${Number(assessment.score.aggregate).toFixed(2)}%` : '—'}</td>
+            <td>{assessment?.rank ?? '—'}</td><td>{Number.isFinite(score) && score >= 0 && score <= 100 ? `${score.toFixed(2)}%` : '—'}</td>
             <td><p className="interview-hint">{reason}</p>{assessment && <AssessmentDetails item={assessment} criteria={assessment.outdated ? null : description?.screening_profile ?? null} />}
               {application.cv_documents.map(document => <a className="interview-cv-link" key={document.id} href={`https://drive.google.com/file/d/${encodeURIComponent(document.drive_file_id)}/view`} target="_blank" rel="noopener noreferrer">View {document.original_filename ?? 'CV'} ↗</a>)}
             </td>

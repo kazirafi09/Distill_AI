@@ -13,7 +13,10 @@ from app.services.cv.indexing import digest, ensure_index
 from app.services.cv.matching import match_criterion, validate_match
 from app.services.cv.parsing import parse_cv
 from app.services.cv.scoring import calculate_scores, rank_assessments
-from app.services.cv.screening import retrieve_through_mcp, inputs_for, owned_job
+from app.services.cv.screening import (
+    retrieve_through_mcp, inputs_for, owned_job, commit_screening_write,
+    valid_aggregate_score,
+)
 from app.workflows.runtime import open_async_workflow_checkpointer
 
 
@@ -25,7 +28,7 @@ class CandidateState(TypedDict, total=False):
 def build_candidate_graph(saver, db, run, assessment):
     async def set_status(status):
         assessment.status = status
-        await db.commit()
+        await commit_screening_write(db, run.job_id)
 
     async def parse(state):
         if state["assessment_id"] != str(assessment.id):
@@ -41,7 +44,7 @@ def build_candidate_graph(saver, db, run, assessment):
             warnings.extend(result.get("warnings", []))
             if result["status"] != "completed":
                 assessment.warnings = list(dict.fromkeys(warnings + [result.get("error_code") or "CV_PARSE_INCOMPLETE"]))
-                await db.commit()
+                await commit_screening_write(db, run.job_id)
                 raise ValueError("CV_TEXT_NEEDS_REVIEW" if result["status"] == "needs_review" else "CV_PARSING_FAILED")
             if result["versions"] != run.inputs["versions"]["parsing"]:
                 raise ValueError("SCREENING_INPUTS_CHANGED")
@@ -51,7 +54,7 @@ def build_candidate_graph(saver, db, run, assessment):
         assessment.processing_key = digest({"files": assessment.file_version_ids, "parse_ids": ids,
             "profile": run.inputs["profile"], "profile_version": run.inputs["profile_version"],
             "versions": run.inputs["versions"], "rubric": run.inputs["rubric"]})
-        await db.commit()
+        await commit_screening_write(db, run.job_id)
         return {}
 
     async def parsed_results():
@@ -65,7 +68,7 @@ def build_candidate_graph(saver, db, run, assessment):
                 run.inputs["versions"]["indexing"])
             indexed.append(str(result.id))
         assessment.index_ids = indexed
-        await db.commit()
+        await commit_screening_write(db, run.job_id)
         previous = await db.scalar(select(CVAssessment).where(CVAssessment.id != assessment.id,
             CVAssessment.application_id == assessment.application_id, CVAssessment.processing_key == assessment.processing_key,
             CVAssessment.status == "completed").order_by(CVAssessment.updated_at.desc()).limit(1))
@@ -75,7 +78,7 @@ def build_candidate_graph(saver, db, run, assessment):
                 for m in previous.matches]
             assessment.reused_from = str(previous.id)
             assessment.warnings = list(dict.fromkeys(assessment.warnings + previous.warnings))
-            await db.commit()
+            await commit_screening_write(db, run.job_id)
         return {"reuse": bool(previous)}
 
     async def match(state):
@@ -90,7 +93,7 @@ def build_candidate_graph(saver, db, run, assessment):
             decision, warnings = await match_criterion(criterion, parsed, retrieved, run.inputs["profile"])
             assessment.matches = [*assessment.matches, decision]
             assessment.warnings = list(dict.fromkeys(assessment.warnings + warnings + retrieved.get("warnings", [])))
-            await db.commit()
+            await commit_screening_write(db, run.job_id)
         return {}
 
     async def score(state):
@@ -120,6 +123,7 @@ def build_candidate_graph(saver, db, run, assessment):
 async def process_candidate(run_id, assessment_id):
     async with SessionFactory() as db:
         run, assessment = await db.get(ScreeningRun, run_id), await db.get(CVAssessment, assessment_id)
+        job_id = run.job_id
         if assessment.status == "completed" or run.status == "outdated":
             return
         try:
@@ -145,7 +149,7 @@ async def process_candidate(run_id, assessment_id):
                 code = "MATCH_TIMEOUT"
             assessment.status = "needs_review" if code in {"NO_DOWNLOADED_CV", "TOO_MANY_CV_DOCUMENTS", "CV_TEXT_NEEDS_REVIEW", "MATCH_INPUT_TOO_LARGE", "MATCH_OUTPUT_TOO_LARGE"} else "failed"
             assessment.error_code = code
-            await db.commit()
+            await commit_screening_write(db, job_id)
 
 
 class BatchState(TypedDict, total=False):
@@ -162,7 +166,7 @@ def build_screening_graph(saver):
             job = await owned_job(db, run.job_id, run.recruiter_id)
             if digest(await inputs_for(db, job, run.recruiter_id)) != run.input_key:
                 run.status = "outdated"
-                await db.commit()
+                await commit_screening_write(db, run.job_id)
                 return {"more": False}
             assessment_id = await db.scalar(select(CVAssessment.id).where(CVAssessment.run_id == run.id,
                 CVAssessment.status.not_in(["completed", "failed", "needs_review"])).order_by(CVAssessment.application_id).limit(1))
@@ -181,17 +185,17 @@ def build_screening_graph(saver):
             job = await owned_job(db, run.job_id, run.recruiter_id)
             if digest(await inputs_for(db, job, run.recruiter_id)) != run.input_key:
                 run.status = "outdated"
-                await db.commit()
+                await commit_screening_write(db, run.job_id)
                 return {}
             assessments = list(await db.scalars(select(CVAssessment).where(CVAssessment.run_id == run.id)))
             ordered = rank_assessments([{"id": str(a.id), "application_id": str(a.application_id), "score": a.score}
-                for a in assessments if a.status == "completed"])
+                for a in assessments if a.status == "completed" and valid_aggregate_score(a.score)])
             by_id = {r["id"]: r["rank"] for r in ordered}
             for item in assessments:
                 if str(item.id) in by_id:
                     item.score = {**item.score, "rank": by_id[str(item.id)]}
             run.status = "completed" if all(a.status == "completed" for a in assessments) else "completed_with_issues"
-            await db.commit()
+            await commit_screening_write(db, run.job_id)
         return {}
 
     graph = StateGraph(BatchState)
