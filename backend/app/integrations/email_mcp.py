@@ -11,6 +11,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 from app.core.config import get_settings
+from app.core.mcp_servers import get_mcp_servers
 from app.integrations.gmail import EmailMessageRequest, EmailSendResult
 
 
@@ -66,7 +67,7 @@ async def send_email_job(job: EmailJob) -> EmailSendResult:
                 timeout=30,
             ) as client:
                 async with streamable_http_client(
-                    get_settings().email_mcp_url,
+                    get_mcp_servers()["email"]["url"],
                     http_client=client,
                 ) as (read, write, _):
                     async with ClientSession(read, write) as session:

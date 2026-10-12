@@ -11,6 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, text
 from starlette.concurrency import run_in_threadpool
 from app.core.config import get_settings
+from app.core.mcp_servers import get_mcp_servers
 from app.core.security import ALGORITHM
 from app.db.session import SessionFactory
 from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion
@@ -330,7 +331,7 @@ async def retrieve_through_mcp(job_id, application_id, query, recruiter_id, asse
     try:
         async with asyncio.timeout(180):
             async with httpx.AsyncClient(headers={"Authorization": "Bearer " + evidence_token(recruiter_id, assessment_id)}, timeout=180) as client:
-                async with streamable_http_client(get_settings().cv_mcp_url, http_client=client) as (read, write, _):
+                async with streamable_http_client(get_mcp_servers()["cv"]["url"], http_client=client) as (read, write, _):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         result = await session.call_tool("search_cv_evidence", {"job_id": str(job_id), "application_id": str(application_id), "query": query})
