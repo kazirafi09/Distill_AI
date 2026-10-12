@@ -22,6 +22,7 @@ from app.jd_reference_routes import router as jd_references_router
 from app.cv_routes import router as cv_router
 from app.cv_parsing_routes import router as cv_parsing_router
 from app.cv_screening_routes import router as cv_screening_router
+from app.interview_routes import router as interview_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
 
 setup_logging()
@@ -68,6 +69,7 @@ app.include_router(assistant_router)
 app.include_router(cv_router)
 app.include_router(cv_parsing_router)
 app.include_router(cv_screening_router)
+app.include_router(interview_router)
 app.mount("/mcp", cv_mcp_app)
 
 @app.middleware("http")

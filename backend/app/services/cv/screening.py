@@ -168,56 +168,108 @@ async def run_status(run_id, recruiter_id):
             "warnings": a.warnings, "error_code": a.error_code} for a in assessments]}
 
 
+async def _get_current_screening_key(db, job, recruiter_id):
+    try:
+        return digest(await inputs_for(db, job, recruiter_id)), []
+    except Exception:
+        return None, ["CURRENT_MODEL_VERSIONS_UNAVAILABLE_RANKING_WITHHELD"]
+
+
+async def _assessment_parses_are_valid(db, assessment):
+    if assessment.status != "completed":
+        return True
+
+    for parse_id in assessment.parse_result_ids:
+        parsed = await db.get(CVParseResult, UUID(parse_id))
+        if not parsed or parsed.status != "completed":
+            return False
+        try:
+            version = await db.get(CVFileVersion, parsed.file_version_id)
+            await run_in_threadpool(verify_integrity, version)
+        except Exception:
+            return False
+    return True
+
+
+def _assessment_result(assessment, candidate, outdated):
+    return {
+        "id": str(assessment.id),
+        "application_id": str(assessment.application_id),
+        "name": candidate.full_name,
+        "status": assessment.status,
+        "outdated": outdated,
+        "file_version_ids": assessment.file_version_ids,
+        "parse_result_ids": assessment.parse_result_ids,
+        "index_ids": assessment.index_ids,
+        "score": assessment.score,
+        "matches": assessment.matches,
+        "warnings": assessment.warnings,
+        "error_code": assessment.error_code,
+        "reused_from": assessment.reused_from,
+    }
+
+
 async def get_screening_results(job_id, recruiter_id):
+    """Return the latest run's results and summaries of previous runs."""
     async with SessionFactory() as db:
         job = await owned_job(db, job_id, recruiter_id)
-        runs = list(await db.scalars(select(ScreeningRun).where(ScreeningRun.job_id == job_id,
-            ScreeningRun.recruiter_id == recruiter_id).order_by(ScreeningRun.created_at.desc())))
-        current_key = None
-        warnings = []
-        try:
-            current_key = digest(await inputs_for(db, job, recruiter_id))
-        except Exception:
-            warnings = ["CURRENT_MODEL_VERSIONS_UNAVAILABLE_RANKING_WITHHELD"]
-        results, history = [], []
+        runs = list(await db.scalars(
+            select(ScreeningRun)
+            .where(ScreeningRun.job_id == job_id, ScreeningRun.recruiter_id == recruiter_id)
+            .order_by(ScreeningRun.created_at.desc())
+        ))
+        current_key, warnings = await _get_current_screening_key(db, job, recruiter_id)
+        results = []
+        history = []
+
         for position, run in enumerate(runs):
-            outdated = current_key is not None and run.input_key != current_key
-            if outdated:
+            inputs_changed = current_key is not None and run.input_key != current_key
+            if inputs_changed:
                 run.status = "outdated"
-            assessments = list(await db.scalars(select(CVAssessment).where(CVAssessment.run_id == run.id)))
-            if position:
+            assessments = list(await db.scalars(
+                select(CVAssessment).where(CVAssessment.run_id == run.id)
+            ))
+            if position > 0:
                 history.append(run_public(run, assessments))
                 continue
+
             for assessment in assessments:
                 application = await db.get(CandidateApplication, assessment.application_id)
                 candidate = await db.get(Candidate, application.candidate_id)
-                valid_parses = True
-                if assessment.status == "completed":
-                    for parse_id in assessment.parse_result_ids:
-                        parsed = await db.get(CVParseResult, UUID(parse_id))
-                        if not parsed or parsed.status != "completed":
-                            valid_parses = False
-                            break
-                        try:
-                            version = await db.get(CVFileVersion, parsed.file_version_id)
-                            await run_in_threadpool(verify_integrity, version)
-                        except Exception:
-                            valid_parses = False
-                            break
-                    if not valid_parses:
-                        run.status = "outdated"
-                results.append({"id": str(assessment.id), "application_id": str(assessment.application_id), "name": candidate.full_name,
-                    "status": assessment.status, "outdated": outdated or run.status == "outdated" or not valid_parses, "file_version_ids": assessment.file_version_ids,
-                    "parse_result_ids": assessment.parse_result_ids, "index_ids": assessment.index_ids,
-                    "score": assessment.score, "matches": assessment.matches, "warnings": assessment.warnings,
-                    "error_code": assessment.error_code, "reused_from": assessment.reused_from})
+                valid_parses = await _assessment_parses_are_valid(db, assessment)
+                if not valid_parses:
+                    run.status = "outdated"
+                outdated = inputs_changed or run.status == "outdated" or not valid_parses
+                results.append(_assessment_result(assessment, candidate, outdated))
+
         await db.commit()
-        ranked = rank_assessments([r for r in results if r["status"] == "completed" and not r["outdated"] and current_key])
-        ranked_ids = {r["id"] for r in ranked}
-        return {"job_id": str(job_id), "run": run_public(runs[0], list(await db.scalars(select(CVAssessment).where(CVAssessment.run_id == runs[0].id)))) if runs else None,
-            "profile": runs[0].inputs.get("profile") if runs else job.screening_profile,
-            "versions": runs[0].inputs.get("versions") if runs else None, "rubric": RUBRIC,
-            "ranked": ranked, "incomplete": [r for r in results if r["id"] not in ranked_ids], "history": history, "warnings": warnings}
+        eligible_results = [
+            result for result in results
+            if result["status"] == "completed" and not result["outdated"] and current_key
+        ]
+        ranked = rank_assessments(eligible_results)
+        ranked_ids = {result["id"] for result in ranked}
+        incomplete = [result for result in results if result["id"] not in ranked_ids]
+
+        latest_run = runs[0] if runs else None
+        latest_run_summary = None
+        if latest_run:
+            latest_assessments = list(await db.scalars(
+                select(CVAssessment).where(CVAssessment.run_id == latest_run.id)
+            ))
+            latest_run_summary = run_public(latest_run, latest_assessments)
+
+        return {
+            "job_id": str(job_id),
+            "run": latest_run_summary,
+            "profile": latest_run.inputs.get("profile") if latest_run else job.screening_profile,
+            "versions": latest_run.inputs.get("versions") if latest_run else None,
+            "rubric": RUBRIC,
+            "ranked": ranked,
+            "incomplete": incomplete,
+            "history": history,
+            "warnings": warnings,
+        }
 
 
 def evidence_token(recruiter_id, assessment_id):
