@@ -8,6 +8,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    String,
+    Text,
     UniqueConstraint,
     Uuid,
     func,
@@ -80,3 +82,46 @@ class InterviewShortlistMember(Base):
     score_snapshot: Mapped[dict] = mapped_column(JSONB)
     rank_snapshot: Mapped[int] = mapped_column(Integer)
     manually_added: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class InterviewInvitation(Base):
+    """One current invitation per job application; raw tokens are never stored."""
+    __tablename__ = "interview_invitations"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    recruiter_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    job_description_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id", ondelete="CASCADE"), index=True)
+    application_id: Mapped[UUID] = mapped_column(ForeignKey("candidate_applications.id", ondelete="CASCADE"), unique=True)
+    recipient_email: Mapped[str] = mapped_column(String(320))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvitationBatch(Base):
+    """A reviewed recipient/message snapshot, confirmed at most once."""
+    __tablename__ = "interview_invitation_batches"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    recruiter_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    job_description_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id", ondelete="CASCADE"), index=True)
+    mode: Mapped[str] = mapped_column(String(24))
+    preview_key: Mapped[str] = mapped_column(String(64))
+    preview: Mapped[dict] = mapped_column(JSONB)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InvitationEmailJob(Base):
+    """Durable individual send; encrypted payload contains the private link."""
+    __tablename__ = "interview_invitation_email_jobs"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    invitation_id: Mapped[UUID] = mapped_column(ForeignKey("interview_invitations.id", ondelete="CASCADE"), unique=True)
+    batch_id: Mapped[UUID] = mapped_column(ForeignKey("interview_invitation_batches.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    encrypted_message: Mapped[str] = mapped_column(Text)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(100))
+    provider_message_id: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

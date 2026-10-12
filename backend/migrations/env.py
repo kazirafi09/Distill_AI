@@ -17,7 +17,10 @@ from app.models.assistant import AssistantConversation
 from app.models.cv import CVSource, CVDocument, CVFileVersion
 from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVIndex, ScreeningRun, CVAssessment
-from app.models.interviews import InterviewShortlist, InterviewShortlistMember
+from app.models.interviews import (
+    InterviewShortlist, InterviewShortlistMember, InterviewInvitation,
+    InvitationBatch, InvitationEmailJob,
+)
 
 config = context.config
 

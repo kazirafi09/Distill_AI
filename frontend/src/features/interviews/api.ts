@@ -67,6 +67,57 @@ export type SavedShortlist = {
   warnings: string[]
 }
 
+export type InvitationMode = 'new' | 'retry_failed' | 'reissue'
+export type InvitationPreview = {
+  batch_id: string
+  preview_key: string
+  expires_at: string
+  job_title: string
+  sender: string
+  subject: string
+  body: string
+  link_days: number
+  send_count: number
+  mode: InvitationMode
+  recipients: { application_id: string; name: string; email: string; action: string; reason: string }[]
+}
+
+export type InvitationStatus = {
+  id: string
+  application_id: string
+  name: string
+  email: string
+  status: string
+  attempts: number
+  error_code: string | null
+  link_status: string
+  expires_at: string
+}
+
+export function prepareInvitations(token: string, jobId: string, mode: InvitationMode) {
+  return apiRequest<InvitationPreview>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations/preview`, {
+    method: 'POST', token, body: { mode },
+  })
+}
+
+export function confirmInvitations(token: string, jobId: string, preview: InvitationPreview) {
+  return apiRequest<{ queued?: number; already_confirmed: boolean; message: string }>(
+    `/interviews/jobs/${encodeURIComponent(jobId)}/invitations/confirm`, {
+      method: 'POST', token,
+      body: { batch_id: preview.batch_id, preview_key: preview.preview_key, confirmed: true },
+    })
+}
+
+export function loadInvitations(token: string, jobId: string, signal?: AbortSignal) {
+  return apiRequest<InvitationStatus[]>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations`, { token, signal })
+}
+
+export function revokeInvitation(token: string, jobId: string, invitationId: string) {
+  return apiRequest<{ status: string }>(
+    `/interviews/jobs/${encodeURIComponent(jobId)}/invitations/${encodeURIComponent(invitationId)}/revoke`,
+    { method: 'POST', token })
+}
+
 export function loadScreeningResults(
   token: string,
   jobId: string,

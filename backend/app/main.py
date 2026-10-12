@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from contextlib import ExitStack, asynccontextmanager
 from time import perf_counter
 from typing import Annotated
@@ -24,6 +25,7 @@ from app.cv_parsing_routes import router as cv_parsing_router
 from app.cv_screening_routes import router as cv_screening_router
 from app.interview_routes import router as interview_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
+from app.workflows.assistant.tools import configure_invitation_loop
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -31,6 +33,7 @@ logger = logging.getLogger("distill_ai.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_invitation_loop(asyncio.get_running_loop())
     resources = ExitStack()
 
     try:
@@ -49,6 +52,7 @@ async def lifespan(app: FastAPI):
             yield
 
     finally:
+        configure_invitation_loop(None)
         try:
             await run_in_threadpool(resources.close)
         finally:

@@ -70,7 +70,10 @@ def route_after_tools(state: AssistantState) -> str:
     if (
         messages
         and isinstance(messages[-1], ToolMessage)
-        and messages[-1].name == "post_job_to_discord"
+        and messages[-1].name in {
+            "post_job_to_discord", "preview_interview_invitations",
+            "confirm_interview_invitations", "get_interview_invitation_status",
+        }
     ):
         return "assistant"
 

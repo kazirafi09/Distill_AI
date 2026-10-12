@@ -59,6 +59,7 @@ services:
       OLLAMA_EMBEDDING_MODEL: "qwen3-embedding:0.6b"
       CV_PARSER_MODEL: "${CV_PARSER_MODEL:-qwen3:4b}"
       CV_MCP_URL: "http://backend:8000/mcp/"
+      EMAIL_MCP_URL: "http://email-mcp:8003/mcp/"
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
       WATCHFILES_FORCE_POLLING: "true"
@@ -121,6 +122,18 @@ services:
       - "127.0.0.1:8003:8003"
     healthcheck:
       disable: true
+
+  invitation-worker:
+    <<: *backend_runtime
+    command: ["python", "-m", "app.scripts.invitation_worker"]
+    ports: []
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+      email-mcp:
+        condition: service_started
 
   frontend:
     build:

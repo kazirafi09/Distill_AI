@@ -11,6 +11,7 @@ import { loadScreeningResults, loadShortlist, previewShortlist, saveShortlist } 
 import type { ExcludedCandidate, PreviewCandidate, SavedShortlist, ScreeningResults, ShortlistFilters, ShortlistPreview } from './api'
 import '../cv/CVScreening.css'
 import './Interviews.css'
+import InvitationSending from './InvitationSending'
 
 const defaultFilters: ShortlistFilters = { mode: 'top_k', k: 5, minimum_score: null }
 const exclusionLabels: Record<ExcludedCandidate['exclusion_reason'], string> = {
@@ -268,7 +269,9 @@ function JobWorkspace({ token, job }: { token: string; job: JobDescriptionSummar
         })}</tbody>
       </table></div>}
       {ordered.length > 10 && <div className="interview-pagination"><span>Page {currentPage + 1} of {Math.ceil(ordered.length / 10)}</span><div><button className="button-secondary" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous</button><button className="button-secondary" disabled={(currentPage + 1) * 10 >= ordered.length} onClick={() => setPage(currentPage + 1)}>Next</button></div></div>}
-      <div className="interview-footer"><Link to="/recruiter/cv-screening">Review CV Screening →</Link><div><button className="button-secondary" disabled title="Interview invitation sending is coming next">Send interview invitations</button><p className="interview-hint">Email invitations are coming next. Saving keeps your selection.</p></div></div>
+      <InvitationSending key={job.id} token={token} jobId={job.id}
+        canSend={!selectionChanged && !!saved?.members.length && !saved?.outdated && !busy} />
+      <div className="interview-footer"><Link to="/recruiter/cv-screening">Review CV Screening →</Link></div>
     </>}
   </div>
 }

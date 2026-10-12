@@ -5,6 +5,7 @@ import {
   Route,
   Routes,
   useNavigate,
+  useLocation,
 } from 'react-router-dom'
 
 import LoginForm from '../features/auth/LoginForm'
@@ -12,6 +13,7 @@ import RecruiterChat from '../features/jd/RecruiterChat'
 import MyJobDescriptions from '../features/jd/MyJobDescriptions'
 import CVScreening from '../features/cv/CVScreening'
 import Interviews from '../features/interviews/Interviews'
+import InterviewEntry from '../features/interviews/InterviewEntry'
 import type { RecruiterSession } from '../services/api'
 import './App.css'
 
@@ -38,6 +40,7 @@ function FeaturePlaceholder({ title }: { title: string }) {
 
 export default function App() {
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [connection, setConnection] = useState('Checking connection…')
   const [session, setSession] = useState<RecruiterSession | null>(null)
@@ -84,6 +87,10 @@ export default function App() {
   function handleSignOut() {
     setSession(null)
     navigate('/', { replace: true })
+  }
+
+  if (location.pathname === '/interview') {
+    return <InterviewEntry key={location.hash} />
   }
 
   if (!session) {

@@ -28,6 +28,7 @@ langchain-text-splitters==1.1.3
 httpx==0.28.1
 
 google-auth[requests]==2.59.1
+cryptography==50.0.2
 
 # Local CV OCR and authenticated MCP transport (no external OCR API).
 Pillow==11.3.0

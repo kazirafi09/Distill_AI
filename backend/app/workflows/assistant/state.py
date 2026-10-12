@@ -17,3 +17,4 @@ class AssistantState(TypedDict):
 
     error_code: NotRequired[str | None]
     jd_start_requested: NotRequired[bool]
+    invitation_review: NotRequired[dict | None]

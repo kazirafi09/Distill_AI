@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
     email_mcp_url: str = "http://127.0.0.1:8003/mcp/"
     email_mcp_secret: SecretStr | None = None
+    public_app_url: str = "http://localhost:5173"
+    interview_link_days: int = Field(default=7, ge=1, le=365)
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 
     @property
