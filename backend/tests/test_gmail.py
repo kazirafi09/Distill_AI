@@ -15,11 +15,12 @@ class GmailSMTPTests(unittest.IsolatedAsyncioTestCase):
         self.client = Mock()
         self.client.send_message.return_value = {}
         self.events = []
+        self.connection_error = None
         for name in ("connect", "starttls", "login"):
             getattr(self.client, name).side_effect = lambda *args, name=name, **kwargs: self.events.append(name)
 
     async def send(self):
-        with patch.object(gmail, "get_settings", return_value=self.settings), patch.object(gmail.smtplib, "SMTP", return_value=self.client) as factory:
+        with patch.object(gmail, "get_settings", return_value=self.settings), patch.object(gmail.smtplib, "SMTP", return_value=self.client, side_effect=self.connection_error) as factory:
             result = await gmail.send_email(self.message)
         return result, factory
 
@@ -27,9 +28,9 @@ class GmailSMTPTests(unittest.IsolatedAsyncioTestCase):
         result, factory = await self.send()
         self.assertEqual(result.status, "provider_accepted")
         self.assertIsNone(result.provider_message_id)
-        self.assertEqual(self.events, ["connect", "starttls", "login"])
-        factory.assert_called_once_with(timeout=20)
-        self.client.connect.assert_called_once_with("smtp.gmail.com", 587)
+        self.assertEqual(self.events, ["starttls", "login"])
+        factory.assert_called_once_with("smtp.gmail.com", 587, timeout=20)
+        self.client.connect.assert_not_called()
         self.assertTrue(self.client.starttls.call_args.kwargs["context"].check_hostname)
         self.client.login.assert_called_once_with("sender@example.com", "fake-password")
         email = self.client.send_message.call_args.args[0]
@@ -61,7 +62,7 @@ class GmailSMTPTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, "failed")
 
     async def test_connection_timeout_before_send_is_failed(self):
-        self.client.connect.side_effect = TimeoutError("synthetic")
+        self.connection_error = TimeoutError("synthetic")
         result, _ = await self.send()
         self.assertEqual(result.status, "failed")
         self.client.send_message.assert_not_called()

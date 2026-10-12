@@ -33,8 +33,8 @@ def send_smtp(settings, email):
     client = None
     send_started = False
     try:
-        client = smtplib.SMTP(timeout=settings.smtp_timeout_seconds)
-        client.connect(settings.smtp_host, settings.smtp_port)
+        client = smtplib.SMTP(settings.smtp_host, settings.smtp_port,
+                              timeout=settings.smtp_timeout_seconds)
         client.starttls(context=ssl.create_default_context())
         client.login(settings.smtp_username, settings.smtp_password.get_secret_value())
         send_started = True
@@ -52,6 +52,8 @@ def send_smtp(settings, email):
         return EmailSendResult(status="failed", error_code=f"SMTP_REJECTED_{exc.smtp_code}")
     except (smtplib.SMTPNotSupportedError, UnicodeError):
         return EmailSendResult(status="failed", error_code="SMTP_MESSAGE_OR_TLS_UNSUPPORTED")
+    except ValueError:
+        return EmailSendResult(status="failed", error_code="SMTP_CONFIGURATION_INVALID")
     except OSError:
         # A lost connection during send may occur after Gmail accepted the email.
         status = "uncertain" if send_started else "failed"
