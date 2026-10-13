@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import {
-  getCurrentUser,
+  acceptSession,
   loginRecruiter,
+  signupRecruiter,
 } from '../../services/api'
 import type { RecruiterSession } from '../../services/api'
 
@@ -14,6 +15,8 @@ type LoginFormProps = {
 export default function LoginForm({ onLogin }: LoginFormProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [signup, setSignup] = useState(false)
+  const [confirmation, setConfirmation] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const submittingRef = useRef(false)
@@ -28,18 +31,13 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
     setError(null)
 
     try {
-      const result = await loginRecruiter(email.trim(), password)
-      const user = await getCurrentUser(result.access_token)
-
-      if (user.role !== 'recruiter') {
-        throw new Error('Please sign in with a recruiter account.')
-      }
+      if (signup && password !== confirmation) throw new Error('Passwords do not match.')
+      const result = await (signup ? signupRecruiter : loginRecruiter)(email.trim(), password)
+      const session = await acceptSession(result.access_token)
 
       setPassword('')
-      onLogin({
-        token: result.access_token,
-        user,
-      })
+      setConfirmation('')
+      onLogin(session)
     } catch (error) {
       setError(
         error instanceof Error
@@ -59,11 +57,11 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
         border-slate-200 bg-white p-6 shadow-sm"
     >
       <h2 id="login-title" className="text-xl font-semibold">
-        Recruiter sign in
+        {signup ? 'Create recruiter account' : 'Recruiter sign in'}
       </h2>
 
       <p className="mt-2 text-sm text-slate-500">
-        Sign in to create and manage job descriptions.
+        {signup ? 'Create an account to start your recruiter workspace.' : 'Sign in to create and manage job descriptions.'}
       </p>
 
       <form
@@ -98,7 +96,8 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
           <input
             id="login-password"
             type="password"
-            autoComplete="current-password"
+            autoComplete={signup ? 'new-password' : 'current-password'}
+            minLength={signup ? 12 : undefined}
             required
             maxLength={1024}
             value={password}
@@ -108,6 +107,15 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
               border-slate-300 px-3 py-2 disabled:opacity-60"
           />
         </div>
+
+        {signup && <div>
+          <p className="text-sm text-slate-500">Use at least 12 characters.</p>
+          <label htmlFor="confirm-password" className="text-sm font-medium">Confirm password</label>
+          <input id="confirm-password" type="password" autoComplete="new-password"
+            required minLength={12} maxLength={1024} value={confirmation} disabled={busy}
+            onChange={event => setConfirmation(event.target.value)}
+            className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2 disabled:opacity-60" />
+        </div>}
 
         {error && (
           <p role="alert" className="text-sm text-red-700">
@@ -120,9 +128,13 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
           className="button-primary w-full"
           disabled={busy || !email.trim() || !password}
         >
-          {busy ? 'Signing in...' : 'Sign in'}
+          {busy ? (signup ? 'Creating account...' : 'Signing in...') : (signup ? 'Create account' : 'Sign in')}
         </button>
       </form>
+      <button type="button" disabled={busy} className="mt-4 text-sm underline"
+        onClick={() => { setSignup(!signup); setError(null); setPassword(''); setConfirmation('') }}>
+        {signup ? 'Already have an account? Sign in' : 'New here? Create an account'}
+      </button>
     </section>
   )
 }

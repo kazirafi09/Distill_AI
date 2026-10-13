@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models.user import User
+from app.models.auth_session import AuthSession
 from app.models.jd import JDConversation, JobDescription
 from app.models.jd_reference import JDReference
 from app.models.assistant import AssistantConversation

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     postgres_port: int = 5442
     jwt_secret_key: SecretStr = Field(min_length=32)
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
+    auth_session_days: int = Field(default=7, ge=1, le=90)
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-20b"
     ollama_base_url: str = "http://127.0.0.1:11435"
@@ -69,6 +70,12 @@ class Settings(BaseSettings):
     livekit_api_secret: SecretStr | None = None
     livekit_token_ttl_seconds: int = Field(default=300, ge=60, le=900)
     livekit_api_timeout_seconds: int = Field(default=10, ge=1, le=60)
+
+    # Optional until a transcription request is explicitly started.
+    deepgram_api_key: SecretStr | None = None
+    deepgram_model: str = Field(default="nova-3", min_length=1)
+    deepgram_language: str = Field(default="en", min_length=1)
+    deepgram_timeout_seconds: int = Field(default=180, ge=1, le=900)
 
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 

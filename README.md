@@ -21,6 +21,7 @@ project flows, verification status, and remaining work.
 - FastAPI backend with PostgreSQL connectivity.
 - PostgreSQL 16 through Docker Compose with persistent storage.
 - Staff account creation, password hashing, JWT login and role restrictions.
+- Recruiter signup and persistent, revocable browser sessions (seven days by default).
 - Application logging, error handling and health endpoints.
 - Alembic migration for the users table.
 
@@ -64,6 +65,16 @@ python -m app.scripts.create_user --email recruiter@example.com --role recruiter
 The script prompts for a password and confirmation.
 Passwords require at least 12 characters.
 Supported roles: recruiter and interviewer.
+
+Recruiters can also choose **Create an account** on the sign-in page. Signup
+requires a password of at least 12 characters and signs the new recruiter in.
+An HttpOnly cookie restores the session after reloads and browser restarts;
+short-lived access tokens renew automatically. Sign-out revokes that browser's
+session. Configure `AUTH_SESSION_DAYS` (default 7) and
+`ACCESS_TOKEN_EXPIRE_MINUTES` (default 30) in `.env`. Set `PUBLIC_APP_URL` to the
+actual public frontend origin; HTTPS deployments receive Secure cookies.
+Local Vite access from localhost is also supported. Apply `alembic upgrade head`
+to create the session table before using the updated login.
 
 Start the backend:
 

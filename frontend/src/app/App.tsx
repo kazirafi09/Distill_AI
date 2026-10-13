@@ -15,6 +15,7 @@ import CVScreening from '../features/cv/CVScreening'
 import Interviews from '../features/interviews/Interviews'
 import InterviewEntry from '../features/interviews/InterviewEntry'
 import type { RecruiterSession } from '../services/api'
+import { logoutRecruiter, restoreSession } from '../services/api'
 import './App.css'
 
 
@@ -41,10 +42,36 @@ function FeaturePlaceholder({ title }: { title: string }) {
 export default function App() {
   const navigate = useNavigate()
   const location = useLocation()
+  const isInterviewEntry = location.pathname === '/interview'
 
   const [connection, setConnection] = useState('Checking connection…')
   const [session, setSession] = useState<RecruiterSession | null>(null)
+  const [restoring, setRestoring] = useState(true)
+  const [restoreFailed, setRestoreFailed] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [restoreAttempt, setRestoreAttempt] = useState(0)
+  const [signingOut, setSigningOut] = useState(false)
   const [jdRefreshKey, setJDRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (isInterviewEntry) return
+    let active = true
+    void restoreSession().then(saved => {
+      if (active) { setSession(saved); setAuthError(null); setRestoreFailed(false); setRestoring(false) }
+    }).catch(() => {
+      if (active) { setAuthError('Unable to restore your session. Check your connection and try again.'); setRestoreFailed(true); setRestoring(false) }
+    })
+    return () => { active = false }
+  }, [restoreAttempt, isInterviewEntry])
+
+  useEffect(() => {
+    function expired() {
+      setSession(null)
+      setAuthError('Your session has expired. Please sign in again.')
+    }
+    window.addEventListener('distill-session-expired', expired)
+    return () => window.removeEventListener('distill-session-expired', expired)
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -80,17 +107,34 @@ export default function App() {
   }, [])
 
   function handleLogin(nextSession: RecruiterSession) {
+    setAuthError(null)
     setSession(nextSession)
     navigate('/recruiter/job-descriptions', { replace: true })
   }
 
-  function handleSignOut() {
-    setSession(null)
-    navigate('/', { replace: true })
+  async function handleSignOut() {
+    setSigningOut(true)
+    try {
+      await logoutRecruiter()
+      setSession(null)
+      setAuthError(null)
+      navigate('/', { replace: true })
+    } catch {
+      setAuthError('Unable to sign out. Check your connection and try again.')
+    } finally { setSigningOut(false) }
   }
 
-  if (location.pathname === '/interview') {
+  if (isInterviewEntry) {
     return <InterviewEntry key={location.hash} />
+  }
+
+  if (restoring || (!session && restoreFailed)) {
+    return <main className="app"><h1 className="text-3xl font-bold">Distill AI</h1>
+      <p role="status">{restoring ? 'Restoring your session…' : authError}</p>
+      {!restoring && <button className="button-primary" onClick={() => {
+        setRestoring(true); setRestoreAttempt(value => value + 1)
+      }}>Try again</button>}
+    </main>
   }
 
   if (!session) {
@@ -102,6 +146,7 @@ export default function App() {
         <p role="status" className="text-sm text-slate-500">
           {connection}
         </p>
+        {authError && <p role="alert">{authError}</p>}
 
         <Routes>
           <Route path="/" element={<LoginForm onLogin={handleLogin} />} />
@@ -157,10 +202,12 @@ export default function App() {
           <button
             type="button"
             className="sidebar-signout"
-            onClick={handleSignOut}
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
           >
-            Sign out
+            {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
+          {authError && <p role="alert">{authError}</p>}
         </div>
       </aside>
 
