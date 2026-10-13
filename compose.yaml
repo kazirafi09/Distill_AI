@@ -46,6 +46,23 @@ services:
       retries: 10
       start_period: 20s
 
+  # Same-laptop development only. Remote media uses LiveKit Cloud or a public deployment.
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command:
+      - --dev
+      - --bind
+      - 0.0.0.0
+      - --node-ip
+      - 127.0.0.1
+      - --udp-port
+      - "7882"
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "127.0.0.1:7882:7882/udp"
+
   backend: &backend_runtime
     build:
       context: ./backend
@@ -60,6 +77,12 @@ services:
       CV_PARSER_MODEL: "${CV_PARSER_MODEL:-qwen3:4b}"
       CV_MCP_URL: "http://backend:8000/mcp/"
       EMAIL_MCP_URL: "http://email-mcp:8003/mcp/"
+      LIVEKIT_API_URL: "${LIVEKIT_API_URL:-http://livekit:7880}"
+      LIVEKIT_WS_URL: "${LIVEKIT_WS_URL:-ws://localhost:7880}"
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:-devkey}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-secret}"
+      LIVEKIT_TOKEN_TTL_SECONDS: "300"
+      LIVEKIT_API_TIMEOUT_SECONDS: "10"
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
       WATCHFILES_FORCE_POLLING: "true"
@@ -142,6 +165,7 @@ services:
     environment:
       API_PROXY_TARGET: "http://backend:8000"
       DOCKER_WATCH_POLLING: "true"
+      VITE_ALLOWED_HOST: "${VITE_ALLOWED_HOST:-}"
     ports:
       - "127.0.0.1:5173:5173"
     volumes:
@@ -150,6 +174,17 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["remote-test"]
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --url
+      - http://frontend:5173
+    depends_on:
+      - frontend
 
 volumes:
   postgres_data:
