@@ -12,6 +12,7 @@ import type { ExcludedCandidate, PreviewCandidate, SavedShortlist, ScreeningResu
 import '../cv/CVScreening.css'
 import './Interviews.css'
 import InvitationSending from './InvitationSending'
+import RecruiterInterviewPanel from './RecruiterInterviewPanel'
 
 const defaultFilters: ShortlistFilters = { mode: 'top_k', k: 5, minimum_score: null }
 const exclusionLabels: Record<ExcludedCandidate['exclusion_reason'], string> = {
@@ -271,6 +272,7 @@ function JobWorkspace({ token, job }: { token: string; job: JobDescriptionSummar
       {ordered.length > 10 && <div className="interview-pagination"><span>Page {currentPage + 1} of {Math.ceil(ordered.length / 10)}</span><div><button className="button-secondary" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous</button><button className="button-secondary" disabled={(currentPage + 1) * 10 >= ordered.length} onClick={() => setPage(currentPage + 1)}>Next</button></div></div>}
       <InvitationSending key={job.id} token={token} jobId={job.id}
         canSend={!selectionChanged && !!saved?.members.length && !saved?.outdated && !busy} />
+      <RecruiterInterviewPanel token={token} jobId={job.id} members={saved?.members ?? []} />
       <div className="interview-footer"><Link to="/recruiter/cv-screening">Review CV Screening →</Link></div>
     </>}
   </div>

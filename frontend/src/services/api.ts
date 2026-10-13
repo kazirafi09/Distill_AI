@@ -13,6 +13,7 @@ type RequestOptions = {
   token?: string
   body?: unknown
   signal?: AbortSignal
+  cache?: RequestCache
 }
 
 export async function apiRequest<T>(
@@ -40,6 +41,7 @@ export async function apiRequest<T>(
           ? options.body as FormData
           : JSON.stringify(options.body),
     signal: options.signal,
+    cache: options.cache,
   })
 
   const data: unknown = await response.json().catch(() => null)
