@@ -24,7 +24,7 @@ class InvitationTests(unittest.IsolatedAsyncioTestCase):
         second, _, _ = invitations.new_link()
         self.assertNotEqual(first, second)
         self.assertEqual(len(first), 43)
-        self.assertEqual(link, f"http://localhost:5173/interview#{first}")
+        self.assertEqual(link, f"https://naturals-sought-ottawa-despite.trycloudflare.com/interview#{first}")
         self.assertAlmostEqual((expiry - datetime.now(timezone.utc)).total_seconds(), 7 * 86400, delta=2)
         self.assertEqual(len(invitations.token_hash(first)), 64)
 
@@ -65,16 +65,16 @@ class InvitationTests(unittest.IsolatedAsyncioTestCase):
         token, _, expiry = invitations.new_link()
         record = InterviewInvitation(token_hash=invitations.token_hash(token), expires_at=expiry)
         db = AsyncMock()
-        result = MagicMock()
-        db.execute.return_value = result
         context = AsyncMock()
         context.__aenter__.return_value = db
         with patch.object(invitations, "SessionFactory", return_value=context):
-            result.first.return_value = (record, "Synthetic role")
+            db.scalar.side_effect = [record, "Synthetic role"]
             entry = await invitations.validate_entry(token)
             self.assertEqual(entry["job_title"], "Synthetic role")
             self.assertFalse(entry["interview_ready"])
             self.assertNotIn("recipient_email", entry)
+            db.scalar.side_effect = None
+            db.scalar.return_value = record
             record.expires_at = datetime.now(timezone.utc) - timedelta(seconds=1)
             with self.assertRaises(HTTPException) as denied:
                 await invitations.validate_entry(token)
@@ -82,7 +82,7 @@ class InvitationTests(unittest.IsolatedAsyncioTestCase):
             record.expires_at, record.revoked_at = expiry, datetime.now(timezone.utc)
             with self.assertRaises(HTTPException):
                 await invitations.validate_entry(token)
-            result.first.return_value = None
+            db.scalar.return_value = None
             with self.assertRaises(HTTPException):
                 await invitations.validate_entry(token)
 

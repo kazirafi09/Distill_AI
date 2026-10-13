@@ -74,19 +74,35 @@ async def create_invitation(db, job_id, recruiter_id, application_id, recipient_
     return invitation, link
 
 
+async def valid_invitation(db, token: str):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
+        raise HTTPException(410, "This interview link is invalid or no longer active.")
+
+    invitation = await db.scalar(
+        select(InterviewInvitation)
+        .where(InterviewInvitation.token_hash == token_hash(token))
+        .execution_options(populate_existing=True)
+    )
+    if (
+        invitation is None
+        or invitation.revoked_at is not None
+        or invitation.expires_at <= datetime.now(timezone.utc)
+    ):
+        raise HTTPException(410, "This interview link is invalid or no longer active.")
+    return invitation
+
+
 async def validate_entry(token):
+    # Reject malformed links before opening a database session.
     if not re.fullmatch(r"[A-Za-z0-9_-]{43}", token):
         raise HTTPException(410, "This interview link is invalid or no longer active.")
     async with SessionFactory() as db:
-        row = (await db.execute(
-            select(InterviewInvitation, JobDescription.title)
-            .join(JobDescription, JobDescription.id == InterviewInvitation.job_description_id)
-            .where(InterviewInvitation.token_hash == token_hash(token))
-        )).first()
-        now = datetime.now(timezone.utc)
-        if row is None or row[0].revoked_at is not None or row[0].expires_at <= now:
+        invitation = await valid_invitation(db, token)
+        title = await db.scalar(select(JobDescription.title).where(
+            JobDescription.id == invitation.job_description_id,
+        ))
+        if title is None:
             raise HTTPException(410, "This interview link is invalid or no longer active.")
-        invitation, title = row
         return {"job_title": title, "instructions": INSTRUCTIONS,
                 "expires_at": invitation.expires_at.isoformat(), "interview_ready": False}
 

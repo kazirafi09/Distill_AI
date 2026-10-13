@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     email_mcp_secret: SecretStr | None = None
     public_app_url: str = "http://localhost:5173"
     interview_link_days: int = Field(default=7, ge=1, le=365)
+
+    # Backend API address and browser connection address.
+    livekit_api_url: str = "http://127.0.0.1:7880"
+    livekit_ws_url: str = "ws://localhost:7880"
+    livekit_api_key: str | None = None
+    livekit_api_secret: SecretStr | None = None
+    livekit_token_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    livekit_api_timeout_seconds: int = Field(default=10, ge=1, le=60)
+
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 
     @property

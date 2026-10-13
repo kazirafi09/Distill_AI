@@ -14,6 +14,10 @@ from app.models.user import User
 from app.services.interviews.schemas import SaveShortlistRequest
 from app.services.interviews.selections import load_shortlist, save_shortlist
 from app.services.interviews.invitations import validate_entry, revoke_invitation
+from app.services.interviews.sessions import (
+    start_interview, recruiter_status, admit_candidate,
+    candidate_status, candidate_join, recruiter_join, end_interview,
+)
 from app.services.interviews.shortlisting import (
     ShortlistRequest,
     preview_shortlist,
@@ -87,3 +91,43 @@ async def get_shortlist(
     recruiter: Recruiter,
 ):
     return await load_shortlist(job_id, recruiter.id)
+
+
+@router.post("/jobs/{job_id}/applications/{application_id}/session/start")
+async def start_session(job_id: UUID, application_id: UUID, recruiter: Recruiter, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await start_interview(job_id, application_id, recruiter.id)
+
+
+@router.get("/jobs/{job_id}/applications/{application_id}/session")
+async def get_session(job_id: UUID, application_id: UUID, recruiter: Recruiter, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await recruiter_status(job_id, application_id, recruiter.id)
+
+
+@router.post("/jobs/{job_id}/applications/{application_id}/session/admit")
+async def admit_session(job_id: UUID, application_id: UUID, recruiter: Recruiter):
+    return await admit_candidate(job_id, application_id, recruiter.id)
+
+
+@router.post("/jobs/{job_id}/applications/{application_id}/session/join")
+async def join_host(job_id: UUID, application_id: UUID, recruiter: Recruiter, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await recruiter_join(job_id, application_id, recruiter.id)
+
+
+@router.post("/jobs/{job_id}/applications/{application_id}/session/end")
+async def end_session(job_id: UUID, application_id: UUID, recruiter: Recruiter):
+    return await end_interview(job_id, application_id, recruiter.id)
+
+
+@router.post("/candidate/status")
+async def get_candidate_status(request: InterviewEntryRequest, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await candidate_status(request.token.get_secret_value())
+
+
+@router.post("/candidate/join")
+async def join_candidate(request: InterviewEntryRequest, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await candidate_join(request.token.get_secret_value())

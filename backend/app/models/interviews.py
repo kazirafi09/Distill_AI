@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -125,3 +126,52 @@ class InvitationEmailJob(Base):
     error_code: Mapped[str | None] = mapped_column(String(100))
     provider_message_id: Mapped[str | None] = mapped_column(String(255))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class InterviewSession(Base):
+    """One human interview per application, with optional planned times."""
+
+    __tablename__ = "interview_sessions"
+    __table_args__ = (
+        CheckConstraint(
+            "(starts_at IS NULL AND ends_at IS NULL) OR "
+            "(starts_at IS NOT NULL AND ends_at IS NOT NULL AND ends_at > starts_at)",
+            name="ck_interview_session_times",
+        ),
+        CheckConstraint(
+            "status IN ('ready', 'scheduled', 'in_progress', 'closing', 'completed', 'cancelled')",
+            name="ck_interview_session_status",
+        ),
+        CheckConstraint("version >= 1", name="ck_interview_session_version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    application_id: Mapped[UUID] = mapped_column(
+        ForeignKey("candidate_applications.id", ondelete="CASCADE"),
+        unique=True,
+    )
+    job_description_id: Mapped[UUID] = mapped_column(
+        ForeignKey("job_descriptions.id", ondelete="CASCADE"), index=True,
+    )
+    recruiter_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True,
+    )
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    display_timezone: Mapped[str | None] = mapped_column(String(100))
+    room_name: Mapped[str] = mapped_column(String(100), unique=True)
+    status: Mapped[str] = mapped_column(
+        String(24), default="ready", server_default="ready",
+    )
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    candidate_admitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    admitted_invitation_hash: Mapped[str | None] = mapped_column(String(64))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
+    )

@@ -19,7 +19,7 @@ from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVIndex, ScreeningRun, CVAssessment
 from app.models.interviews import (
     InterviewShortlist, InterviewShortlistMember, InterviewInvitation,
-    InvitationBatch, InvitationEmailJob,
+    InvitationBatch, InvitationEmailJob, InterviewSession,
 )
 
 config = context.config
