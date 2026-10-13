@@ -1,6 +1,133 @@
 # Distill AI — Project Progress Tracker
 
-**Final invitation implementation — 12 October 2026:** Remaining invitation code implemented: exact recipient/message previews and ten-minute confirmations, encrypted durable email jobs, single-owner queue worker, duplicate prevention, definite-failure retries, explicit link reissue/revocation, UI review/send/outcome controls, and chatbot preview/confirmation/status tools. Chat sending requires the human to type the preview-specific confirmation text. Links use localhost and expire after seven days. Queue migration a8b315c9e204 is added but not applied. cryptography is now an explicit dependency. No tests, build/lint, live browser checks or real email sends were run for this final code step, at the user's request. Runtime activation requires rebuilding the backend/email services, applying the queue migration and starting the invitation worker. Interview execution/assessments remain R&D scope. This update supersedes earlier notes below that invitation sending code is planned.
+## Current checkpoint — 13 October 2026
+
+This summary supersedes older pending/not-implemented statements below; earlier entries remain as the implementation history.
+
+- **Session backend implemented:** Unscheduled interviews, JD-owner recruiter authorization, invitation validation, Start/Status/Admit/Join/End APIs, persisted admission/completion, room-scoped media tokens and retryable room closure. The recruiter who owns the JD conducts the interview; no interviewer assignment or scheduling CRUD was added.
+- **Simple test UI implemented:** Recruiter and candidate device checks, candidate waiting/admission, camera/microphone controls, Leave/rejoin and explicit End. User reported joining the candidate through the emailed link in incognito while the recruiter used the recruiter workspace. Frontend container build and lint passed.
+- **Verification recorded:** Six schema checks, five PostgreSQL unscheduled-session checks, two LiveKit adapter tests, 13 session tests and one real room create/delete/repeated-delete test passed. Separate invitation regression output and an explicit current Alembic revision remain unreported.
+- **Remote testing configured:** Local Docker LiveKit, optional Cloudflare Quick Tunnel, exact Vite hostname allowance and environment overrides for LiveKit Cloud. User recreated backend/frontend/invitation-worker; backend settings returned the configured public HTTPS origin. Exactly one JD 180 in-progress invitation's stored encrypted email body was updated to that origin and reread; no email was resent. Cross-laptop media quality still needs user verification.
+- **Backend audio reception verified:** The JD 180 20-second probe received one separate microphone source per role: recruiter and candidate each produced 1,961 frames / 19.61 seconds of 16 kHz mono PCM, with nonzero levels and no reported failures. No audio was saved and no Deepgram request was made. This establishes reception, not speech intelligibility or recording readiness.
+- **Git checkpoint prepared:** Commands were supplied for five LiveKit commits (backend, UI, Docker/Cloudflare, audio probe and progress docs), plus separate assistant invitation-approval and sidebar fixes. The user requested commands only. No staging, commit or push was performed by the agent, and user completion is not yet reported. Credentials and invitation tokens are excluded.
+
+**Next work:** Complete the Git checkpoint before Deepgram implementation; review separate durable audio capture with role mapping, segment offsets and recording lifecycle/failure state. Consent/private storage, reconnect segmentation, active invitation revocation/reissue disconnect enforcement, duplicate-tab behavior, closing recovery and signed webhook/reconciliation support remain unfinished. Recording and transcription are separate milestones; Google Calendar scheduling is deferred.
+
+Full plan, test evidence and remaining tasks: [today's work](DAILY_WORK_2026-10-13.md).
+
+## Backend audio reception verified — 13 October 2026
+
+Approved media SDK/probe added and executed against JD 180's live room. The 20-second probe passed with separate recruiter and candidate sources: each one microphone track, 1,961 PCM frames and 19.61 seconds, nonzero levels and no failures. Probe disconnected normally. No audio file, transcript, database mutation or Deepgram request. Current container received the SDK in-place; requirements.txt includes it for future image builds. This verifies media reception, not speech accuracy or durable recording. Results and next recording/role/timeline work: [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Both interview microphone tracks confirmed
+
+JD 180 metadata check confirms recruiter and candidate each publish an unmuted microphone/audio track, separate from their cameras and correctly matched to session roles. This confirms two-source publication only. Backend audio-frame reception, recording and Deepgram transcription remain pending. See [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Recruiter microphone track confirmed
+
+JD 180 recheck confirms the recruiter publishes an unmuted MICROPHONE/AUDIO track alongside camera. Candidate currently publishes camera only. Separate audio publication is confirmed for the recruiter; backend audio-frame reception and transcription remain unverified. Details: [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Live participant tracks checked for JD 180
+
+Read-only recheck found recruiter and candidate connected to the live room, each publishing an unmuted camera track. Neither has a published microphone/audio track yet. Enable microphones on both clients before audio-access validation. No audio was recorded or transcribed. See [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Deepgram audio-access precheck
+
+Read-only inspection for JD 180 found no live room on the configured LiveKit server, although its database session remains in progress. Separate microphone tracks/PCM access cannot yet be verified; both participants must rejoin and enable microphones. No audio was recorded or sent to Deepgram. Next: microphone publication/role mapping check, followed by reviewed media-subscriber or egress validation. Details: [today's progress](DAILY_WORK_2026-10-13.md).
+
+## JD 180 in-progress invitation URL updated
+
+User authorized changing only JD 180's in-progress invitation. Exactly one stored encrypted email payload now uses the current Cloudflare origin; token/session/delivery fields were preserved and reread for verification. The completed interview was excluded. No email was resent/requeued, and already-delivered messages retain their original content. Details: [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Cloudflare tunnel startup confirmed
+
+User-pasted logs show Quick Tunnel creation and registered QUIC connection, with connectivity prechecks passing. Public address: https://naturals-sought-ottawa-despite.trycloudflare.com (temporary). Public origin/host settings and application service recreation remain the next user steps; application/API and remote audio/video are not yet verified. Details: [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Cloudflare remote-test wiring added
+
+Added optional cloudflared Compose service, exact Vite public-host allowance and environment-overridable backend LiveKit settings. Compose YAML/wiring checks passed. User reports configuring Cloud credentials locally; agent did not read credentials, start the tunnel or publish anything. Public hostname, service recreation and actual remote audio/video verification remain user steps. Invitation worker must pick up the public app URL for newly generated email links. Commands/limits: [today's progress](DAILY_WORK_2026-10-13.md).
+
+## Minimal UI build and lint passed — 13 October 2026
+
+User output confirms frontend production build (1.85s) and ESLint completed successfully after LiveKit UI additions. Bundle-size warning remains a later optimization item; it does not block local testing. This supersedes pending container compile/lint notes below. Actual browser/device/media/reconnect/completion checks are still pending; see [two-tab test steps](DAILY_WORK_2026-10-13.md). No recording or backend access-cleanup guarantees are implied.
+
+## Minimal interview test UI implemented — 13 October 2026
+
+User authorized a simple UI to test the backend now. Added shared LiveKit device check/room controls, recruiter candidate selection/Start/Admit/End/rejoin and candidate link-based waiting/Join/Leave/completion. Local lint passed before the final small display guard; container build/final lint and actual media checks are pending user commands. Local build cannot resolve Docker-installed SDKs in host node_modules; lockfile now resolves the declared packages. No recording, Deepgram or production access-revocation guarantees are claimed. Test commands, sequence and backend limits: [today's progress](DAILY_WORK_2026-10-13.md).
+
+## Real LiveKit room API verified — 13 October 2026
+
+User output confirms **1 real room API test passed in 0.259s**: backend connection/authentication, creation and deletion/repeated closure of a unique test room. This is not an audio/video or token-replay test. PyJWT warned that the default development secret is six bytes; prepare a reviewed environment-based credential replacement for both LiveKit and backend rather than suppress the warning. Separate invitation regression/current revision output remains unreported. Details in [today's progress](DAILY_WORK_2026-10-13.md).
+
+## Backend-first priority and frontend API foundation
+
+User directed focus back to today's backend work. Added frontend LiveKit dependency declarations and typed session API helpers only; UI/screens/styles are deferred. Frontend build/lint passed with existing installed dependencies; declared SDK installation and lockfile update await the user's npm command. Added an opt-in real LiveKit room create/list/delete/idempotent-delete test; syntax passed, execution pending. Backend next: run the live room check and outstanding invitation regressions, then review active-access revocation/reissue and closing recovery safeguards. Commands/limits in [today's plan](DAILY_WORK_2026-10-13.md).
+
+## Session suite passed — 13 October 2026
+
+User supplied **13 session tests passing in 4.132s, OK**, with no skips in the summary. This supersedes the pending session-suite execution note. The provided excerpt does not include Alembic current or separate invitation-regression results; those remain unreported. Session tests use synthetic fixtures and mocked LiveKit deletion, so actual media/room closure is not verified. Next: review frontend LiveKit integration, shared device/room UI and candidate/recruiter controls. Details in [today's progress](DAILY_WORK_2026-10-13.md).
+
+## Session/API code implemented — 13 October 2026
+
+Approved [session/API proposal](INTERVIEW_SESSION_API_REVIEW.md) is implemented: owning-recruiter start/status/admit/join/end controls, candidate invitation-based status/join, shared invitation validation, admission fields and retryable closing state. Migration d7f1b9036a42 is prepared but **not yet applied by the agent**. Syntax, model metadata and offline SQL checks passed; five HTTP/eight PostgreSQL tests and updated invitation regressions are prepared and pending user-run Docker commands. No UI, actual room/media or new end-to-end verification is claimed. User commands and known self-hosted/remaining safeguards are recorded in [today's progress](DAILY_WORK_2026-10-13.md).
+
+## Backend adapter tests passed — 13 October 2026
+
+User output confirms backend Docker rebuild/start succeeded and both LiveKit adapter tests passed in the container: missing credentials and signed SDK-generated token room/identity/media permissions/lifetime. Recorded in [today's progress](DAILY_WORK_2026-10-13.md). This supersedes the earlier pending rebuild/test note. Actual LiveKit room connectivity/deletion, authorized session APIs and audio/video remain unverified.
+
+## Backend LiveKit adapter implemented — 13 October 2026
+
+Approved settings/dependency/adapter/Compose changes are added. The adapter validates credentials, generates camera/microphone-only room tokens and closes rooms; job ownership and admission remain responsibilities of the next session/API checkpoint. Local syntax, YAML, settings parsing/masking and bounds checks passed. LiveKit SDK is not installed in the local venv; Docker rebuild and two added signed-token/configuration tests are pending user execution. No live room closure or media verification is claimed. Commands and limits: [daily progress](DAILY_WORK_2026-10-13.md).
+
+## Local LiveKit startup confirmed — 13 October 2026
+
+User-supplied Compose output confirms distill_ai-livekit-1 started on LiveKit **1.13.9** with expected development credentials and local API/TCP/UDP ports. Recorded in [today's progress](DAILY_WORK_2026-10-13.md). This confirms server startup only; backend SDK/settings, application authorization, tokens and actual media flow remain to implement/verify. User runs Docker commands.
+
+## Local LiveKit service configured — 13 October 2026
+
+Added development-only `livekit` service to compose.yaml for same-laptop testing: loopback-published API/TCP/UDP ports, local advertised IP and dev credentials. Backend will use the Compose service address; browsers use localhost. User will run Docker validation/pull/start/log commands recorded in [today's plan](DAILY_WORK_2026-10-13.md). No container startup, media or SDK integration is verified by this change. Internet testing via Cloudflare still needs LiveKit Cloud or a publicly reachable media deployment.
+
+## Unscheduled sessions enabled — 13 October 2026
+
+User approved the unscheduled session adjustment. InterviewSession now allows absent planned times/timezone and defaults new sessions to ready. New migration **c6e9a2048f73** applied after b4d2e9017c65; live Alembic revision is **c6e9a2048f73 (head)**. Existing records are not rewritten; the time constraint requires both planned times absent or both present with end after start. Five PostgreSQL checks on temporary table copies and six existing schema regression tests passed; offline upgrade/downgrade SQL generation passed. Downgrade protects unscheduled records with an explicit refusal instead of fabricating dates. Details: [daily progress](DAILY_WORK_2026-10-13.md). Next: secure session/LiveKit access and interview UI; no scheduling API, media connection or recording is verified yet.
+
+## Latest scope — LiveKit and interview UI first
+
+The user deferred scheduling/view-schedule/rescheduling/cancellation features to future Google Calendar integration. [Today's plan](DAILY_WORK_2026-10-13.md) now targets: saved selection -> invitation link -> device check -> waiting -> owning recruiter starts/admit -> live audio/video interview -> explicit end -> saved completion. Keep secure room tokens, application/job ownership, admission, reconnect and completion controls; prepare participant roles/recording metadata for later Deepgram work. Test locally first, then across two laptops through Cloudflare.
+
+Foundation migration b4d2e9017c65 remains applied; its follow-up c6e9a2048f73 now enables unscheduled sessions and a ready state as recorded above. Scheduling service/API/UI work below is superseded as today's next step. LiveKit and interview UI remain to implement.
+
+## Recruiter-host foundation applied — 13 October 2026
+
+The user approved removing interviewer assignment and applying the migration. InterviewSession and its scheduling request now have no interviewer_id; recruiter_id identifies the host, to be enforced through authenticated JD ownership in the next service checkpoint. Six focused validation tests, model/migration consistency and revised offline SQL checks passed. Migration **b4d2e9017c65** applied successfully from a8b315c9e204. Read-only live inspection confirmed the revision, expected columns/nullability, foreign keys, unique/check constraints and indexes. The table is ready for scheduling-service work; scheduling endpoints and LiveKit/media UI are not implemented yet. See [today's execution record](DAILY_WORK_2026-10-13.md) and [approved amendment](INTERVIEW_FOUNDATION_REVIEW.md). This supersedes earlier pending-amendment/unapplied-migration entries below.
+
+## Recruiter-host clarification and database recheck — 13 October 2026
+
+The job-owning recruiter conducts its interviews. Today's flow has no interviewer assignment or separate interviewer workspace; the existing recruiter workspace will supply schedule/admission/host/end controls. Updated [today's plan](DAILY_WORK_2026-10-13.md) and prepared [concrete foundation simplification edits](INTERVIEW_FOUNDATION_REVIEW.md) to remove the currently implemented interviewer_id field. Source edits await review.
+
+Read-only `docker compose exec -T backend python -m alembic current` succeeded after authorized Docker access and reported **a8b315c9e204**. The session migration **b4d2e9017c65 remains unapplied**. No migration was applied. This supersedes the earlier connection-timeout/unknown-live-revision result. Earlier assigned-interviewer notes below describe the initial design and are superseded by this clarification.
+
+## Interview session foundation — 13 October 2026
+
+The user approved the first reviewed foundation checkpoint. Implemented session storage model, timezone-aware scheduling request validation, migration `b4d2e9017c65` (after `a8b315c9e204`), Alembic model registration and explicit Windows timezone data dependency. Seven focused request tests passed; model/migration consistency and offline upgrade/downgrade SQL checks passed. Live PostgreSQL revision inspection failed with connection timeout after an outside-sandbox retry; the migration is **not applied**. Scheduling service/API, staff/candidate LiveKit UI and recording remain subsequent steps. Details: [daily progress](DAILY_WORK_2026-10-13.md) and [reviewed code](INTERVIEW_FOUNDATION_REVIEW.md).
+
+## LiveKit interview plan — 13 October 2026
+
+Prepared [today's LiveKit plan](DAILY_WORK_2026-10-13.md) for scheduling, authorized room access, candidate pre-join/live UI and recovery verification. The user confirmed **human interviewer using audio/video**; the plan now includes assigned-interviewer authorization, a staff workspace, candidate waiting/admission and real two-device checks. This is planning only; no LiveKit source implementation or new verification is claimed. The current candidate entry validates the invitation but always reports the interview unavailable. The newest 12 October invitation implementation note below supersedes older planned-invitation statements elsewhere in this tracker.
+
+**Confirmed scope update:** Build the session foundation and LiveKit integration together today. Verify separate local browser sessions, then two laptops through Cloudflare Tunnel with public invitation/API routing. Prepare participant-to-role mapping and separate-audio recording manifests for later Deepgram transcripts. Actual recording must be enabled if today's calls need future transcription; Deepgram processing is deferred. The revised estimate is 7–10 focused hours before additional capture/storage work and setup blockers. Implementation and live verification have not started.
+
+**Foundation review:** Added today's risk/protection/check matrix and prepared [concrete first-step code](INTERVIEW_FOUNDATION_REVIEW.md) for interview session storage, schedule validation and a migration. Reuse the existing application, shortlist, invitation and staff authentication records. The first checkpoint is now implemented as recorded above; scheduling services, LiveKit access, UI and recording metadata follow as explained checkpoints.
+
+## Latest recruiter layout update — 12 October 2026
+
+The shared recruiter workspace CSS was updated after the developer reported that the sidebar moved while scrolling Job Descriptions and CV Screening. The supplied CV Screening screenshot showed both an inner content scrollbar and an outer page scrollbar. [App.css](../frontend/src/app/App.css) now anchors the workspace to the viewport with `position: fixed` and `inset: 0`, retains `100dvh` and bounded grid rows, and removes the responsive rule that let the shell grow with page content. The main panel retains vertical scrolling with scroll containment. The sidebar itself no longer scrolls; on short screens its navigation links can scroll independently while the brand and account area stay in place. The mobile layout reserves a separate row for navigation and a bounded row for content.
+
+**Verification:** `npm run build` from `frontend/` passed after the final viewport anchoring change. Live browser inspection was blocked by a saved permission denying access to `http://localhost:5173`; the developer's screenshot documents the reported issue before the final change. Post-fix desktop/mobile scrolling remains to be verified in the running UI. These changes are implemented, not live-verified.
+
+**Development runtime:** Compose bind-mounts `./frontend` and runs Vite with polling, so this CSS update does not require rebuilding the frontend Docker image. Refresh the page; restart the frontend service if source updates are not picked up.
+
+**Final invitation implementation — 12 October 2026:** Remaining invitation code implemented: exact recipient/message previews and ten-minute confirmations, encrypted durable email jobs, single-owner queue worker, duplicate prevention, definite-failure retries, explicit link reissue/revocation, UI review/send/outcome controls, and chatbot preview/confirmation/status tools. Chat sending now accepts clear natural-language approval after the displayed preview. The confirmation tool copies the latest human reply, requires a prior assistant preview response, and binds sending to the stored batch; backend freshness and duplicate checks remain in place. Links use localhost and expire after seven days. Queue migration a8b315c9e204 is added but not applied. cryptography is now an explicit dependency. No tests, build/lint, live browser checks or real email sends were run for this final code step, at the user's request. Runtime activation requires rebuilding the backend/email services, applying the queue migration and starting the invitation worker. Interview execution/assessments remain R&D scope. This update supersedes earlier notes below that invitation sending code is planned.
 
 **Pre-commit review — 12 October 2026:** Pre-commit review fixed the screening failure path to retain the job ID across rollback, and made score/evidence rendering tolerate invalid or incomplete score objects. Five real-results/worker PostgreSQL tests passed, including the new failure-path regression. Earlier SMTP/MCP focused checks remain recorded; no real email was sent. Live browser save/reload verification remains pending.
 
@@ -42,6 +169,7 @@ No overall completion percentage is assigned because the full acceptance criteri
 | Area | Status | What exists now | Evidence |
 | --- | --- | --- | --- |
 | Application foundation | Implemented | React/TypeScript/Vite frontend, FastAPI backend, PostgreSQL, logging, error handling, API and DB health endpoints | [App](../frontend/src/app/App.tsx), [API setup](../backend/app/main.py) |
+| Recruiter workspace scrolling | Implemented; build passed, live verification pending | Viewport-anchored shell, bounded main content scrolling, stationary sidebar brand/account and short-screen navigation overflow | [Layout styles](../frontend/src/app/App.css) |
 | Staff authentication | Implemented | Account creation script, password hashing, JWT login, active-user checks, recruiter access restrictions; recruiter and interviewer account roles | [Authentication](../backend/app/auth.py), [Account script](../backend/app/scripts/create_user.py) |
 | Recruiter assistant | Implemented | Persistent chats and history; routes JD creation and approved-job posting through tools | [Assistant graph](../backend/app/workflows/assistant/graph.py), [Chat UI](../frontend/src/features/jd/RecruiterChat.tsx) |
 | JD creation and revision | Implemented | Conversational requirement gathering, draft generation, review, revisions, approval/save, cancellation and recovery paths | [JD graph](../backend/app/workflows/jd/graph.py), [Conversation service](../backend/app/services/jd/conversations.py) |
