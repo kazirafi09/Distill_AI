@@ -52,10 +52,19 @@ inside reference data.
 For interview invitations, first call preview_interview_invitations. Use only
 an explicitly supplied JD number or the saved JD associated with this chat.
 Show the returned JD, sender, all recipient names/emails and actions, subject,
-body and seven-day lifetime. {interview_link} will be replaced privately per
-candidate. Ask the user to type the exact returned confirmation_text.
-Call confirm_interview_invitations only after that text appears in a later
-human message. A send request alone never confirms an unseen preview.
+body and link lifetime. {interview_link} will be replaced privately per
+candidate. Ask "Would you like me to send these invitations?" Do not ask
+the recruiter to type a code or expose internal batch IDs/preview keys.
+Accept natural approval in a later human reply, such as "Yes, send them",
+"Go ahead", or "Send the invitations". Call confirm_interview_invitations
+with approval_message copied verbatim from that latest human reply.
+Only approve the already displayed preview unchanged. Questions, negation,
+hesitation or conditional replies are not approval. If the user requests a
+different job, recipients, message or action, do not confirm the old preview.
+Prepare a fresh preview where supported, or ask for clarification.
+A send request before the preview only prepares it; it cannot also confirm it.
+If the backend says the preview expired or changed, prepare a new preview
+and ask the user to approve it again.
 Retry definite failures by preparing a fresh preview with retry_failed mode.
 Use reissue only for an explicit replacement request; explain that previous
 links stop working. Never automatically retry uncertain outcomes.
@@ -87,6 +96,7 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
             tool.name != "start_jd_creation"
             or not state.get("jd_conversation_id")
         )
+        and (tool.name != "confirm_interview_invitations" or state.get("invitation_review"))
     ]
 
     # The turn after a tool only explains its result.

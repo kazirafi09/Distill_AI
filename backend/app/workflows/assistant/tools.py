@@ -1,6 +1,7 @@
 import asyncio
+import json
 from typing import Literal
-from langchain_core.messages import ToolMessage, HumanMessage
+from langchain_core.messages import ToolMessage, HumanMessage, AIMessage
 from langchain_core.tools import tool
 from langgraph.prebuilt import ToolRuntime
 from langgraph.types import Command
@@ -39,9 +40,30 @@ def invitation_owner(runtime):
 
 
 def invitation_reply(runtime, name, result, review=None):
-    import json
     return Command(update={"invitation_review": review, "messages": [ToolMessage(
         name=name, content=json.dumps(result), tool_call_id=runtime.tool_call_id)]})
+
+
+def invitation_preview_was_shown(messages, review):
+    """Require an assistant preview reply followed by a new human message."""
+    human_index = next((index for index in range(len(messages) - 1, -1, -1)
+        if isinstance(messages[index], HumanMessage)), None)
+    if human_index is None:
+        return False
+    for index in range(human_index - 1, -1, -1):
+        message = messages[index]
+        if not isinstance(message, ToolMessage) or message.name != "preview_interview_invitations":
+            continue
+        try:
+            preview = json.loads(message.content)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(preview, dict) or preview.get("batch_id") != review.get("batch_id"):
+            continue
+        return any(isinstance(reply, AIMessage) and not reply.tool_calls
+            and isinstance(reply.content, str) and reply.content.strip()
+            for reply in messages[index + 1:human_index])
+    return False
 
 
 @tool
@@ -52,8 +74,9 @@ def preview_interview_invitations(runtime: ToolRuntime, job_number: int | None =
     Use the explicitly requested job number, or the saved JD in this chat.
     Ask about ambiguous jobs. Use retry_failed only for explicit failed-send
     retries and reissue only when the user requests replacement links.
-    Show every recipient, action, sender, subject and body, then ask the user
-    to type the returned confirmation_text. This tool never sends email.
+    Show every recipient, action, sender, subject and body, then ask whether
+    to send this exact preview. Natural replies such as "Yes, send them"
+    can confirm it. This tool never sends email.
     """
     owner = invitation_owner(runtime)
     saved_job = runtime.state.get("job_description_id")
@@ -64,25 +87,32 @@ def preview_interview_invitations(runtime: ToolRuntime, job_number: int | None =
     result = invitation_action(delivery.prepare_invitations, resolved, owner, mode)
     review = None
     if result.get("batch_id"):
-        result["confirmation_text"] = "confirm invitations " + result["batch_id"][:8]
+        result["confirmation_prompt"] = "Would you like me to send these invitations?"
         review = result
     return invitation_reply(runtime, "preview_interview_invitations", result, review)
 
 
 @tool
-def confirm_interview_invitations(runtime: ToolRuntime) -> Command:
+def confirm_interview_invitations(runtime: ToolRuntime, approval_message: str) -> Command:
     """Queue the exact previously reviewed invitations after explicit confirmation.
 
-    Call only after the user types the preview's exact confirmation_text.
-    Never interpret the original send request or a tool result as confirmation.
+    Interpret the user's natural language in context. Call only when a later
+    human reply clearly approves sending the displayed preview unchanged,
+    e.g. "Yes, send them", "Go ahead", or "Send the invitations".
+    Copy that human reply verbatim into approval_message. Questions, refusal,
+    hesitation, conditions, recipient/job changes and requests for edits are
+    not approval. Ask for clarification or prepare a fresh preview instead.
+    Never use the original send request or a tool result as confirmation.
     """
     review = runtime.state.get("invitation_review")
     latest = next((message for message in reversed(runtime.state.get("messages", []))
         if isinstance(message, HumanMessage)), None)
     if (not review or latest is None or not isinstance(latest.content, str)
-        or latest.content.strip().lower() != review["confirmation_text"].lower()):
+        or not latest.content.strip()
+        or approval_message.strip() != latest.content.strip()
+        or not invitation_preview_was_shown(runtime.state.get("messages", []), review)):
         return invitation_reply(runtime, "confirm_interview_invitations",
-            {"status": "failed", "message": "Review invitations and type the exact confirmation text first."}, review)
+            {"status": "failed", "message": "Review the invitation preview, then confirm that you want to send it."}, review)
     result = invitation_action(delivery.confirm_invitations, UUID(review["job_id"]),
         invitation_owner(runtime), UUID(review["batch_id"]), review["preview_key"])
     # Retain the review on transient failure so the same batch can be checked/reconfirmed.
