@@ -1,13 +1,13 @@
 import json
 import logging
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_groq import ChatGroq
 
 from app.core.config import get_settings
 from app.workflows.assistant.state import AssistantState
-from app.workflows.assistant.tools import ASSISTANT_TOOLS
+from app.integrations.assistant_mcp import call_assistant_tool, discover_assistant_tools
 
 logger = logging.getLogger("distill_ai.workflows.assistant")
 
@@ -89,19 +89,12 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
     if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value().strip():
         return {"error_code": "GROQ_NOT_CONFIGURED"}
 
-    available = [
-        tool
-        for tool in ASSISTANT_TOOLS
-        if (
-            tool.name != "start_jd_creation"
-            or not state.get("jd_conversation_id")
-        )
-        and (tool.name != "confirm_interview_invitations" or state.get("invitation_review"))
-    ]
-
     # The turn after a tool only explains its result.
-    if messages[-1].type == "tool":
-        available = []
+    try:
+        available = [] if messages[-1].type == "tool" else discover_assistant_tools(state, config)
+    except Exception as exc:
+        logger.error("Assistant MCP discovery failed | error_type=%s", type(exc).__name__)
+        return {"error_code": "ASSISTANT_MCP_UNAVAILABLE"}
     
     prompt = [SystemMessage(content=SYSTEM_PROMPT)]
     saved_content = config.get("configurable", {}).get("saved_jd_content")
@@ -138,3 +131,36 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
     elif not isinstance(response.content, str) or not response.content.strip():
         return {"error_code": "ASSISTANT_EMPTY_RESPONSE"}
     return {"messages": [response], "error_code": None}
+
+
+def execute_assistant_tool(state: AssistantState, config: RunnableConfig) -> dict:
+    """Execute one discovered tool, then apply its conversation-state effects."""
+    message = state.get("messages", [])[-1]
+    if not isinstance(message, AIMessage) or len(message.tool_calls) != 1:
+        return {"error_code": "ASSISTANT_INVALID_TOOL_CALL"}
+    call = message.tool_calls[0]
+    try:
+        tool_message, result = call_assistant_tool(call, state, config)
+    except Exception as exc:
+        logger.error("Assistant MCP call failed | error_type=%s", type(exc).__name__)
+        # Complete this tool turn even if its response was lost: recovery must
+        # not automatically repeat a potentially successful external action.
+        result = {
+            "status": "uncertain",
+            "message": "Tool outcome is unavailable. Check current status before trying again.",
+        }
+        tool_message = ToolMessage(
+            name=call["name"], tool_call_id=call["id"], content=json.dumps(result),
+        )
+
+    updates = {"messages": [tool_message], "error_code": None}
+    if call["name"] == "start_jd_creation":
+        updates["jd_start_requested"] = result.get("jd_start_requested") is True
+    elif call["name"] == "preview_interview_invitations":
+        updates["invitation_review"] = result if result.get("batch_id") else None
+    elif call["name"] == "confirm_interview_invitations":
+        updates["invitation_review"] = (
+            state.get("invitation_review")
+            if result.get("status") in {"failed", "uncertain"} else None
+        )
+    return updates

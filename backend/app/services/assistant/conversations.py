@@ -154,9 +154,12 @@ async def complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_
 
 async def send_assistant_message(
     db, assistant_graph, jd_graph, user_id, assistant_id, message, checkpoint_id,
+    *, session_id: UUID | None = None,
 ):
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     config = assistant_config(assistant_id, user_id)
+    if session_id is not None:
+        config["configurable"]["auth_session_id"] = str(session_id)
     snapshot = await run_in_threadpool(assistant_graph.get_state, config)
     if snapshot.next or snapshot.values.get("jd_start_requested"):
         if snapshot.next:

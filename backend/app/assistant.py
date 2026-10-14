@@ -2,9 +2,11 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.auth import DatabaseSession, require_recruiter
+from app.auth import DatabaseSession, bearer, require_recruiter
+from app.core.security import decode_access_identity
 from app.models.user import User
 from app.services.assistant.conversations import (
     assistant_response, create_assistant_conversation, get_owned_assistant,
@@ -61,10 +63,12 @@ async def get_conversation(
 async def send_message(
     conversation_id: UUID, body: AssistantMessage, request: Request,
     user: Recruiter, db: DatabaseSession,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
 ):
     return await send_assistant_message(
         db, request.app.state.assistant_graph, request.app.state.jd_graph,
         user.id, conversation_id, body.message, body.checkpoint_id,
+        session_id=decode_access_identity(credentials.credentials)[1],
     )
 
 

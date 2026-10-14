@@ -1,10 +1,8 @@
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import ToolNode
 
-from app.workflows.assistant.nodes import assistant_turn
+from app.workflows.assistant.nodes import assistant_turn, execute_assistant_tool
 from app.workflows.assistant.state import AssistantState
-from app.workflows.assistant.tools import ASSISTANT_TOOLS
 
 
 def route_after_assistant(state: AssistantState) -> str:
@@ -27,13 +25,7 @@ def build_assistant_graph(checkpointer=None):
     builder = StateGraph(AssistantState)
 
     builder.add_node("assistant", assistant_turn)
-    builder.add_node(
-        "assistant_tools",
-        ToolNode(
-            ASSISTANT_TOOLS,
-            handle_tool_errors=False,
-        ),
-    )
+    builder.add_node("assistant_tools", execute_assistant_tool)
 
     builder.add_edge(START, "assistant")
 
@@ -70,10 +62,6 @@ def route_after_tools(state: AssistantState) -> str:
     if (
         messages
         and isinstance(messages[-1], ToolMessage)
-        and messages[-1].name in {
-            "post_job_to_discord", "preview_interview_invitations",
-            "confirm_interview_invitations", "get_interview_invitation_status",
-        }
     ):
         return "assistant"
 

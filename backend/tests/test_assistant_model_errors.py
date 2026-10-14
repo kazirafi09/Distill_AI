@@ -11,6 +11,8 @@ class AssistantErrorTests(unittest.TestCase):
         settings = SimpleNamespace(groq_model="openai/gpt-oss-20b",
             groq_api_key=SimpleNamespace(get_secret_value=lambda: "test-key"))
         with patch("app.workflows.assistant.nodes.get_settings", return_value=settings), \
+             patch("app.workflows.assistant.nodes.discover_assistant_tools",
+                   return_value=[SimpleNamespace(name="start_jd_creation")]), \
              patch("app.workflows.assistant.nodes.ChatGroq") as model:
             model.return_value.bind_tools.return_value.invoke.side_effect = RateLimitError()
             result = assistant_turn({"messages": [HumanMessage(content="Create a senior HR job description")]}, {})

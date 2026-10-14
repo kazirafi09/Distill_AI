@@ -25,7 +25,8 @@ from app.cv_parsing_routes import router as cv_parsing_router
 from app.cv_screening_routes import router as cv_screening_router
 from app.interview_routes import router as interview_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
-from app.workflows.assistant.tools import configure_invitation_loop
+from app.mcp_recruitment import mcp as recruitment_mcp, transport_app as recruitment_mcp_app
+from app.integrations.assistant_mcp import configure_mcp_loop
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -33,7 +34,7 @@ logger = logging.getLogger("distill_ai.api")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_invitation_loop(asyncio.get_running_loop())
+    configure_mcp_loop(asyncio.get_running_loop())
     resources = ExitStack()
 
     try:
@@ -49,10 +50,11 @@ async def lifespan(app: FastAPI):
             "Application started; PostgreSQL JD and assistant graphs ready"
         )
         async with cv_mcp.session_manager.run():
-            yield
+            async with recruitment_mcp.session_manager.run():
+                yield
 
     finally:
-        configure_invitation_loop(None)
+        configure_mcp_loop(None)
         try:
             await run_in_threadpool(resources.close)
         finally:
@@ -74,6 +76,7 @@ app.include_router(cv_router)
 app.include_router(cv_parsing_router)
 app.include_router(cv_screening_router)
 app.include_router(interview_router)
+app.mount("/mcp/recruitment", recruitment_mcp_app)
 app.mount("/mcp", cv_mcp_app)
 
 @app.middleware("http")
