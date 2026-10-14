@@ -21,6 +21,7 @@ type RecruiterChatProps = {
   onSaved: () => void
   interviewSessionId?: string
   interviewCandidateName?: string
+  startFresh?: boolean
 }
 
 export default function RecruiterChat({
@@ -29,6 +30,7 @@ export default function RecruiterChat({
   onSaved,
   interviewSessionId,
   interviewCandidateName,
+  startFresh = false,
 }: RecruiterChatProps) {
   const {
     conversation,
@@ -37,18 +39,26 @@ export default function RecruiterChat({
     restoreError,
     resetConversation,
     retryRestore,
-  } = usePersistentAssistantConversation(token, userId)
+  } = usePersistentAssistantConversation(token, userId, interviewSessionId ? `interview:${interviewSessionId}` : undefined, !startFresh)
 
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [stopped, setStopped] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const requestRef = useRef<AbortController | null>(null)
+  const interviewLogRef = useRef<HTMLDivElement | null>(null)
   const isBusy = busy || restoring
 
   useEffect(() => {
     return () => requestRef.current?.abort()
   }, [])
+
+  useEffect(() => {
+    if (interviewSessionId && interviewLogRef.current) {
+      interviewLogRef.current.scrollTop = interviewLogRef.current.scrollHeight
+    }
+  }, [interviewSessionId, conversation?.checkpoint_id, busy])
 
   const jd = interviewSessionId ? null : conversation?.jd_conversation
   const allowedActions = jd?.interrupt?.payload.allowed_actions ?? []
@@ -60,6 +70,7 @@ export default function RecruiterChat({
   const canCompose =
     !restoring &&
     !restoreError &&
+    !stopped &&
     (
       !conversation ||
       conversation.mode === 'chat' ||
@@ -88,6 +99,7 @@ export default function RecruiterChat({
       if (controller.signal.aborted) return
 
       setConversation(updated)
+      setStopped(false)
 
       const saved = updated.jd_conversation?.job_description
 
@@ -149,10 +161,11 @@ export default function RecruiterChat({
     }
   }
 
-  function sendMessage() {
-    const message = input.trim()
+  function sendMessage(suggested?: string) {
+    const message = (suggested ?? input).trim()
 
     if (!message || requestRef.current || !canCompose) return
+    if (suggested) setInput(suggested)
 
     void runRequest(async (signal) => {
       let current = conversation
@@ -176,6 +189,7 @@ export default function RecruiterChat({
     resetConversation()
     setInput('')
     setError(null)
+    setStopped(false)
   }
 
   const messages = conversation?.messages ?? []
@@ -209,6 +223,23 @@ export default function RecruiterChat({
       )
     ),
   )
+
+  if (interviewSessionId) return <div className="stage-chat">
+    <header><span className="stage-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m3 3 18 18M10 5h2c6 0 10 7 10 7a20 20 0 0 1-4 4M6 6a20 20 0 0 0-4 6s4 7 10 7c2 0 4-.6 6-2" /><path d="M9 9a4 4 0 0 0 6 6" /></svg>Only you can see this chat</span><button className="stage-outline" disabled={isBusy} onClick={startNewConversation}>New chat</button></header>
+    <div ref={interviewLogRef} className={`stage-chat-log${!messages.length ? ' is-empty' : ''}`} role="log" aria-label="Interview assistant" aria-busy={isBusy}>
+      {!messages.length && !isBusy && !restoreError && <div className="stage-assistant-welcome"><strong>Ask the assistant about this interview</strong><p>It uses the job description and this candidate’s screening data. It can make mistakes, so check anything important.</p><div>{['Suggest follow-up questions', 'Which criteria should I probe?', 'Compare the CV with this job'].map(prompt => <button className="stage-outline" key={prompt} disabled={!canCompose} onClick={() => sendMessage(prompt)}>{prompt}</button>)}</div></div>}
+      {messages.map((message, index) => <ChatMessage key={message.id ?? index} role={message.role} content={message.content} />)}
+      {isBusy && <div className="stage-reply-status"><p role="status">{restoring ? 'Restoring chat…' : 'The assistant is writing…'}</p>{busy && <button className="stage-outline" onClick={() => {
+        requestRef.current?.abort()
+        requestRef.current = null
+        setBusy(false)
+        setStopped(true)
+        setError('Stopped waiting for this reply. Reload chat to check whether it completed.')
+      }}>Stop waiting</button>}</div>}
+      {(error || restoreError) && <div role="alert"><p>{error ?? restoreError}</p><button className="stage-outline" disabled={isBusy} onClick={restoreError ? retryRestore : () => { if (conversation) void runRequest(signal => getAssistant(token, conversation.conversation_id, signal)); else { setError(null); setStopped(false) } }}>{restoreError ? 'Try again' : 'Reload chat'}</button></div>}
+    </div>
+    <footer><label>Message to the assistant</label><ChatInput value={input} onChange={setInput} onSend={sendMessage} disabled={isBusy || !canCompose} placeholder="Ask while you interview" /></footer>
+  </div>
 
   return (
     <div className="jd-chat">

@@ -8,6 +8,24 @@ export type CVSource = {
   sheet_tab_id: number | null
 }
 
+export type CVSourceCheck = {
+  source_id: string
+  job_description_id: string
+  new_cv_count: number
+  last_checked_at: string | null
+  last_success_at: string | null
+  error_code: string | null
+}
+
+export async function listSourceChecks(token: string, signal?: AbortSignal) {
+  const checks: CVSourceCheck[] = []
+  for (let offset = 0; ; offset += 100) {
+    const page = await apiRequest<CVSourceCheck[]>(`/cv/source-checks?limit=100&offset=${offset}`, { token, signal })
+    checks.push(...page)
+    if (page.length < 100) return checks
+  }
+}
+
 export type CandidateApplication = {
   id: string
   candidate_id: string

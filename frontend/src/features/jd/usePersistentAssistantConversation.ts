@@ -27,12 +27,14 @@ function storeConversationId(key: string, id: string | null) {
 export function usePersistentAssistantConversation(
   token: string,
   userId: string,
+  scope?: string,
+  restoreOnMount = true,
 ) {
-  const storageKey = `distill-ai:assistant-conversation:${userId}`
+  const storageKey = `distill-ai:assistant-conversation:${userId}${scope ? `:${scope}` : ''}`
 
   const [conversation, setConversation] =
     useState<AssistantConversation | null>(null)
-  const [restoring, setRestoring] = useState(true)
+  const [restoring, setRestoring] = useState(restoreOnMount)
   const [restoreError, setRestoreError] = useState<string | null>(null)
   const [restoreAttempt, setRestoreAttempt] = useState(0)
 
@@ -41,6 +43,10 @@ export function usePersistentAssistantConversation(
 
     async function restore() {
       try {
+        if (!restoreOnMount && restoreAttempt === 0) {
+          storeConversationId(storageKey, null)
+          return
+        }
         const conversationId = readConversationId(storageKey)
 
         if (!conversationId) return
@@ -73,7 +79,7 @@ export function usePersistentAssistantConversation(
     void restore()
 
     return () => controller.abort()
-  }, [token, storageKey, restoreAttempt])
+  }, [token, storageKey, restoreAttempt, restoreOnMount])
 
   const rememberConversation = useCallback(
     (updated: AssistantConversation) => {

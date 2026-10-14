@@ -12,7 +12,9 @@ import LoginForm from '../features/auth/LoginForm'
 import RecruiterChat from '../features/jd/RecruiterChat'
 import MyJobDescriptions from '../features/jd/MyJobDescriptions'
 import CVScreening from '../features/cv/CVScreening'
+import { useCVSourceChecks } from '../features/cv/useCVSourceChecks'
 import Interviews from '../features/interviews/Interviews'
+import Invitations from '../features/interviews/Invitations'
 import InterviewEntry from '../features/interviews/InterviewEntry'
 import type { RecruiterSession } from '../services/api'
 import { logoutRecruiter, restoreSession } from '../services/api'
@@ -23,7 +25,7 @@ const navigation = [
   { path: '/recruiter/dashboard', label: 'Dashboard', mark: 'D' },
   { path: '/recruiter/job-descriptions', label: 'Job Descriptions', mark: 'JD' },
   { path: '/recruiter/cv-screening', label: 'CV Screening', mark: 'CV' },
-  { path: '/recruiter/candidates', label: 'Candidates', mark: 'C' },
+  { path: '/recruiter/invitations', label: 'Invitations', mark: 'E' },
   { path: '/recruiter/interviews', label: 'Interviews', mark: 'I' },
   { path: '/recruiter/assessments', label: 'Assessments', mark: 'A' },
 ]
@@ -52,6 +54,9 @@ export default function App() {
   const [restoreAttempt, setRestoreAttempt] = useState(0)
   const [signingOut, setSigningOut] = useState(false)
   const [jdRefreshKey, setJDRefreshKey] = useState(0)
+  const [jdChatKey, setJDChatKey] = useState(0)
+  const [navigationOpen, setNavigationOpen] = useState(false)
+  const cvChecks = useCVSourceChecks(isInterviewEntry ? undefined : session?.token)
 
   useEffect(() => {
     if (isInterviewEntry) return
@@ -158,11 +163,13 @@ export default function App() {
 
   return (
     <div className="workspace-shell">
-      <aside className="workspace-sidebar">
+      <aside className={`workspace-sidebar${navigationOpen ? ' is-open' : ''}`}>
+        <button className="sidebar-menu" aria-label="Toggle navigation" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(value => !value)}>☰</button>
         <NavLink
           to="/recruiter/job-descriptions"
           className="sidebar-brand"
           aria-label="Distill AI home"
+          onClick={() => { setNavigationOpen(false); setJDChatKey(value => value + 1) }}
         >
           <span className="brand-mark" aria-hidden="true">D</span>
           <span>Distill AI</span>
@@ -174,15 +181,20 @@ export default function App() {
           {navigation.map((item) => (
             <NavLink
               key={item.path}
+              onClick={() => {
+                setNavigationOpen(false)
+                if (item.path === '/recruiter/job-descriptions') setJDChatKey(value => value + 1)
+              }}
               to={item.path}
               className={({ isActive }) =>
-                `sidebar-link${isActive ? ' is-active' : ''}`
+                `sidebar-link${isActive ? ' is-active' : ''}${item.path === '/recruiter/cv-screening' && cvChecks.total ? ' has-notification' : ''}`
               }
             >
               <span className="navigation-mark" aria-hidden="true">
                 {item.mark}
               </span>
               <span>{item.label}</span>
+              {item.path === '/recruiter/cv-screening' && cvChecks.total > 0 && <span className="sidebar-notification" aria-label={`${cvChecks.total} new CVs available`}>{cvChecks.total > 99 ? '99+' : cvChecks.total}</span>}
             </NavLink>
           ))}
         </nav>
@@ -214,6 +226,11 @@ export default function App() {
       <main className="workspace-main">
         <Routes>
           <Route
+            path="/recruiter/invitations"
+            element={<Invitations key={session.user.id} token={session.token} />}
+          />
+          <Route path="/recruiter/candidates" element={<Navigate to="/recruiter/cv-screening" replace />} />
+          <Route
             path="/recruiter/job-descriptions"
             element={
               <section className="jd-page">
@@ -239,7 +256,8 @@ export default function App() {
                   />
 
                   <RecruiterChat
-                    key={session.user.id}
+                    key={`${session.user.id}:${jdChatKey}`}
+                    startFresh
                     token={session.token}
                     userId={session.user.id}
                     onSaved={() => setJDRefreshKey((value) => value + 1)}
@@ -254,6 +272,9 @@ export default function App() {
               <CVScreening
                 key={session.user.id}
                 token={session.token}
+                sourceChecks={cvChecks.checks}
+                checksError={cvChecks.error}
+                refreshChecks={cvChecks.refresh}
               />
             }
           />
@@ -266,6 +287,7 @@ export default function App() {
               (item) =>
                 item.path !== '/recruiter/job-descriptions' &&
                 item.path !== '/recruiter/cv-screening' &&
+                item.path !== '/recruiter/invitations' &&
                 item.path !== '/recruiter/interviews',
             )
             .map((item) => (

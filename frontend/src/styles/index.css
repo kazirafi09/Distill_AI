@@ -1,21 +1,39 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/Roboto-Variable.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Roboto", Arial, sans-serif;
+}
+
 :root {
-  font-family: system-ui, "Segoe UI", sans-serif;
+  font-family: "Roboto", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
   color: #172033;
   background: #f3f4f6;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  font-size: 14px;
 }
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -27,8 +45,8 @@ textarea {
 
 @layer components {
   .button-primary {
-    @apply rounded-xl bg-emerald-400 px-4 py-2 text-sm font-semibold
-      text-slate-950 transition-colors hover:bg-emerald-300
+    @apply rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold
+      text-white transition-colors hover:bg-emerald-800
       disabled:cursor-not-allowed disabled:opacity-50;
   }
 

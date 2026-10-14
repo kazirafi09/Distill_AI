@@ -4,6 +4,10 @@
   padding: 48px 24px;
 }
 
+.sidebar-menu { display: none; }
+.sidebar-link.has-notification { gap: 6px; padding-inline: 8px; }
+.sidebar-notification { display: inline-flex; justify-content: center; min-width: 18px; margin-left: auto; padding: 1px 4px; border-radius: 12px; background: #07815f; color: white; font-size: 10px; font-weight: 700; }
+
 .app > h1 {
   margin: 0 0 16px;
 }
@@ -16,7 +20,7 @@
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-columns: 187px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   height: 100dvh;
   overflow: hidden;
@@ -27,7 +31,7 @@
   min-height: 0;
   flex-direction: column;
   overflow: clip;
-  padding: 28px 16px 20px;
+  padding: 20px 12px;
   border-right: 1px solid #e2e8f0;
   background: #fff;
 }
@@ -36,32 +40,32 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 12px;
-  padding: 0 10px;
+  gap: 10px;
+  padding: 0 8px;
   color: #172033;
-  font-size: 24px;
-  font-weight: 750;
+  font-size: 20px;
+  font-weight: 700;
   text-decoration: none;
 }
 
 .brand-mark {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   place-items: center;
-  border-radius: 14px;
+  border-radius: 9px;
   background: #6ee7b7;
   color: #064e3b;
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .sidebar-caption {
   flex-shrink: 0;
-  margin: 32px 12px 12px;
+  margin: 28px 8px 12px;
   color: #64748b;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
@@ -76,15 +80,16 @@
 .sidebar-link {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  padding: 10px 12px;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
   border: 1px solid transparent;
   border-radius: 12px;
   color: #475569;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   text-decoration: none;
+  white-space: nowrap;
   transition: background 150ms, color 150ms;
 }
 
@@ -101,8 +106,8 @@
 
 .navigation-mark {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   place-items: center;
   border: 1px solid currentColor;
@@ -164,7 +169,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding: 28px;
+  padding: 28px 32px;
 }
 
 .jd-page {
@@ -251,7 +256,7 @@
 
 @media (max-width: 1100px) {
   .workspace-shell {
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: 187px minmax(0, 1fr);
   }
 
   .workspace-main {
@@ -301,10 +306,17 @@
   }
 
   .workspace-sidebar {
-    padding: 16px;
+    position: relative;
+    padding: 12px 16px;
     border-right: 0;
     border-bottom: 1px solid #e2e8f0;
   }
+
+  .sidebar-menu { display: block; position: absolute; top: 6px; right: 16px; min-height: 44px; width: 44px; border: 1px solid #94a3b8; border-radius: 10px; background: white; }
+  .workspace-sidebar:not(.is-open) .sidebar-caption,
+  .workspace-sidebar:not(.is-open) .sidebar-navigation,
+  .workspace-sidebar:not(.is-open) .sidebar-account { display: none; }
+  .workspace-sidebar .sidebar-brand { padding: 0; font-size: 18px; }
 
   .sidebar-caption {
     margin-top: 20px;
