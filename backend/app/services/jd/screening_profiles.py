@@ -52,6 +52,73 @@ class ProfileValidationError(ValueError):
         self.error_type = error_type
 
 
+def parse_requirement_edit(message: str) -> dict[str, str] | None:
+    """Recognize one explicit edit; ambiguous/combined requests use the normal flow."""
+    if not isinstance(message, str) or re.search(r"[?;\n]|\b(if|unless|and|also|then|but|or|not|instead|maybe|perhaps)\b", message, re.I):
+        return None
+    command = r"(?:please\s+)?(?:change|set|update)\s+(?:the\s+)?"
+    patterns = {
+        "experience": command + r"(?:(?:required|minimum)\s+)?experience\s+to\s+"
+            r"(?P<value>\d+(?:\.\d+)?\s+years?(?:\s+of\s+experience)?)",
+        "location": command + r"(?:(?:job|work)\s+)?location\s+to\s+(?P<value>[\w ,'-]{1,100})",
+        "employment_type": command + r"(?:employment|job)\s+type\s+to\s+"
+            r"(?P<value>full[- ]time|part[- ]time|contract|permanent|temporary|internship|freelance)",
+    }
+    text = message.strip().rstrip(".!").strip()
+    for field, pattern in patterns.items():
+        match = re.fullmatch(pattern, text, re.I)
+        if match:
+            value = match.group("value").strip()
+            if field == "location" and not any(character.isalpha() for character in value):
+                return None
+            return {"field": field, "value": value, "source_quote": message.strip()}
+    return None
+
+
+def apply_requirement_edit(previous: dict, edit: dict[str, str]) -> dict | None:
+    """Copy a valid profile and change only the clearly identified criterion."""
+    if edit["field"] not in {"experience", "location", "employment_type"} or edit["value"] not in edit["source_quote"]:
+        return None
+    try:
+        profile = ScreeningProfile.model_validate(previous).model_dump(mode="json")
+    except ValueError:
+        return None
+    field, value = edit["field"], edit["value"]
+    if field == "experience":
+        threshold = re.compile(
+            r"(?:(?:minimum|required)\s+experience:\s*)?"
+            r"(?:(?:minimum|required|at least)\s+)?\d+(?:\.\d+)?\+?\s*(?:years?|yrs?)"
+            r"(?:\s+(?:of\s+)?(?:relevant\s+|professional\s+|work\s+)?experience)?", re.I,
+        )
+        candidates = [c for c in profile["criteria"]
+                      if c["dimension"] == "work_experience" and threshold.fullmatch(c["text"].strip())]
+        # Do not guess which specialist experience requirement the user means.
+        if len(candidates) > 1 or (not candidates and profile["minimum_years_experience"] is None):
+            return None
+        other_years = [c for c in profile["criteria"] if c["dimension"] == "work_experience"
+                       and c not in candidates and re.search(r"\b\d+(?:\.\d+)?\+?\s*(?:years?|yrs?)\b", c["text"], re.I)]
+        if other_years:
+            return None
+        profile["minimum_years_experience"] = value
+        if candidates:
+            candidates[0].update(text=value, source_quote=value, source="recruiter")
+    else:
+        label = "Location" if field == "location" else "Employment type"
+        marker = r"(?:job |work )?location" if field == "location" else r"(?:employment|job) type"
+        candidates = [c for c in profile["criteria"] if re.match(marker + r"\s*:", c["text"], re.I)]
+        if len(candidates) > 1:
+            return None
+        related = (r"\blocation\b|\bbased\b|\blocated\b|\bwork in\b|\bremote\b|\bhybrid\b|\bonsite\b|\bon-site\b"
+                   if field == "location" else r"\b(?:full[- ]time|part[- ]time|contract|permanent|temporary|internship|freelance)\b")
+        if any(c not in candidates and c["dimension"] == "additional_criteria"
+               and re.search(related, c["text"], re.I) for c in profile["criteria"]):
+            return None
+        if candidates:
+            candidates[0].update(text=f"{label}: {value}", source_quote=edit["source_quote"], source="recruiter")
+    # Avoid normalizing historical criteria again: they were already validated.
+    return profile
+
+
 def supported_form_url(value: str | None) -> bool:
     """Format only; intentionally no network request or accessibility claim."""
     return isinstance(value, str) and FORM_URL.fullmatch(value) is not None

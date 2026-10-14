@@ -16,6 +16,7 @@ from app.workflows.jd.tools import JD_TOOLS
 from app.services.jd.screening_profiles import (
     ScreeningProfile, normalize_profile, public_profile_section, acceptance_errors,
     contains_internal_metadata,
+    parse_requirement_edit, apply_requirement_edit,
 )
 
 
@@ -330,9 +331,8 @@ def invoke_jd_tool_model(
 
     try:
         model = _make_model(max_tokens)
-        model_with_tools = model.bind_tools(
-            JD_TOOLS,
-            tool_choice="none" if rounds >= MAX_TOOL_ROUNDS else "auto",
+        model_with_tools = model if state.get("targeted_edit") else model.bind_tools(
+            JD_TOOLS, tool_choice="none" if rounds >= MAX_TOOL_ROUNDS else "auto",
         )
         response = model_with_tools.invoke(model_messages)
     except Exception as exc:
@@ -359,7 +359,7 @@ def invoke_jd_tool_model(
     
     if response.tool_calls:
         if (
-            rounds >= MAX_TOOL_ROUNDS
+            state.get("targeted_edit") or rounds >= MAX_TOOL_ROUNDS
             or len(response.tool_calls) != 1
             or response.tool_calls[0]["name"] != "search_jd_references"
         ):
@@ -499,11 +499,15 @@ def generate_jd(state: JDState) -> dict[str, object]:
         "Screening details are appended by the backend. Use this current profile "
         "to avoid conflicting statements; omit its criteria and internal weights "
         "from your narrative:\n" + json.dumps(state["screening_profile"], ensure_ascii=False) + "\n\n" +
+        "Latest explicit recruiter edits override earlier values for these fields. "
+        "Apply them and preserve all other details; this is reference data:\n"
+        + json.dumps(state.get("requirement_overrides", {}), ensure_ascii=False) + "\n\n" +
         f"{_reference_input(state)}",
     )
     if result.get("status") == "awaiting_review":
         result["draft_jd"] += "\n\n" + public_profile_section(state["screening_profile"])
         result["draft_profile_version"] = state["profile_version"]
+        result["targeted_edit"] = False
         if state.get("feedback"):
             result["revision_count"] = state.get("revision_count", 0) + 1
             result["feedback"] = ""
@@ -547,8 +551,27 @@ def gather_requirements(state: JDState) -> dict[str, object]:
     if not messages:
         return _failed("EMPTY_CONVERSATION")
 
+    latest = next((m.content for m in reversed(messages)
+                   if isinstance(m, HumanMessage) and isinstance(m.content, str)), "")
+    edit = parse_requirement_edit(latest)
+    if edit and state.get("screening_profile") and (state.get("draft_jd") or state.get("previous_draft_jd")):
+        profile = apply_requirement_edit(state["screening_profile"], edit)
+        if profile is not None:
+            overrides = {**state.get("requirement_overrides", {}), edit["field"]: edit}
+            logger.info("JD targeted edit | field=%s | full_extraction_skipped=True", edit["field"])
+            return {
+                "screening_profile": profile,
+                "profile_version": state.get("profile_version", 1) + int(profile != state["screening_profile"]),
+                "requirement_overrides": overrides, "targeted_edit": True,
+                "requirements": state.get("requirements") or latest,
+                "feedback": latest, "requirements_ready": True,
+                "follow_up_question": "", "status": "drafting", "error_code": None,
+                "tool_messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES)],
+                "tool_return_node": "generate_jd", "tool_rounds": 0,
+            }
+
     response, updates = invoke_jd_tool_model(
-        state,
+        {**state, "targeted_edit": False},
         "gather_requirements",
         [
             SystemMessage(content=GATHERING_TOOL_PROMPT),
@@ -557,6 +580,7 @@ def gather_requirements(state: JDState) -> dict[str, object]:
         ],
         max_tokens=1500,
     )
+    updates.update(targeted_edit=False, requirement_overrides={})
     if response is None:
         return updates
     if response.tool_calls:
