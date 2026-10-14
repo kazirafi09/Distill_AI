@@ -89,7 +89,6 @@ async def start_interview(job_id, application_id, recruiter_id):
         token = create_join_token(session.room_name, f"recruiter-{recruiter_id}")
         if session.status == "ready":
             session.status = "in_progress"
-            session.started_at = datetime.now(timezone.utc)
             session.version += 1
         await db.flush()
         details = session_details(session)
@@ -124,6 +123,8 @@ async def admit_candidate(job_id, application_id, recruiter_id):
         invitation = await active_invitation(db, job_id, application_id, recruiter_id)
         if session.admitted_invitation_hash != invitation.token_hash:
             session.candidate_admitted_at = datetime.now(timezone.utc)
+            if session.started_at is None:
+                session.started_at = session.candidate_admitted_at
             session.admitted_invitation_hash = invitation.token_hash
             session.version += 1
         details = session_details(session)
