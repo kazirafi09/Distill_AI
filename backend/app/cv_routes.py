@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from app.auth import require_recruiter
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion, CVSource
+from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion, CVSource, CVSourceCheck
 from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
 from app.integrations.google_drive import list_folder_files
@@ -163,6 +163,22 @@ async def list_cv_sources(
         .limit(limit)
     )
     return sources.all()
+
+
+@router.get("/source-checks")
+async def list_source_checks(db: DatabaseSession, recruiter: Recruiter,
+    offset: Annotated[int, Query(ge=0)] = 0, limit: Annotated[int, Query(ge=1, le=100)] = 100):
+    rows = (await db.execute(select(CVSource, CVSourceCheck)
+        .outerjoin(CVSourceCheck, CVSourceCheck.source_id == CVSource.id)
+        .join(JobDescription, CVSource.job_description_id == JobDescription.id)
+        .join(JDConversation, JobDescription.conversation_id == JDConversation.id)
+        .where(JDConversation.recruiter_id == recruiter.id)
+        .order_by(CVSource.id).offset(offset).limit(limit))).all()
+    return [{"source_id": str(source.id), "job_description_id": str(source.job_description_id),
+             "new_cv_count": len(check.pending_file_ids) if check else 0,
+             "last_checked_at": check.last_checked_at if check else None,
+             "last_success_at": check.last_success_at if check else None,
+             "error_code": check.error_code if check else None} for source, check in rows]
 
 
 @router.post("/sources/{source_id}/fetch")

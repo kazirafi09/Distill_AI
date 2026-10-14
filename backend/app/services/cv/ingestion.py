@@ -25,6 +25,7 @@ from app.services.cv.sheet_import import (
     parse_response_rows,
     source_lock_key,
 )
+from app.services.cv.source_checks import reconcile_source_check
 
 
 def verify_local_file(
@@ -80,7 +81,7 @@ async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
         if not locked:
             raise HTTPException(
                 status_code=409,
-                detail="This CV source is already being fetched.",
+                detail="This CV source is currently being checked or fetched. Please try again shortly.",
             )
 
         try:
@@ -244,6 +245,7 @@ async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
                         db, source, recruiter_id, response_rows,
                         allowed_file_ids, response_errors,
                     )
+                await reconcile_source_check(db, source)
 
         finally:
             await connection.rollback()

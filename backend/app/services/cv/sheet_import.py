@@ -6,7 +6,6 @@ from uuid import UUID, uuid4
 
 from pydantic import EmailStr, TypeAdapter, ValidationError
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion, CVSource
@@ -71,7 +70,7 @@ def parse_response_rows(sheet: dict) -> tuple[list[dict], list[dict]]:
             name = cell("Name")
             if not name or len(name) > 255:
                 raise ValueError("Name must contain between 1 and 255 characters.")
-            # Local normalization/deduplication policy: email is case-insensitive.
+            # Normalize contact metadata; shared emails do not identify candidates.
             email = str(_email.validate_python(cell("Email"))).casefold()
             timestamp = cell("Timestamp") or None
             if timestamp and len(timestamp) > 100:
@@ -136,11 +135,12 @@ async def import_response_rows(
                 if not set(row["drive_file_ids"]).issubset(allowed_file_ids):
                     raise RowImportError("CV_NOT_IN_SOURCE_OR_UNSUPPORTED")
                 documents = []
-                for file_id in row["drive_file_ids"]:
+                # Lock in a stable order, including when sources share CV files.
+                for file_id in sorted(row["drive_file_ids"]):
                     document = await db.scalar(select(CVDocument).where(
                         CVDocument.job_description_id == job_id,
                         CVDocument.drive_file_id == file_id,
-                    ))
+                    ).with_for_update().execution_options(populate_existing=True))
                     latest = None if document is None else await db.scalar(
                         select(CVFileVersion).where(CVFileVersion.cv_document_id == document.id)
                         .order_by(CVFileVersion.created_at.desc(), CVFileVersion.id.desc()).limit(1)
@@ -156,30 +156,24 @@ async def import_response_rows(
                             raise RowImportError("CV_ALREADY_ASSIGNED")
                     documents.append(document)
 
-                candidate_id = await db.scalar(
-                    insert(Candidate).values(id=uuid4(), recruiter_id=recruiter_id,
-                        full_name=row["full_name"], email=row["email"])
-                    .on_conflict_do_nothing(index_elements=[Candidate.recruiter_id, Candidate.email])
-                    .returning(Candidate.id)
-                )
-                candidate_created = candidate_id is not None
-                if candidate_id is None:
-                    candidate_id = await db.scalar(select(Candidate.id).where(
-                        Candidate.recruiter_id == recruiter_id, Candidate.email == row["email"]
-                    ))
-                application_id = await db.scalar(
-                    insert(CandidateApplication).values(id=uuid4(), candidate_id=candidate_id,
+                # Reuse only an application already linked to these CV files.
+                # Different submissions may share an inbox and still need their
+                # own screening results, shortlist entries and interview links.
+                application_ids = {document.application_id for document in documents
+                                   if document.application_id is not None}
+                if len(application_ids) > 1:
+                    raise RowImportError("CV_ALREADY_ASSIGNED")
+                application_id = next(iter(application_ids), None)
+                candidate_created = application_created = application_id is None
+                if application_created:
+                    candidate_id, application_id = uuid4(), uuid4()
+                    db.add(Candidate(id=candidate_id, recruiter_id=recruiter_id,
+                        full_name=row["full_name"], email=row["email"]))
+                    await db.flush()
+                    db.add(CandidateApplication(id=application_id, candidate_id=candidate_id,
                         job_description_id=job_id, source_id=source_id,
-                        source_row_number=row["row_number"], submitted_at_text=row["submitted_at_text"])
-                    .on_conflict_do_nothing(index_elements=[CandidateApplication.candidate_id, CandidateApplication.job_description_id])
-                    .returning(CandidateApplication.id)
-                )
-                application_created = application_id is not None
-                if application_id is None:
-                    application_id = await db.scalar(select(CandidateApplication.id).where(
-                        CandidateApplication.candidate_id == candidate_id,
-                        CandidateApplication.job_description_id == job_id,
-                    ))
+                        source_row_number=row["row_number"], submitted_at_text=row["submitted_at_text"]))
+                    await db.flush()
                 linked = 0
                 for document in documents:
                     if document.application_id is None:
