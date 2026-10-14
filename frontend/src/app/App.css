@@ -13,16 +13,20 @@
 }
 
 .workspace-shell {
+  position: fixed;
+  inset: 0;
   display: grid;
   grid-template-columns: 236px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: 100dvh;
+  overflow: hidden;
 }
 
 .workspace-sidebar {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: clip;
   padding: 28px 16px 20px;
   border-right: 1px solid #e2e8f0;
   background: #fff;
@@ -30,6 +34,7 @@
 
 .sidebar-brand {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 12px;
   padding: 0 10px;
@@ -51,6 +56,7 @@
 }
 
 .sidebar-caption {
+  flex-shrink: 0;
   margin: 32px 12px 12px;
   color: #64748b;
   font-size: 11px;
@@ -61,6 +67,9 @@
 
 .sidebar-navigation {
   display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: 6px;
 }
 
@@ -104,6 +113,7 @@
 
 .sidebar-account {
   display: grid;
+  flex-shrink: 0;
   grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
@@ -153,6 +163,7 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 28px;
 }
 
@@ -254,11 +265,6 @@
 }
 
 @media (max-width: 900px) {
-  .workspace-shell {
-    height: auto;
-    min-height: 100dvh;
-  }
-
   .jd-page {
     height: auto;
   }
@@ -291,6 +297,7 @@
 @media (max-width: 640px) {
   .workspace-shell {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .workspace-sidebar {
@@ -306,6 +313,7 @@
   .sidebar-navigation {
     display: flex;
     overflow-x: auto;
+    overflow-y: hidden;
     padding-bottom: 6px;
   }
 
