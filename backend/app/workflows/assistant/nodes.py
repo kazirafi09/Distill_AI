@@ -8,6 +8,7 @@ from langchain_groq import ChatGroq
 from app.core.config import get_settings
 from app.workflows.assistant.state import AssistantState
 from app.integrations.assistant_mcp import call_assistant_tool, discover_assistant_tools
+from app.workflows.assistant.interview_intent import acknowledgement_reply, interpret_interview_message
 
 logger = logging.getLogger("distill_ai.workflows.assistant")
 
@@ -95,11 +96,22 @@ job context and clearly label them AI-generated. For failed or uncertain results
 explain that retrieval is unavailable; do not treat failure as an empty search.
 After a tool call, explain its result without another tool call. Earlier tool results
 do not replace checking the tool for the current question request.
-Ordinary greetings and general conversation can be answered without a tool call.
+Suggest questions only when the latest recruiter message requests them.
+Greetings, thanks, explanations and ordinary conversation must not trigger
+question retrieval or unsolicited interview questions, even after prior suggestions.
 You cannot create JDs, send invitations, post jobs, assess candidate skills, or access
 CVs from this screen. Never infer candidate experience from the job description.
 Make at most one tool call per response. Answer concisely.
 """.strip()
+
+
+def make_assistant_model(settings):
+    model_options = {"reasoning_effort": "low"} if settings.groq_model in {
+        "openai/gpt-oss-20b", "openai/gpt-oss-120b",
+    } else {}
+    return ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key,
+                    temperature=0, max_tokens=1500, timeout=30, max_retries=2,
+                    **model_options)
 
 
 def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, object]:
@@ -109,6 +121,11 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
     if state.get("mode") == "jd_workflow":
         return {"error_code": "ASSISTANT_JD_ROUTING_REQUIRED"}
     interview = config.get("configurable", {}).get("interview_session_id")
+    question_request = bool(interview and isinstance(messages[-1], HumanMessage))
+    if question_request and isinstance(messages[-1].content, str):
+        reply = acknowledgement_reply(messages[-1].content)
+        if reply:
+            return {"messages": [AIMessage(content=reply)], "error_code": None}
     retrieval_status = None
     if interview and isinstance(messages[-1], ToolMessage) and messages[-1].name == "search_interview_questions":
         try:
@@ -125,9 +142,29 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
     if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value().strip():
         return {"error_code": "GROQ_NOT_CONFIGURED"}
 
+    model = None
+    if question_request:
+        try:
+            model = make_assistant_model(settings)
+            intent = interpret_interview_message(messages, {
+                "interview": config.get("configurable", {}).get("interview_context"),
+                "job_description": config.get("configurable", {}).get("saved_jd_content"),
+            }, model)
+            if intent.action == "chat":
+                return {"messages": [AIMessage(content=intent.response)], "error_code": None}
+        except Exception as exc:
+            logger.error("Interview intent failed | error_type=%s", type(exc).__name__)
+            if type(exc).__name__ == "RateLimitError":
+                return {"error_code": "ASSISTANT_MODEL_RATE_LIMITED"}
+            return {"error_code": "ASSISTANT_MODEL_REQUEST_FAILED"}
+
     # The turn after a tool only explains its result.
     try:
         available = [] if messages[-1].type == "tool" else discover_assistant_tools(state, config)
+        if question_request:
+            available = [tool for tool in available if tool.name == "search_interview_questions"]
+            if not available:
+                return {"error_code": "ASSISTANT_MCP_UNAVAILABLE"}
     except Exception as exc:
         logger.error("Assistant MCP discovery failed | error_type=%s", type(exc).__name__)
         return {"error_code": "ASSISTANT_MCP_UNAVAILABLE"}
@@ -146,15 +183,11 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
             + json.dumps({"content": saved_content}, ensure_ascii=False)
         )))
     try:
-        model_options = {"reasoning_effort": "low"} if settings.groq_model in {
-            "openai/gpt-oss-20b", "openai/gpt-oss-120b",
-        } else {}
-        model = ChatGroq(
-            model=settings.groq_model, api_key=settings.groq_api_key,
-            temperature=0, max_tokens=1500, timeout=30, max_retries=2,
-            **model_options,
-        )
-        runnable = model.bind_tools(available) if available else model
+        model = model if model is not None else make_assistant_model(settings)
+        if question_request:
+            runnable = model.bind_tools(available, tool_choice="search_interview_questions")
+        else:
+            runnable = model.bind_tools(available) if available else model
         response = runnable.invoke([*prompt, *messages])
     except Exception as exc:
         logger.error("Assistant model failed | error_type=%s", type(exc).__name__)
@@ -170,6 +203,8 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
     if response.tool_calls:
         if len(response.tool_calls) != 1 or response.tool_calls[0]["name"] not in {t.name for t in available}:
             return {"error_code": "ASSISTANT_INVALID_TOOL_CALL"}
+    elif question_request:
+        return {"error_code": "ASSISTANT_INVALID_TOOL_CALL"}
     elif not isinstance(response.content, str) or not response.content.strip():
         return {"error_code": "ASSISTANT_EMPTY_RESPONSE"}
     if retrieval_status in {"no_relevant_matches", "no_ready_banks"} and not response.tool_calls:
