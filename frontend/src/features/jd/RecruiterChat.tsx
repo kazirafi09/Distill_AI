@@ -19,12 +19,16 @@ type RecruiterChatProps = {
   token: string
   userId: string
   onSaved: () => void
+  interviewSessionId?: string
+  interviewCandidateName?: string
 }
 
 export default function RecruiterChat({
   token,
   userId,
   onSaved,
+  interviewSessionId,
+  interviewCandidateName,
 }: RecruiterChatProps) {
   const {
     conversation,
@@ -46,7 +50,7 @@ export default function RecruiterChat({
     return () => requestRef.current?.abort()
   }, [])
 
-  const jd = conversation?.jd_conversation
+  const jd = interviewSessionId ? null : conversation?.jd_conversation
   const allowedActions = jd?.interrupt?.payload.allowed_actions ?? []
 
   const canReply = allowedActions.includes('reply')
@@ -120,7 +124,7 @@ export default function RecruiterChat({
           if (!controller.signal.aborted) {
             setConversation(updated)
             setError(
-              'The conversation was updated. Review it before continuing.',
+              interviewSessionId ? caught.message : 'The conversation was updated. Review it before continuing.',
             )
           }
         } catch {
@@ -162,7 +166,7 @@ export default function RecruiterChat({
         setConversation(current)
       }
 
-      return sendAssistantMessage(token, current, message, signal)
+      return sendAssistantMessage(token, current, message, signal, interviewSessionId)
     }, true)
   }
 
@@ -214,7 +218,9 @@ export default function RecruiterChat({
       <ChatWindow
         title="Distill AI Assistant"
         description={
-          jd?.job_description
+          interviewSessionId
+            ? `Interview with ${interviewCandidateName ?? 'the selected candidate'} · Question bank assistance`
+            : jd?.job_description
             ? `Selected JD: ${jd.job_description.title}`
             : 'Create a job description, review it, then continue chatting.'
         }
@@ -261,7 +267,7 @@ export default function RecruiterChat({
               disabled={isBusy}
               onClick={startNewConversation}
             >
-              Create new JD
+              {interviewSessionId ? 'New conversation' : 'Create new JD'}
             </button>
           </div>
         }
@@ -273,7 +279,9 @@ export default function RecruiterChat({
               onSend={sendMessage}
               disabled={isBusy}
               placeholder={
-                canRevise
+                interviewSessionId
+                  ? 'Suggest questions I can ask this candidate...'
+                  : canRevise
                   ? 'Request changes, accept and save, or cancel...'
                   : canReply
                     ? 'Answer the JD question...'
@@ -283,6 +291,12 @@ export default function RecruiterChat({
           ) : undefined
         }
       >
+        {interviewSessionId && conversation?.mode === 'jd_workflow' && (
+          <p role="status" className="text-sm text-slate-600">
+            This conversation has an active JD workflow. Finish it in Job Descriptions,
+            or choose New conversation here to ask interview questions.
+          </p>
+        )}
         {!conversation && !restoring && !restoreError && (
           <ChatMessage
             role="assistant"

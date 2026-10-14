@@ -5,6 +5,7 @@ in the API lifespan. This module is not connected to the API yet.
 """
 
 import json
+import logging
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,16 +18,19 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import select
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.db.session import SessionFactory
 from app.models.auth_session import AuthSession
+from app.models.interviews import InterviewSession
 from app.models.user import User
 from app.services.assistant.conversations import assistant_config, get_owned_assistant
 from app.services.interviews import delivery
 from app.services.jd.discord_job_posts import post_job_to_discord as post_saved_job_to_discord
+from app.services.question_banks.retrieval import retrieve_interview_questions
 from app.workflows.assistant.state import AssistantState
 
 
@@ -35,6 +39,7 @@ class RecruitmentClaims(BaseModel):
     conversation_id: UUID
     allowed_tools: list[str] = Field(max_length=5)
     sid: UUID | None = None
+    interview_session_id: UUID | None = None
 
 
 @dataclass
@@ -42,6 +47,7 @@ class RecruitmentContext:
     recruiter_id: UUID
     allowed_tools: list[str]
     state: AssistantState
+    interview_session_id: UUID | None = None
 
 
 authorized_context: ContextVar[RecruitmentContext] = ContextVar("recruitment_mcp_context")
@@ -63,6 +69,12 @@ def get_authorized_context(tool_name: str) -> RecruitmentContext:
     context = authorized_context.get()
     if tool_name not in context.allowed_tools:
         raise ValueError("This credential does not permit that tool.")
+    # Interview conversations cannot execute other recruitment tools.
+    if (
+        context.interview_session_id is not None
+        and tool_name != "search_interview_questions"
+    ):
+        raise ValueError("Only question retrieval is allowed in interview chat.")
     return context
 
 
@@ -188,6 +200,75 @@ async def get_interview_invitation_status(job_number: int | None = None) -> dict
     return {"job_id": str(job_id), "invitations": invitations}
 
 
+@mcp.tool(structured_output=True)
+async def search_interview_questions(limit: int = 6) -> dict[str, Any]:
+    """Find questions for the interview associated with this conversation.
+
+    Always call this tool before suggesting interview questions.
+    The backend uses the saved JD title to search uploaded question banks.
+
+    For retrieved results, suggest questions grounded in the returned chunks
+    and cite their filenames and source locations.
+
+    For no_relevant_matches or no_ready_banks, you may create questions
+    yourself, clearly labeled AI-generated.
+
+    For failed results, explain the retrieval problem. Do not interpret
+    failure as evidence that no matching questions exist.
+    """
+    context = get_authorized_context("search_interview_questions")
+
+    session_id = context.interview_session_id
+    if not session_id:
+        return {
+            "status": "failed",
+            "error_code": "INTERVIEW_CONTEXT_REQUIRED",
+        }
+
+    if not 1 <= limit <= 10:
+        return {
+            "status": "failed",
+            "error_code": "QUESTION_LIMIT_INVALID",
+        }
+
+    try:
+        async with SessionFactory() as db:
+            session = await db.scalar(
+                select(InterviewSession).where(
+                    InterviewSession.id == session_id,
+                    InterviewSession.recruiter_id == context.recruiter_id,
+                )
+            )
+            if session is None:
+                return {
+                    "status": "failed",
+                    "error_code": "INTERVIEW_NOT_FOUND",
+                }
+
+            job_id = session.job_description_id
+
+        result = await retrieve_interview_questions(
+            recruiter_id=context.recruiter_id,
+            job_description_id=job_id,
+            limit=limit,
+        )
+
+    except Exception as exc:
+        logging.getLogger("distill_ai.question_banks").error(
+            "Interview retrieval failed | error_type=%s",
+            type(exc).__name__,
+        )
+        return {
+            "status": "failed",
+            "error_code": "QUESTION_RETRIEVAL_FAILED",
+        }
+
+    return {
+        **result,
+        "interview_session_id": str(session_id),
+    }
+
+
 class RecruitmentAuth:
     """Accept backend-issued, audience-specific credentials; load state server-side."""
 
@@ -212,6 +293,10 @@ class RecruitmentAuth:
             if not 0 < payload["exp"] - payload["iat"] <= 120 or now - payload["iat"] > 120:
                 raise ValueError("Credential lifetime exceeds two minutes")
             claims = RecruitmentClaims.model_validate(payload)
+            if claims.interview_session_id is not None and any(
+                name != "search_interview_questions" for name in claims.allowed_tools
+            ):
+                raise ValueError("Only question retrieval is allowed in interview chat")
         except (jwt.InvalidTokenError, ValidationError, ValueError, TypeError):
             return await JSONResponse({"detail": "Invalid recruitment MCP credential."}, status_code=401)(scope, receive, send)
 
@@ -225,6 +310,10 @@ class RecruitmentAuth:
                     if not session or session.user_id != user.id or session.expires_at <= datetime.now(timezone.utc):
                         raise HTTPException(401, "Browser session is no longer active.")
                 await get_owned_assistant(db, user.id, claims.conversation_id)
+                if claims.interview_session_id is not None:
+                    interview = await db.get(InterviewSession, claims.interview_session_id)
+                    if interview is None or interview.recruiter_id != user.id:
+                        raise HTTPException(404, "Interview session not found.")
         except HTTPException as exc:
             return await JSONResponse({"detail": exc.detail}, status_code=exc.status_code)(scope, receive, send)
 
@@ -238,6 +327,7 @@ class RecruitmentAuth:
             recruiter_id=claims.recruiter_id,
             allowed_tools=claims.allowed_tools,
             state=snapshot.values,
+            interview_session_id=claims.interview_session_id,
         ))
         try:
             await self.app(scope, receive, send)

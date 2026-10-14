@@ -22,6 +22,7 @@ class AssistantMessage(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
     message: str = Field(min_length=1, max_length=6000)
     checkpoint_id: str | None = Field(...)
+    interview_session_id: UUID | None = None
 
 
 class AssistantJDAction(BaseModel):
@@ -69,6 +70,7 @@ async def send_message(
         db, request.app.state.assistant_graph, request.app.state.jd_graph,
         user.id, conversation_id, body.message, body.checkpoint_id,
         session_id=decode_access_identity(credentials.credentials)[1],
+        interview_session_id=body.interview_session_id,
     )
 
 

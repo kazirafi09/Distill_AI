@@ -6,9 +6,12 @@ import {
   admitCandidate, endInterview, joinRecruiterInterview, loadInterviewStatus, startInterview,
 } from './sessionApi'
 import type { RecruiterInterviewStatus, RoomCredentials } from './sessionApi'
+import RecruiterChat from '../jd/RecruiterChat'
 
-function RecruiterSession({ token, jobId, candidate }: {
-  token: string; jobId: string; candidate: SavedInterviewee
+const ignoreSavedJD = () => {}
+
+function RecruiterSession({ token, userId, jobId, candidate }: {
+  token: string; userId: string; jobId: string; candidate: SavedInterviewee
 }) {
   const [status, setStatus] = useState<RecruiterInterviewStatus | null>(null)
   const [choices, setChoices] = useState<LocalUserChoices | null>(null)
@@ -122,11 +125,15 @@ function RecruiterSession({ token, jobId, candidate }: {
         }}>{status?.status === 'closing' ? 'Retry End interview' : 'End interview for everyone'}</button>}
     </div>
     <p>Leave exits your call. End interview finishes it for both participants. This test UI does not record audio or video.</p>
+    {status && 'id' in status && <div className="mt-6 h-[600px]">
+      <RecruiterChat key={status.id} token={token} userId={userId} onSaved={ignoreSavedJD}
+        interviewSessionId={status.id} interviewCandidateName={candidate.name} />
+    </div>}
   </>
 }
 
-export default function RecruiterInterviewPanel({ token, jobId, members }: {
-  token: string; jobId: string; members: SavedInterviewee[]
+export default function RecruiterInterviewPanel({ token, userId, jobId, members }: {
+  token: string; userId: string; jobId: string; members: SavedInterviewee[]
 }) {
   const [chosenId, setChosenId] = useState('')
   const candidate = members.find(member => member.application_id === chosenId) ?? members[0]
@@ -137,7 +144,7 @@ export default function RecruiterInterviewPanel({ token, jobId, members }: {
       <label>Candidate<select value={candidate.application_id} onChange={event => setChosenId(event.target.value)}>
         {members.map(member => <option key={member.application_id} value={member.application_id}>{member.name}</option>)}
       </select></label>
-      <RecruiterSession key={candidate.application_id} token={token} jobId={jobId} candidate={candidate} />
+      <RecruiterSession key={candidate.application_id} token={token} userId={userId} jobId={jobId} candidate={candidate} />
     </> : <p>Save your candidate selection first.</p>}
   </section>
 }

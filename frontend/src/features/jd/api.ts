@@ -200,3 +200,35 @@ export function retryReferenceIndex(
     { method: 'POST', token },
   )
 }
+
+export type QuestionBank = {
+  id: string
+  filename: string
+  file_type: string
+  file_size_bytes: number
+  status: 'pending' | 'processing' | 'ready' | 'failed'
+  error_code: string | null
+  warnings: string[]
+  chunk_count: number
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function listQuestionBanks(token: string, offset = 0, signal?: AbortSignal) {
+  return apiRequest<QuestionBank[]>(`/question-banks?limit=10&offset=${offset}`, { token, signal })
+}
+
+export function uploadQuestionBank(token: string, file: File) {
+  const body = new FormData()
+  body.append('file', file)
+  return apiRequest<QuestionBank>('/question-banks', { method: 'POST', token, body })
+}
+
+export function retryQuestionBankIndex(token: string, id: string) {
+  return apiRequest<QuestionBank>(`/question-banks/${id}/index`, { method: 'POST', token })
+}
+
+export function archiveQuestionBank(token: string, id: string) {
+  return apiRequest<QuestionBank>(`/question-banks/${id}/archive`, { method: 'POST', token })
+}

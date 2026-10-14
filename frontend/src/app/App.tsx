@@ -259,7 +259,7 @@ export default function App() {
           />
           <Route
             path="/recruiter/interviews"
-            element={<Interviews key={session.user.id} token={session.token} />}
+            element={<Interviews key={session.user.id} token={session.token} userId={session.user.id} />}
           />
           {navigation
             .filter(

@@ -49,16 +49,23 @@ def create_context_token(config, allowed_tools):
     }
     if context.get("auth_session_id"):
         claims["sid"] = str(UUID(context["auth_session_id"]))
+    if context.get("interview_session_id"):
+        if any(name != "search_interview_questions" for name in allowed_tools):
+            raise ValueError("Only question retrieval is allowed in interview chat")
+        claims["interview_session_id"] = str(UUID(context["interview_session_id"]))
     return jwt.encode(
         claims, get_settings().jwt_secret_key.get_secret_value(), algorithm="HS256",
     )
 
 
-def permitted_tools(tools, state):
+def permitted_tools(tools, state, config=None):
     """Keep existing workflow guards without hardcoding a tool inventory."""
+    if (config or {}).get("configurable", {}).get("interview_session_id"):
+        return [tool for tool in tools if tool.name == "search_interview_questions"]
     return [
         tool for tool in tools
-        if (tool.name != "start_jd_creation" or not state.get("jd_conversation_id"))
+        if tool.name != "search_interview_questions"
+        and (tool.name != "start_jd_creation" or not state.get("jd_conversation_id"))
         and (tool.name != "confirm_interview_invitations" or state.get("invitation_review"))
     ]
 
@@ -79,12 +86,12 @@ async def load_tools(config, allowed_tools):
 
 
 def discover_assistant_tools(state, config):
-    return permitted_tools(run_mcp(load_tools(config, [])), state)
+    return permitted_tools(run_mcp(load_tools(config, [])), state, config)
 
 
 async def execute_tool(call, state, config):
     # Refresh credentials for this one action; do not cache recruiter tokens.
-    tools = permitted_tools(await load_tools(config, [call["name"]]), state)
+    tools = permitted_tools(await load_tools(config, [call["name"]]), state, config)
     tool = next((tool for tool in tools if tool.name == call["name"]), None)
     if tool is None:
         raise ValueError("The requested tool is not available in this conversation")

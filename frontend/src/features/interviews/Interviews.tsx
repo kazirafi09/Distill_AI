@@ -39,7 +39,7 @@ function eligibleCandidates(preview: ShortlistPreview) {
   )]
 }
 
-function JobWorkspace({ token, job }: { token: string; job: JobDescriptionSummary }) {
+function JobWorkspace({ token, userId, job }: { token: string; userId: string; job: JobDescriptionSummary }) {
   const [applications, setApplications] = useState<CandidateApplication[]>([])
   const [description, setDescription] = useState<SavedJobDescription | null>(null)
   const [saved, setSaved] = useState<SavedShortlist | null>(null)
@@ -272,13 +272,13 @@ function JobWorkspace({ token, job }: { token: string; job: JobDescriptionSummar
       {ordered.length > 10 && <div className="interview-pagination"><span>Page {currentPage + 1} of {Math.ceil(ordered.length / 10)}</span><div><button className="button-secondary" disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>Previous</button><button className="button-secondary" disabled={(currentPage + 1) * 10 >= ordered.length} onClick={() => setPage(currentPage + 1)}>Next</button></div></div>}
       <InvitationSending key={job.id} token={token} jobId={job.id}
         canSend={!selectionChanged && !!saved?.members.length && !saved?.outdated && !busy} />
-      <RecruiterInterviewPanel token={token} jobId={job.id} members={saved?.members ?? []} />
+      <RecruiterInterviewPanel token={token} userId={userId} jobId={job.id} members={saved?.members ?? []} />
       <div className="interview-footer"><Link to="/recruiter/cv-screening">Review CV Screening →</Link></div>
     </>}
   </div>
 }
 
-export default function Interviews({ token }: { token: string }) {
+export default function Interviews({ token, userId }: { token: string; userId: string }) {
   const [jobs, setJobs] = useState<JobDescriptionSummary[]>([])
   const [jobId, setJobId] = useState('')
   const [loading, setLoading] = useState(true)
@@ -316,7 +316,7 @@ export default function Interviews({ token }: { token: string }) {
     {error && <div className="interview-notice is-error" role="alert">{error} <button className="button-secondary" onClick={() => { setLoading(true); setReload(value => value + 1) }}>Retry loading jobs</button></div>}
     {loading ? <p className="interview-empty" role="status">Loading job descriptions…</p> : jobs.length ? <>
       <div className="interview-job-picker"><label htmlFor="interview-job">Job description</label><select id="interview-job" value={jobId} onChange={event => setJobId(event.target.value)}>{jobs.map(item => <option key={item.id} value={item.id}>JD {item.number} · {item.title}</option>)}</select></div>
-      {job && <JobWorkspace key={job.id} token={token} job={job} />}
+      {job && <JobWorkspace key={job.id} token={token} userId={userId} job={job} />}
     </> : !error && <div className="interview-empty"><h2>No job descriptions yet</h2><p>Create a job description before selecting interviewees.</p><Link to="/recruiter/job-descriptions">Go to Job Descriptions →</Link></div>}
   </section>
 }
