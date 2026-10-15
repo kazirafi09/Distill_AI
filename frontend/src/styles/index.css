@@ -109,3 +109,31 @@ textarea {
   margin-block: 1rem;
   border-color: #e2e8f0;
 }
+
+.markdown li + li {
+  margin-top: 0.75rem;
+}
+
+.markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-block: 0.75rem;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid #cbd5e1;
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+}
+
+.markdown th {
+  background: #e2e8f0;
+  font-weight: 600;
+}
