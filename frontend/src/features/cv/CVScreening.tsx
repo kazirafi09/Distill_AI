@@ -155,7 +155,7 @@ export default function CVScreening({ token, sourceChecks, checksError, refreshC
   const effectiveOffset = requestedIndex >= 0 ? Math.floor(requestedIndex / 10) * 10 : offset
   const jobs = allJobs.slice(effectiveOffset, effectiveOffset + 10)
   const sources = ready ? page.sources : []
-  const activeJob = jobs.find((job) => job.id === activeId) ?? jobs[0]
+  const activeJob = jobs.find((job) => job.id === activeId)
   const jobId = activeJob?.id ?? ''
   const activeSource = sources.find((source) => source.job_description_id === jobId)
   const activeCheck = sourceChecks.find(item => item.job_description_id === jobId)
@@ -242,7 +242,16 @@ export default function CVScreening({ token, sourceChecks, checksError, refreshC
         const source = sources.find((item) => item.job_description_id === job.id)
         const hasSheet = source?.spreadsheet_id != null && source.sheet_tab_id != null
         return <article key={job.id} className={`cv-job-card${expanded ? ' is-expanded' : ''}`}>
-          <h2><a href={`#cv-job-${job.id}`} className="cv-job-toggle" aria-expanded={expanded} aria-controls={`cv-job-${job.id}`} onClick={event => { event.preventDefault(); if (!fetching) setSearchParams({ job: job.id }) }}>
+          <h2><a href={`#cv-job-${job.id}`} className="cv-job-toggle" aria-expanded={expanded} aria-controls={`cv-job-${job.id}`} onClick={event => {
+            event.preventDefault()
+            if (fetching) return
+            setSearchParams(current => {
+              const next = new URLSearchParams(current)
+              if (expanded) next.delete('job')
+              else next.set('job', job.id)
+              return next
+            })
+          }}>
             <span className="cv-job-number">JD {job.number}</span><span className="cv-job-heading"><span>{job.title}</span>
               {!!sourceChecks.find(item => item.job_description_id === job.id)?.new_cv_count && <span className="cv-new-badge">{sourceChecks.find(item => item.job_description_id === job.id)!.new_cv_count} new CVs</span>}
               <small>{expanded && !candidatesLoading && !candidates?.error ? `${applications.length} candidates · ${applications.reduce((count, application) => count + application.cv_documents.length, 0)} CVs` : hasSheet ? 'Responses connected' : 'Connect responses to import candidates'}</small></span>
