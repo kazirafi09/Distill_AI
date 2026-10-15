@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../services/api'
 import { prepareInvitations, confirmInvitations, loadInvitations, revokeInvitation } from './api'
 import type { InvitationMode, InvitationPreview, InvitationStatus } from './api'
+import './InvitationSending.css'
 
 const statusLabels: Record<string, string> = {
   queued: 'Queued', sending: 'Sending', provider_accepted: 'Accepted by mail provider',
@@ -59,13 +60,19 @@ export default function InvitationSending({ token, jobId, canSend }: {
     }
   }
 
-  return <section className="interview-saved-panel" aria-label="Interview invitations">
-    <h3>Interview invitations</h3>
-    <p>Send to the saved interviewees. Review recipients and the email before confirming.</p>
+  return <section className="interview-saved-panel invitation-panel" aria-label="Interview invitations">
+    <div className="invitation-panel-heading">
+      <div><h3>Interview invitations</h3>
+        <p>Send to the saved interviewees. Review recipients and the email before confirming.</p></div>
+      <button type="button" className="button-secondary invitation-refresh" disabled={busy} onClick={() => setRefresh(value => value + 1)}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5" /><path d="M6 7a7 7 0 0 1 12-1l2 3M4 15l2 3a7 7 0 0 0 12-1" /></svg>
+        Refresh outcomes
+      </button>
+    </div>
     {!canSend && <p className="interview-hint">Save your current selection and refresh outdated screening results first.</p>}
     {error && <p role="alert" className="interview-notice is-error">{error}</p>}
     {message && <p role="status" className="interview-notice">{message}</p>}
-    <div className="interview-selection-actions">
+    <div className="invitation-send-controls">
       <label>Invitation action <select value={mode} disabled={busy} onChange={event => {
         setMode(event.target.value as InvitationMode); setPreview(null)
       }}>
@@ -73,11 +80,10 @@ export default function InvitationSending({ token, jobId, canSend }: {
         <option value="retry_failed">Retry failed emails with existing links</option>
         <option value="reissue">Replace links and send again</option>
       </select></label>
-      <button className="button-primary" disabled={busy || !canSend} onClick={() => void perform(async () => {
+      <button type="button" className="button-primary" disabled={busy || !canSend} onClick={() => void perform(async () => {
         const next = await prepareInvitations(token, jobId, mode)
         if (mounted.current) setPreview(next)
       })}>Send interview invitations</button>
-      <button className="button-secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Refresh outcomes</button>
     </div>
     {preview && <div className="interview-notice">
       <h4>Review {preview.job_title}</h4>
@@ -103,7 +109,7 @@ export default function InvitationSending({ token, jobId, canSend }: {
         <td>{item.name}<span className="interview-email">{item.email}</span></td>
         <td>{statusLabels[item.status] ?? item.status}<span className="interview-email">{item.attempts} attempts{item.error_code ? ` · ${item.error_code.replaceAll('_', ' ').toLowerCase()}` : ''}</span></td>
         <td>{item.link_status} · {new Date(item.expires_at).toLocaleString()}</td>
-        <td><button className="button-secondary" disabled={busy || item.link_status !== 'active'} onClick={() => {
+        <td><button type="button" className="invitation-revoke" disabled={busy || item.link_status !== 'active'} onClick={() => {
           if (!window.confirm(`Revoke the interview link for ${item.name}?`)) return
           void perform(async () => {
             await revokeInvitation(token, jobId, item.id)
