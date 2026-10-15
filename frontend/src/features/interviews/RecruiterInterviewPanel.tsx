@@ -12,6 +12,7 @@ import {
 import type { RecruiterInterviewStatus, RoomCredentials } from './sessionApi'
 import RecruiterChat from '../jd/RecruiterChat'
 import InterviewStage from './InterviewStage'
+import InterviewTranscript from './InterviewTranscript'
 
 const ignoreSavedJD = () => {}
 
@@ -139,9 +140,10 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
       onCandidate={onCandidate} onContinue={value => void startOrJoin(value)} onRecheck={() => setPreviewRevision(value => value + 1)} />
       : credentials ? <InterviewWaitingRoom candidate={candidate} jobTitle={jobTitle} jobNumber={jobNumber} connected={connected} busy={busy} startedAt={status && 'started_at' in status ? status.started_at : null} onAdmit={() => void admit()} onRecheck={recheckDevices} onLeave={recheckDevices} onError={reportError} />
       : <div className="lobby-content waiting-content"><div className="lobby-preview-column"><div className="preparation-video"><div className="lobby-placeholder"><div className="stage-person" /><strong>{busy ? 'Opening waiting room…' : 'You are disconnected'}</strong><p>{candidate.name} · Candidate</p></div></div></div><div className="lobby-info-column"><div className="lobby-card"><strong>{candidate.name}</strong><p>{candidate.email}</p><p>{jobTitle} · JD {jobNumber}</p></div><div className="lobby-primary-action"><button className="lobby-primary" disabled={busy || !choices || finished || status?.status === 'closing'} onClick={() => choices && void startOrJoin(choices)}>{busy ? 'Connecting…' : 'Rejoin waiting room'}</button><button className="lobby-secondary" disabled={busy} onClick={recheckDevices}>Recheck devices</button></div></div></div>}
+    {finished && <div className="lobby-transcript"><InterviewTranscript token={token} jobId={jobId} applicationId={candidate.application_id} /></div>}
     {(active || status?.status === 'closing') && <div className="lobby-end"><button disabled={busy} onClick={finishInterview}>{status?.status === 'closing' ? 'Retry End interview' : 'End interview for everyone'}</button></div>}
   </section>
-  const content = stage ? <InterviewStage candidate={candidate} jobTitle={jobTitle} jobNumber={jobNumber}
+  const content = stage ? <InterviewStage token={token} jobId={jobId} candidate={candidate} jobTitle={jobTitle} jobNumber={jobNumber}
     status={status.status} startedAt={status.started_at} endedAt={status.completed_at} connected={connected} canEnd={active} busy={busy} onEnd={finishInterview} onClose={recheckDevices}
     video={<StageRoom candidateName={candidate.name} onEnd={finishInterview} canEnd={active && !busy} onError={reportError} />}
     assistant={<RecruiterChat key={status.id} token={token} userId={userId} onSaved={ignoreSavedJD} interviewSessionId={status.id} interviewCandidateName={candidate.name} />}

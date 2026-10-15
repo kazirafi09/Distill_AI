@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -79,6 +79,18 @@ class Settings(BaseSettings):
     deepgram_model: str = Field(default="nova-3", min_length=1)
     deepgram_language: str = Field(default="en", min_length=1)
     deepgram_timeout_seconds: int = Field(default=180, ge=1, le=900)
+    deepgram_endpointing_ms: int = Field(default=400, ge=100, le=2000)
+    deepgram_keyterms: list[str] = Field(
+        default_factory=lambda: ["FastAPI", "PostgreSQL", "API endpoints"], max_length=30,
+    )
+
+    @field_validator("deepgram_keyterms")
+    @classmethod
+    def validate_deepgram_keyterms(cls, terms):
+        terms = list(dict.fromkeys(term.strip() for term in terms if term.strip()))
+        if any(len(term) > 80 for term in terms) or sum(len(t.encode("utf-8")) for t in terms) > 400:
+            raise ValueError("Keep Deepgram vocabulary hints short and focused.")
+        return terms
 
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 

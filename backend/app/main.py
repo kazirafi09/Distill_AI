@@ -28,6 +28,7 @@ from app.question_bank_routes import router as question_bank_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
 from app.mcp_recruitment import mcp as recruitment_mcp, transport_app as recruitment_mcp_app
 from app.integrations.assistant_mcp import configure_mcp_loop
+from app.services.interviews.live_transcription import shutdown_transcriptions
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -57,7 +58,10 @@ async def lifespan(app: FastAPI):
     finally:
         configure_mcp_loop(None)
         try:
-            await run_in_threadpool(resources.close)
+            try:
+                await shutdown_transcriptions()
+            finally:
+                await run_in_threadpool(resources.close)
         finally:
             await engine.dispose()
             logger.info("Application stopped; database connections closed")

@@ -26,6 +26,16 @@
 .stage-desktop-transcript { min-height: 0; }
 .stage-transcript { display: flex; flex-direction: column; height: 100%; min-height: 0; background: white; border: 1px solid #dce2eb; border-radius: 15px; overflow: hidden; }
 .stage-transcript > header { display: flex; align-items: center; gap: 10px; padding: 14px 12px; border-bottom: 1px solid #dce2eb; }
+.stage-transcript-info { flex-shrink: 0; margin: 0; padding: 5px 12px; color: #64748b; font-size: 11px; }
+.stage-transcript-error { margin: 0; padding: 8px 12px; color: #991b1b; }
+.stage-transcript-turns { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 8px 12px; }
+.stage-transcript-turn { padding: 8px 0; border-bottom: 1px solid #edf0f4; }
+.stage-transcript-turn time, .stage-transcript-turn small { color: #64748b; font-size: 11px; }
+.stage-transcript-turn p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stage-transcript-sources { margin-top: 6px; color: #64748b; font-size: 11px; }
+.stage-transcript-sources summary { cursor: pointer; }
+.stage-transcript-sources > div { padding: 6px 0; overflow-wrap: anywhere; }
+.lobby-transcript { height: 380px; margin-top: 16px; }
 .stage-empty { display: flex; flex: 1; min-height: 0; flex-direction: column; justify-content: center; align-items: center; padding: 24px; text-align: center; }
 .stage-empty p { color: #64748b; margin-top: 8px; }
 .stage-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 1px solid #dce2eb; border-radius: 15px; overflow: hidden; background: white; }

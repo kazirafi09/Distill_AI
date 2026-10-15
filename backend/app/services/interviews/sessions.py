@@ -129,7 +129,9 @@ async def admit_candidate(job_id, application_id, recruiter_id):
             session.version += 1
         details = session_details(session)
         await db.commit()
-        return {**details, "candidate_admitted": True}
+    from app.services.interviews.live_transcription import start_transcription
+    start_transcription(session.id)
+    return {**details, "candidate_admitted": True}
 
 
 async def candidate_session(db, token):
@@ -169,14 +171,23 @@ async def candidate_join(token):
             or session.admitted_invitation_hash != invitation.token_hash
         ):
             raise HTTPException(403, "Wait for the recruiter to admit you.")
-        return create_join_token(session.room_name, f"candidate-{invitation.application_id}")
+        credentials = create_join_token(session.room_name, f"candidate-{invitation.application_id}")
+        session_id = session.id
+    from app.services.interviews.live_transcription import start_transcription
+    start_transcription(session_id)
+    return credentials
 
 
 async def recruiter_join(job_id, application_id, recruiter_id):
     async with SessionFactory() as db:
         session = await owned_session(db, job_id, application_id, recruiter_id)
         require_active(session)
-        return create_join_token(session.room_name, f"recruiter-{recruiter_id}")
+        credentials = create_join_token(session.room_name, f"recruiter-{recruiter_id}")
+        session_id, admitted = session.id, session.candidate_admitted_at is not None
+    if admitted:
+        from app.services.interviews.live_transcription import start_transcription
+        start_transcription(session_id)
+    return credentials
 
 
 async def end_interview(job_id, application_id, recruiter_id):
@@ -195,6 +206,9 @@ async def end_interview(job_id, application_id, recruiter_id):
         await db.commit()
 
     try:
+        # Flush speech results before deleting the room and its audio tracks.
+        from app.services.interviews.live_transcription import stop_transcription
+        await stop_transcription(session.id)
         await close_room(room_name)
     except (api.TwirpError, ClientError, TimeoutError):
         raise HTTPException(503, "Room closure is pending. Retry End interview.") from None

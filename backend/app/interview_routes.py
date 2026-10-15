@@ -22,6 +22,7 @@ from app.services.interviews.shortlisting import (
     ShortlistRequest,
     preview_shortlist,
 )
+from app.services.interviews.transcripts import get_transcript
 
 router = APIRouter(prefix="/interviews", tags=["Interviews"])
 Recruiter = Annotated[User, Depends(require_recruiter)]
@@ -97,6 +98,12 @@ async def get_shortlist(
 async def start_session(job_id: UUID, application_id: UUID, recruiter: Recruiter, response: Response):
     response.headers["Cache-Control"] = "no-store"
     return await start_interview(job_id, application_id, recruiter.id)
+
+
+@router.get("/jobs/{job_id}/applications/{application_id}/transcript")
+async def read_transcript(job_id: UUID, application_id: UUID, recruiter: Recruiter, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await get_transcript(job_id, application_id, recruiter.id)
 
 
 @router.get("/jobs/{job_id}/applications/{application_id}/session")

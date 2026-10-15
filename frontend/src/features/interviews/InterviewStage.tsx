@@ -3,10 +3,13 @@ import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { SavedInterviewee } from './api'
+import InterviewTranscript from './InterviewTranscript'
 import './InterviewStage.css'
 
 type Tab = 'Assistant' | 'Transcript' | 'Notes' | 'Profile'
 type Props = {
+  token: string
+  jobId: string
   candidate: SavedInterviewee
   jobTitle: string
   jobNumber: number
@@ -21,13 +24,6 @@ type Props = {
   busy: boolean
   onEnd: () => void
   onClose: () => void
-}
-
-function Transcript() {
-  return <section className="stage-transcript" aria-label="Live transcript">
-    <header><strong>Live transcript</strong><span className="stage-badge muted">Not connected</span></header>
-    <div className="stage-empty"><strong>No transcript yet</strong><p>Live transcription is not connected. Your interview can continue.</p></div>
-  </section>
 }
 
 export default function InterviewStage(props: Props) {
@@ -78,7 +74,7 @@ export default function InterviewStage(props: Props) {
       <div className="stage-status"><span className={`stage-badge${props.status === 'in_progress' ? '' : ' muted'}`}>● {props.status.replaceAll('_', ' ')}</span><time>{clock}</time><span className={`stage-badge ${props.connected ? '' : 'muted'}`}>{props.connected ? phone ? '● Online' : '● Connected' : 'Offline'}</span><button className="stage-danger" disabled={!props.canEnd || props.busy} onClick={props.onEnd}>End interview</button></div>
     </header>
     <div className="stage-body">
-      <div className="stage-left"><div className="stage-video-area">{props.video}</div><div className="stage-desktop-transcript"><Transcript /></div></div>
+      <div className="stage-left"><div className="stage-video-area">{props.video}</div>{!compact && <div className="stage-desktop-transcript"><InterviewTranscript token={props.token} jobId={props.jobId} applicationId={props.candidate.application_id} /></div>}</div>
       <div className="stage-mobile-summary"><span className="stage-avatar">{initials}</span><div><strong>{props.candidate.name}</strong><small>Score {Number(props.candidate.score.aggregate).toFixed(2)} / 100 · Rank #{props.candidate.rank}</small></div><button onClick={() => setTab(tab === 'Profile' ? 'Assistant' : 'Profile')}>Details ▾</button></div>
       <section className="stage-panel" aria-label="Interview tools">
         <div className="stage-tabs" role="tablist" aria-label="Interview tools">{tabs.map((item, index) => <button key={item} id={`stage-tab-${item}`} role="tab" tabIndex={shownTab === item ? 0 : -1} aria-selected={shownTab === item} aria-controls={`stage-panel-${item}`} onClick={() => setTab(item)} onKeyDown={event => {
@@ -90,7 +86,7 @@ export default function InterviewStage(props: Props) {
         }}>{item}</button>)}</div>
         <div className="stage-panel-content" role="tabpanel" id={`stage-panel-${shownTab}`} aria-label={shownTab}>
           <div className="stage-assistant" hidden={shownTab !== 'Assistant'}>{props.assistant}</div>
-          {shownTab === 'Transcript' && <Transcript />}
+          {shownTab === 'Transcript' && <InterviewTranscript token={props.token} jobId={props.jobId} applicationId={props.candidate.application_id} />}
           <div className="stage-notes" hidden={shownTab !== 'Notes'}><label htmlFor="interview-notes">Interview notes</label><p>Notes stay on this screen and are not saved.</p><textarea id="interview-notes" value={notes} onChange={event => setNotes(event.target.value)} placeholder="Write notes while you interview…" /></div>
           {shownTab === 'Profile' && profile}
         </div>

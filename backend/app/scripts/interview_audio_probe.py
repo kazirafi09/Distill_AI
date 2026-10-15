@@ -27,6 +27,7 @@ async def active_session(job_number):
                 InterviewSession.room_name,
                 InterviewSession.recruiter_id,
                 InterviewSession.application_id,
+                InterviewSession.job_description_id,
             )
             .join(JobDescription, JobDescription.id == InterviewSession.job_description_id)
             .where(JobDescription.number == job_number, InterviewSession.status == "in_progress")
