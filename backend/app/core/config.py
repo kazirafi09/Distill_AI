@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     cv_parser_model: str = "qwen3:4b"
     gemini_api_key: SecretStr | None = None
     gemini_cv_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^[a-zA-Z0-9._-]+$")
+    gemini_requests_per_minute: int = Field(default=12, ge=1, le=14)
+    gemini_max_retries: int = Field(default=3, ge=0, le=5)
     cv_model_provider: Literal["auto", "ollama", "gemini"] = "auto"
     cv_gemini_context_tokens: int = Field(default=65536, ge=8192, le=1048576)
     cv_mcp_url: str = "http://127.0.0.1:8000/mcp/"

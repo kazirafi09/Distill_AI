@@ -22,7 +22,7 @@ from app.services.cv.indexing import INDEX_VERSION, digest
 from app.services.cv.matching import MATCH_PROMPT, MATCH_VERSION, RequirementMatch
 from app.services.cv.parsing import local_versions, verify_integrity
 from app.integrations.cv_model import model_version, provider, model_name, context_tokens
-from app.services.cv.scoring import RUBRIC, calculate_scores, rank_assessments, validate_scoring_profile
+from app.services.cv.scoring import RUBRIC, rank_assessments, validate_scoring_profile
 
 WORKER_LOCK = 73101984023
 _versions_cache = None
