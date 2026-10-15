@@ -1,5 +1,6 @@
 """JD screening contracts and acceptance checks (no candidate scoring)."""
 import re
+from copy import deepcopy
 from decimal import Decimal
 from typing import Literal
 from uuid import uuid4
@@ -7,6 +8,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 DIMENSIONS = ("technical_skills", "work_experience", "qualifications", "additional_criteria")
+AUTO_SUGGESTION_QUOTE = "AI-generated role-based screening suggestion."
 Dimension = Literal["technical_skills", "work_experience", "qualifications", "additional_criteria"]
 FORM_URL = re.compile(
     r"https://(?:forms\.gle/[A-Za-z0-9_-]+|docs\.google\.com/forms/d/(?:e/)?[A-Za-z0-9_-]+/viewform)(?:\?[^\s#]*)?\Z"
@@ -22,6 +24,7 @@ class Criterion(BaseModel):
     source_quote: str = Field(min_length=1)
     priority_quote: str | None
     source: Literal["recruiter", "suggested"] = "recruiter"
+    priority_source: Literal["recruiter", "suggested"] = "recruiter"
 
 
 class DimensionWeights(BaseModel):
@@ -43,6 +46,7 @@ class ScreeningProfile(BaseModel):
     weights_confirmed: StrictBool
     weights_confirmation_quote: str | None
     google_form_url: str | None
+    weights_source: Literal["recruiter", "suggested"] = "recruiter"
 
 
 class ProfileValidationError(ValueError):
@@ -80,7 +84,8 @@ def apply_requirement_edit(previous: dict, edit: dict[str, str]) -> dict | None:
     if edit["field"] not in {"experience", "location", "employment_type"} or edit["value"] not in edit["source_quote"]:
         return None
     try:
-        profile = ScreeningProfile.model_validate(previous).model_dump(mode="json")
+        ScreeningProfile.model_validate(previous)
+        profile = deepcopy(previous)
     except ValueError:
         return None
     field, value = edit["field"], edit["value"]
@@ -131,6 +136,38 @@ def contains_internal_metadata(content: str) -> bool:
     ) is not None
 
 
+def public_jd_narrative(content: str) -> str:
+    """Remove model copies of sections that the backend renders separately.
+
+    Do not rewrite arbitrary sentences: unexpected internal metadata remaining
+    in narrative text must still fail the existing publication guard.
+    """
+    public_sections = {
+        "role overview", "responsibilities", "key responsibilities",
+        "company and employment details", "compensation and benefits", "details to confirm",
+    }
+    owned_section = re.compile(
+        r"^(?:screening[ _-]+profile|selection criteria|application information|"
+        r"technical skills|work experience|qualifications|additional criteria|"
+        r"(?:dimension|screening|scoring) weights?)\b", re.I,
+    )
+    lines = []
+    skipping = False
+    for line in content.splitlines():
+        # Support both Markdown headings and the bold labels models often use.
+        heading = re.match(r"^\s*(?:#{1,6}\s+(.+)|\*\*(.+?)\*\*\s*:?)\s*$", line)
+        if heading:
+            label = (heading.group(1) or heading.group(2)).strip().rstrip(":").casefold()
+            if owned_section.match(label):
+                skipping = True
+                continue
+            if label in public_sections:
+                skipping = False
+        if not skipping:
+            lines.append(line)
+    return "\n".join(lines).strip().rstrip("- \n")
+
+
 def normalize_profile(incoming: ScreeningProfile, previous: dict | None, messages: list, *, allow_suggestions: bool = False,
                       suggestion_authorization_quote: str | None = None) -> dict:
     """Retain IDs and require recruiter evidence, never model suggestions alone."""
@@ -140,7 +177,7 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
 
     # Some models put suggested experience in the verbatim-only fields. Keep
     # that useful proposal as a labeled criterion, never as a supplied fact.
-    if allow_suggestions and supplied(suggestion_authorization_quote):
+    if allow_suggestions and (supplied(suggestion_authorization_quote) or suggestion_authorization_quote == AUTO_SUGGESTION_QUOTE):
         for field, label in (("minimum_years_experience", "Minimum experience"), ("fresher_eligibility", "Fresher eligibility")):
             value = getattr(incoming, field)
             if value is not None and not supplied(value):
@@ -281,7 +318,9 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
         if evidence is not None:
             criterion.text = evidence[1]
             criterion.source_quote = evidence[1]
-        elif not supplied(criterion.source_quote):
+        elif not supplied(criterion.source_quote) and not (
+            suggested and criterion.source_quote == AUTO_SUGGESTION_QUOTE
+        ):
             raise ProfileValidationError(
                 f"criteria.{index}.source_quote",
                 "recruiter_evidence_missing",
@@ -303,6 +342,7 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
                 )
                 if criterion.priority_quote is None:
                     criterion.priority = None
+        criterion.priority_source = "suggested" if suggested else "recruiter"
         identifier = criterion.id if criterion.id in by_id else by_text.get((criterion.dimension, criterion.text))
         criterion.id = identifier if identifier and identifier not in used else f"criterion-{uuid4()}"
         used.add(criterion.id)
@@ -403,6 +443,56 @@ def normalize_profile(incoming: ScreeningProfile, previous: dict | None, message
     return incoming.model_dump(mode="json")
 
 
+def complete_screening_defaults(profile: dict) -> dict:
+    """Complete omitted rubric settings without adding or reviving criteria."""
+    parsed = ScreeningProfile.model_validate(profile)
+    if not parsed.weights_confirmation_quote:
+        parsed.weights_confirmed = False
+    for criterion in parsed.criteria:
+        if criterion.priority is None:
+            # Avoid turning unspecified preferences into mandatory filters.
+            criterion.priority = "Preferred"
+            criterion.priority_quote = None
+            criterion.priority_source = "suggested"
+    active = {c.dimension for c in parsed.criteria}
+    parsed.addressed_dimensions = list(DIMENSIONS)
+    weights = parsed.dimension_weights.model_dump()
+    valid = (bool(active) and all(0 <= value <= 100 for value in weights.values())
+             and sum(Decimal(str(v)) for v in weights.values()) == 100
+             and all(weights[d] == 0 for d in DIMENSIONS if d not in active))
+    if not valid and active:
+        baseline = {"technical_skills": 60, "work_experience": 20,
+                    "qualifications": 10, "additional_criteria": 10}
+        total = sum(baseline[d] for d in active)
+        weights = {d: (100 * baseline[d] // total if d in active else 0) for d in DIMENSIONS}
+        # Integer percentages always total exactly 100, including subsets.
+        remainder = 100 - sum(weights.values())
+        for d in sorted(active, key=lambda d: (-baseline[d], DIMENSIONS.index(d)))[:remainder]:
+            weights[d] += 1
+        parsed.dimension_weights = DimensionWeights(**weights)
+        parsed.weights_confirmed = False
+        parsed.weights_confirmation_quote = None
+    if not parsed.weights_confirmed:
+        parsed.weights_source = "suggested"
+    return parsed.model_dump(mode="json")
+
+
+def adopt_screening_defaults(profile: dict | None, approval: str) -> dict | None:
+    """The explicit JD approval also adopts the displayed suggested rubric."""
+    if profile is None:
+        return None
+    parsed = ScreeningProfile.model_validate(profile)
+    if parsed.weights_source == "suggested":
+        weights = parsed.dimension_weights.model_dump()
+        active = {c.dimension for c in parsed.criteria}
+        if (active and all(0 <= v <= 100 for v in weights.values())
+            and sum(Decimal(str(v)) for v in weights.values()) == 100
+            and all(weights[d] == 0 for d in DIMENSIONS if d not in active)):
+            parsed.weights_confirmed = True
+            parsed.weights_confirmation_quote = approval
+    return parsed.model_dump(mode="json")
+
+
 def profile_errors(profile: dict | None) -> list[str]:
     if profile is None:
         return ["Screening details have not been configured."]
@@ -416,7 +506,7 @@ def profile_errors(profile: dict | None) -> list[str]:
     ids = [c.id for c in parsed.criteria]
     if any(not identifier for identifier in ids) or len(ids) != len(set(ids)):
         errors.append("Every criterion must have a unique stable ID.")
-    if any(c.priority is None or (c.source == "recruiter" and not c.priority_quote) for c in parsed.criteria):
+    if any(c.priority is None or (c.source == "recruiter" and c.priority_source != "suggested" and not c.priority_quote) for c in parsed.criteria):
         errors.append("Confirm Must have or Preferred for every criterion.")
     active = {c.dimension for c in parsed.criteria}
     weights = parsed.dimension_weights.model_dump()
@@ -424,7 +514,7 @@ def profile_errors(profile: dict | None) -> list[str]:
         errors.append("Supply weights for active screening dimensions; unused dimensions may only have zero weight.")
     elif any(not 0 <= weight <= 100 for weight in weights.values()) or sum(Decimal(str(w)) for w in weights.values()) != Decimal("100"):
         errors.append("Active dimension weights must be between 0 and 100 and total 100%.")
-    if not parsed.weights_confirmed or not parsed.weights_confirmation_quote:
+    if (not parsed.weights_confirmed or not parsed.weights_confirmation_quote) and parsed.weights_source != "suggested":
         errors.append("Recruiter confirmation of dimension weights is required.")
     if not supported_form_url(parsed.google_form_url):
         errors.append("Application information is incomplete: the Google Form URL is missing or unsupported.")

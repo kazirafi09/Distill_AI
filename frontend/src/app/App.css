@@ -179,15 +179,6 @@
   flex-direction: column;
 }
 
-.workspace-header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 24px;
-}
-
 .workspace-eyebrow {
   margin-bottom: 6px;
   color: #047857;
@@ -195,13 +186,6 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.connection-status {
-  max-width: 220px;
-  color: #64748b;
-  font-size: 12px;
-  text-align: right;
 }
 
 .jd-workspace {
@@ -226,6 +210,100 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
+}
+
+.conversation-history {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.conversation-picker {
+  position: relative;
+  width: 320px;
+  max-width: 100%;
+  min-width: 0;
+  color: #64748b;
+}
+
+.conversation-picker select {
+  width: 100%;
+  height: 38px;
+  appearance: none;
+  overflow: hidden;
+  padding: 0 34px 0 38px;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.conversation-picker select:hover:not(:disabled) {
+  border-color: #80bfae;
+  background: #f0fdf7;
+}
+
+.conversation-picker select:focus-visible,
+.conversation-pagination button:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+}
+
+.conversation-picker select:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.conversation-picker-icon,
+.conversation-picker-chevron {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.conversation-picker-icon { left: 12px; }
+.conversation-picker-chevron { right: 12px; }
+
+.conversation-pagination {
+  display: flex;
+  height: 38px;
+  align-items: center;
+  gap: 2px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.conversation-pagination span {
+  min-width: 20px;
+  text-align: center;
+}
+
+.conversation-pagination button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.conversation-pagination button:hover:not(:disabled) {
+  border-color: #dbe4ee;
+  background: #f1f5f9;
+  color: #047857;
+}
+
+.conversation-pagination button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .jd-detail-dialog {
@@ -287,16 +365,6 @@
     min-height: 480px;
   }
 
-  .workspace-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .connection-status {
-    max-width: none;
-    text-align: left;
-  }
 }
 
 @media (max-width: 640px) {

@@ -9,9 +9,11 @@ export type ScreeningProfile = {
     text: string
     priority: 'Must have' | 'Preferred' | null
     source?: 'recruiter' | 'suggested'
+    priority_source?: 'recruiter' | 'suggested'
   }[]
   dimension_weights: Record<string, number>
   weights_confirmed: boolean
+  weights_source?: 'recruiter' | 'suggested'
   minimum_years_experience: string | null
   fresher_eligibility: string | null
   google_form_url: string | null

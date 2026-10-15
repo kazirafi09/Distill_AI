@@ -234,19 +234,7 @@ export default function App() {
             path="/recruiter/job-descriptions"
             element={
               <section className="jd-page">
-                <header className="workspace-header">
-                  <div>
-                    <p className="workspace-eyebrow">Recruitment workspace</p>
-                    <h1 className="text-3xl font-bold">Job Descriptions</h1>
-                    <p className="mt-2 text-sm text-slate-500">
-                      Create and manage job descriptions with Distill AI.
-                    </p>
-                  </div>
-
-                  <p role="status" className="connection-status">
-                    {connection}
-                  </p>
-                </header>
+                <h1 className="sr-only">Job Descriptions</h1>
 
                 <div className="jd-workspace">
                   <MyJobDescriptions

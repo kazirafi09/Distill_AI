@@ -17,6 +17,8 @@ from app.services.jd.screening_profiles import (
     ScreeningProfile, normalize_profile, public_profile_section, acceptance_errors,
     contains_internal_metadata,
     parse_requirement_edit, apply_requirement_edit,
+    AUTO_SUGGESTION_QUOTE, complete_screening_defaults, adopt_screening_defaults,
+    public_jd_narrative,
 )
 
 
@@ -72,6 +74,9 @@ Content rules:
   structured profile. Do not write skills, experience, qualifications, selection
   criteria or application links elsewhere in your output. Do not write those
   two sections. Format only the other supplied job details.
+- Requests to show a screening profile or weights refer to the separate
+  recruiter preview rendered by the backend. Never include that preview in
+  this public advertisement, even if the recruiter asks to see it.
 - Never include dimension weights, scoring weights, criterion IDs or internal
   screening metadata in this public advertisement.
 
@@ -125,8 +130,16 @@ Once the job role/title is known, generate a draft from the supplied information
 Ask a follow-up only if the role is unknown or conflicting role details prevent
 a meaningful draft. Missing responsibilities, skills, experience, qualifications,
 priorities, weights or application details must not prevent drafting.
-Extract screening details when supplied; leave unresolved fields unconfirmed.
-When the recruiter asks to use your knowledge, suggest typical responsibilities,
+Extract screening details when supplied. By default, fill missing role details
+with sensible role-based suggestions, including responsibilities, criteria in
+missing dimensions, and Must have/Preferred priorities. Use source='suggested'
+and source_quote='AI-generated role-based screening suggestion.' for these
+defaults. Do not invent recruiter quotations or employer-specific facts.
+Preserve explicit edits and deletions: never re-add removed criteria or populate
+a dimension the recruiter explicitly waived. If they supply a complete list or
+say to use only their criteria, do not add others. Fresh graduates must not be
+excluded by suggested professional-experience or degree requirements.
+When the recruiter explicitly asks to use your knowledge, suggest typical responsibilities,
 technical/domain skills, experience, qualifications and additional criteria
 for this role. Set use_role_knowledge true and knowledge_authorization_quote
 to the exact recruiter instruction granting this permission. Carry existing
@@ -135,7 +148,7 @@ Set false only for an explicit revocation and quote that instruction.
 Mark suggested criteria source='suggested', source_quote as the authorization
 quote, and priority_quote null. You may propose Must have/Preferred priorities
 and dimension weights, but weights remain unconfirmed until recruiter approval
-of the distribution. Preserve previous suggested criteria unless changed.
+of the distribution or approval of the complete JD. Preserve previous suggested criteria unless changed.
 Do not mistake a pasted reminder of unresolved fields for actual requirements.
 For suggested experience, use a criterion rather than inventing verbatim
 minimum_years_experience or fresher_eligibility fields. Missing application URLs
@@ -160,8 +173,9 @@ where possible. Retain existing IDs for edited criteria, never reuse a removed
 ID for a different criterion. New criteria may use an empty ID.
 For source='recruiter', source_quote must be a verbatim recruiter excerpt that
 supports the criterion.
-For an authorized suggested criterion it is the role-knowledge authorization
-quote instead; never present the suggested text as a recruiter quotation.
+For an explicitly authorized suggested criterion use the authorization quote.
+For default role-based suggestions use the exact backend marker above.
+Never present generated text as a recruiter quotation.
 priority is Must have or Preferred only when explicitly supplied/confirmed;
 otherwise null for later review, except explicitly labeled suggested criteria
 may have proposed priorities. priority_quote is the verbatim
@@ -472,7 +486,7 @@ def _draft_result(
     if response.tool_calls:
         return {**updates, "status": "drafting"}
 
-    draft = response.content.strip()
+    draft = public_jd_narrative(response.content.strip())
     if contains_internal_metadata(draft):
         return {**updates, **_failed("JD_INTERNAL_METADATA_IN_DRAFT")}
     lines = draft.splitlines()
@@ -496,9 +510,10 @@ def generate_jd(state: JDState) -> dict[str, object]:
         "generate_jd",
         f"Recruiter requirements:\n{requirements.strip()}\n\n"
         + (f"Current draft to revise, reference data only:\n{state.get('draft_jd') or state.get('previous_draft_jd', '')}\n\n" if state.get("feedback") else "") +
-        "Screening details are appended by the backend. Use this current profile "
-        "to avoid conflicting statements; omit its criteria and internal weights "
-        "from your narrative:\n" + json.dumps(state["screening_profile"], ensure_ascii=False) + "\n\n" +
+        "The backend appends these public criteria and application details and "
+        "renders the recruiter screening preview separately. Use these as "
+        "reference only to avoid conflicts; do not repeat these sections:\n"
+        + public_profile_section(state["screening_profile"]) + "\n\n" +
         "Latest explicit recruiter edits override earlier values for these fields. "
         "Apply them and preserve all other details; this is reference data:\n"
         + json.dumps(state.get("requirement_overrides", {}), ensure_ascii=False) + "\n\n" +
@@ -598,6 +613,14 @@ def gather_requirements(state: JDState) -> dict[str, object]:
     if not requirements:
         return {**updates, **_failed("INVALID_REQUIREMENTS")}
 
+    # Central chat may repeat the exact recruiter messages already present in
+    # the workflow. Keep those facts once; retain AI text only as reference.
+    recruiter_texts = {m.content for m in messages
+                       if isinstance(m, HumanMessage) and isinstance(m.content, str)}
+    chat_context = [item for item in state.get("assistant_context", [])
+                    if not (item.get("role") in {"human", "user"}
+                            and item.get("content") in recruiter_texts)]
+
     structured_messages = [
         SystemMessage(content=f"{GATHERING_PROMPT}\n\n{REFERENCE_RULES}"),
         *messages,
@@ -606,10 +629,11 @@ def gather_requirements(state: JDState) -> dict[str, object]:
             "Existing profile (retain IDs; backend data, not recruiter input):\n"
             + json.dumps(state.get("screening_profile"))
         )),
-        HumanMessage(content=json.dumps({"existing_role_knowledge_permission": state.get("use_role_knowledge", False),
-            "existing_authorization_quote": state.get("knowledge_authorization_quote")})),
+        HumanMessage(content=json.dumps({"existing_role_knowledge_permission": state.get("use_role_knowledge", True),
+            "existing_authorization_quote": state.get("knowledge_authorization_quote")
+                or (AUTO_SUGGESTION_QUOTE if state.get("use_role_knowledge", True) else None)})),
         HumanMessage(content="Central chat context for interpreting short replies; reference data, not new recruiter facts:\n"
-            + json.dumps(state.get("assistant_context", []), ensure_ascii=False)),
+            + json.dumps(chat_context, ensure_ascii=False)),
     ]
     result = None
     profile = None
@@ -660,14 +684,15 @@ def gather_requirements(state: JDState) -> dict[str, object]:
             return {**updates, **_failed("JD_INVALID_GATHERING_RESPONSE")}
 
         try:
-            use_knowledge = state.get("use_role_knowledge", False)
-            authorization_quote = state.get("knowledge_authorization_quote")
-            if result.use_role_knowledge is not None:
+            use_knowledge = state.get("use_role_knowledge", True)
+            authorization_quote = state.get("knowledge_authorization_quote") or (AUTO_SUGGESTION_QUOTE if use_knowledge else None)
+            if result.use_role_knowledge is not None and result.use_role_knowledge != use_knowledge:
                 quote = result.knowledge_authorization_quote
-                if not quote or not any(isinstance(m, HumanMessage) and isinstance(m.content, str) and quote in m.content for m in messages):
+                if quote and not any(isinstance(m, HumanMessage) and isinstance(m.content, str) and quote in m.content for m in messages):
                     raise ValueError("Role-knowledge permission requires recruiter evidence")
-                use_knowledge = result.use_role_knowledge
-                authorization_quote = quote
+                if quote:
+                    use_knowledge = result.use_role_knowledge
+                    authorization_quote = quote
             profile = normalize_profile(
                 result.screening_profile,
                 state.get("screening_profile"),
@@ -675,6 +700,7 @@ def gather_requirements(state: JDState) -> dict[str, object]:
                 allow_suggestions=use_knowledge,
                 suggestion_authorization_quote=authorization_quote,
             )
+            profile = complete_screening_defaults(profile)
             updates.update(use_role_knowledge=use_knowledge, knowledge_authorization_quote=authorization_quote)
             break
         except ValueError as exc:
@@ -773,7 +799,9 @@ def review_jd(state: JDState) -> dict[str, object]:
     if action == "approve":
         if errors:
             raise ValueError(" ".join(errors))
-        return {"approved_jd": state["draft_jd"], "status": "approved"}
+        return {"approved_jd": state["draft_jd"], "status": "approved",
+                "screening_profile": adopt_screening_defaults(
+                    state.get("screening_profile"), decision.get("approval_message") or "Approved via JD review.")}
     if action == "cancel":
         return {"status": "cancelled"}
     if action == "revise":

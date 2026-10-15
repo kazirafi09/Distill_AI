@@ -16,6 +16,7 @@ from app.services.jd.conversations import (
     load_jd_conversation,
 )
 from app.workflows.jd.intent import interpret_jd_message
+from app.workflows.jd.chat_routing import recruiter_context
 
 
 def assistant_config(conversation_id: UUID, user_id: UUID) -> dict:
@@ -120,7 +121,7 @@ async def list_assistant_conversations(db, graph, user_id, *, limit=20, offset=0
     return {"items": items, "limit": limit, "offset": offset}
 
 
-async def start_linked_jd(db, jd_graph, user_id, assistant_id, message):
+async def start_linked_jd(db, jd_graph, user_id, assistant_id, message, *, recruiter_messages=None, chat_context=None):
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     if assistant.jd_conversation_id is None:
         jd = JDConversation(recruiter_id=user_id)
@@ -129,7 +130,10 @@ async def start_linked_jd(db, jd_graph, user_id, assistant_id, message):
         assistant.jd_conversation_id = jd.id
     jd_id = assistant.jd_conversation_id
     await db.commit()
-    return await initialize_jd_conversation(db, jd_graph, user_id, jd_id, message)
+    return await initialize_jd_conversation(
+        db, jd_graph, user_id, jd_id, message,
+        recruiter_messages=recruiter_messages, chat_context=chat_context,
+    )
 
 
 async def complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_id):
@@ -143,7 +147,14 @@ async def complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_
     ), None)
     if not message:
         raise HTTPException(409, "The JD request is missing. Reload the conversation.")
-    await start_linked_jd(db, jd_graph, user_id, assistant_id, message)
+    messages = snapshot.values.get("messages", [])
+    await start_linked_jd(
+        db, jd_graph, user_id, assistant_id, message,
+        recruiter_messages=recruiter_context(messages),
+        chat_context=[{"role": m.type, "content": m.content} for m in messages
+                      if m.type in {"human", "ai"} and isinstance(m.content, str)
+                      and not getattr(m, "tool_calls", None)],
+    )
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     jd = await linked_jd(db, jd_graph, assistant)
     await run_in_threadpool(
