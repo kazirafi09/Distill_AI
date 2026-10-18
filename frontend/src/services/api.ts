@@ -14,6 +14,7 @@ type RequestOptions = {
   body?: unknown
   signal?: AbortSignal
   cache?: RequestCache
+  responseType?: 'json' | 'blob'
 }
 
 let accessToken: string | null = null
@@ -87,6 +88,7 @@ export async function apiRequest<T>(
     }
   }
 
+  if (response.ok && options.responseType === 'blob') return await response.blob() as T
   const data: unknown = await response.json().catch(() => null)
 
   if (!response.ok) {

@@ -16,6 +16,7 @@ import { useCVSourceChecks } from '../features/cv/useCVSourceChecks'
 import Interviews from '../features/interviews/Interviews'
 import Invitations from '../features/interviews/Invitations'
 import InterviewEntry from '../features/interviews/InterviewEntry'
+import Assessments from '../features/assessments/Assessments'
 import type { RecruiterSession } from '../services/api'
 import { logoutRecruiter, restoreSession } from '../services/api'
 import './App.css'
@@ -270,13 +271,15 @@ export default function App() {
             path="/recruiter/interviews"
             element={<Interviews key={session.user.id} token={session.token} userId={session.user.id} />}
           />
+          <Route path="/recruiter/assessments" element={<Assessments key={session.user.id} token={session.token} />} />
           {navigation
             .filter(
               (item) =>
                 item.path !== '/recruiter/job-descriptions' &&
                 item.path !== '/recruiter/cv-screening' &&
                 item.path !== '/recruiter/invitations' &&
-                item.path !== '/recruiter/interviews',
+                item.path !== '/recruiter/interviews' &&
+                item.path !== '/recruiter/assessments',
             )
             .map((item) => (
               <Route
