@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import URL
 
@@ -23,12 +23,15 @@ class Settings(BaseSettings):
     postgres_port: int = 5442
     jwt_secret_key: SecretStr = Field(min_length=32)
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
+    auth_session_days: int = Field(default=7, ge=1, le=90)
     groq_api_key: SecretStr | None = None
     groq_model: str = "openai/gpt-oss-20b"
     ollama_base_url: str = "http://127.0.0.1:11435"
     cv_parser_model: str = "qwen3:4b"
     gemini_api_key: SecretStr | None = None
     gemini_cv_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^[a-zA-Z0-9._-]+$")
+    gemini_requests_per_minute: int = Field(default=12, ge=1, le=14)
+    gemini_max_retries: int = Field(default=3, ge=0, le=5)
     cv_model_provider: Literal["auto", "ollama", "gemini"] = "auto"
     cv_gemini_context_tokens: int = Field(default=65536, ge=8192, le=1048576)
     cv_mcp_url: str = "http://127.0.0.1:8000/mcp/"
@@ -52,6 +55,43 @@ class Settings(BaseSettings):
     google_application_credentials: Path | None = None
     google_drive_cv_root_folder_id: str | None = None
     google_drive_timeout_seconds: int = Field(default=30, ge=1, le=120)
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_timeout_seconds: int = Field(default=20, ge=1, le=120)
+    email_mcp_url: str = "http://127.0.0.1:8003/mcp/"
+    recruitment_mcp_url: str = "http://backend:8000/mcp/recruitment/"
+    email_mcp_secret: SecretStr | None = None
+    public_app_url: str = "http://localhost:5173"
+    interview_link_days: int = Field(default=7, ge=1, le=365)
+
+    # Backend API address and browser connection address.
+    livekit_api_url: str = "http://127.0.0.1:7880"
+    livekit_ws_url: str = "ws://localhost:7880"
+    livekit_api_key: str | None = None
+    livekit_api_secret: SecretStr | None = None
+    livekit_token_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    livekit_api_timeout_seconds: int = Field(default=10, ge=1, le=60)
+
+    # Optional until a transcription request is explicitly started.
+    deepgram_api_key: SecretStr | None = None
+    deepgram_model: str = Field(default="nova-3", min_length=1)
+    deepgram_language: str = Field(default="en", min_length=1)
+    deepgram_timeout_seconds: int = Field(default=180, ge=1, le=900)
+    deepgram_endpointing_ms: int = Field(default=400, ge=100, le=2000)
+    deepgram_keyterms: list[str] = Field(
+        default_factory=lambda: ["FastAPI", "PostgreSQL", "API endpoints"], max_length=30,
+    )
+
+    @field_validator("deepgram_keyterms")
+    @classmethod
+    def validate_deepgram_keyterms(cls, terms):
+        terms = list(dict.fromkeys(term.strip() for term in terms if term.strip()))
+        if any(len(term) > 80 for term in terms) or sum(len(t.encode("utf-8")) for t in terms) > 400:
+            raise ValueError("Keep Deepgram vocabulary hints short and focused.")
+        return terms
+
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
 
     @property

@@ -19,12 +19,17 @@ type RecruiterChatProps = {
   token: string
   userId: string
   onSaved: () => void
+  interviewSessionId?: string
+  interviewCandidateName?: string
+  startFresh?: boolean
 }
 
 export default function RecruiterChat({
   token,
   userId,
   onSaved,
+  interviewSessionId,
+  startFresh = false,
 }: RecruiterChatProps) {
   const {
     conversation,
@@ -33,20 +38,28 @@ export default function RecruiterChat({
     restoreError,
     resetConversation,
     retryRestore,
-  } = usePersistentAssistantConversation(token, userId)
+  } = usePersistentAssistantConversation(token, userId, interviewSessionId ? `interview:${interviewSessionId}` : undefined, !startFresh)
 
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
+  const [stopped, setStopped] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const requestRef = useRef<AbortController | null>(null)
+  const interviewLogRef = useRef<HTMLDivElement | null>(null)
   const isBusy = busy || restoring
 
   useEffect(() => {
     return () => requestRef.current?.abort()
   }, [])
 
-  const jd = conversation?.jd_conversation
+  useEffect(() => {
+    if (interviewSessionId && interviewLogRef.current) {
+      interviewLogRef.current.scrollTop = interviewLogRef.current.scrollHeight
+    }
+  }, [interviewSessionId, conversation?.checkpoint_id, busy])
+
+  const jd = interviewSessionId ? null : conversation?.jd_conversation
   const allowedActions = jd?.interrupt?.payload.allowed_actions ?? []
 
   const canReply = allowedActions.includes('reply')
@@ -56,6 +69,7 @@ export default function RecruiterChat({
   const canCompose =
     !restoring &&
     !restoreError &&
+    !stopped &&
     (
       !conversation ||
       conversation.mode === 'chat' ||
@@ -84,6 +98,7 @@ export default function RecruiterChat({
       if (controller.signal.aborted) return
 
       setConversation(updated)
+      setStopped(false)
 
       const saved = updated.jd_conversation?.job_description
 
@@ -120,7 +135,7 @@ export default function RecruiterChat({
           if (!controller.signal.aborted) {
             setConversation(updated)
             setError(
-              'The conversation was updated. Review it before continuing.',
+              interviewSessionId ? caught.message : 'The conversation was updated. Review it before continuing.',
             )
           }
         } catch {
@@ -145,10 +160,11 @@ export default function RecruiterChat({
     }
   }
 
-  function sendMessage() {
-    const message = input.trim()
+  function sendMessage(suggested?: string) {
+    const message = (suggested ?? input).trim()
 
     if (!message || requestRef.current || !canCompose) return
+    if (suggested) setInput(suggested)
 
     void runRequest(async (signal) => {
       let current = conversation
@@ -162,7 +178,7 @@ export default function RecruiterChat({
         setConversation(current)
       }
 
-      return sendAssistantMessage(token, current, message, signal)
+      return sendAssistantMessage(token, current, message, signal, interviewSessionId)
     }, true)
   }
 
@@ -172,6 +188,7 @@ export default function RecruiterChat({
     resetConversation()
     setInput('')
     setError(null)
+    setStopped(false)
   }
 
   const messages = conversation?.messages ?? []
@@ -206,64 +223,78 @@ export default function RecruiterChat({
     ),
   )
 
+  if (interviewSessionId) return <div className="stage-chat">
+    <header><span className="stage-badge"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m3 3 18 18M10 5h2c6 0 10 7 10 7a20 20 0 0 1-4 4M6 6a20 20 0 0 0-4 6s4 7 10 7c2 0 4-.6 6-2" /><path d="M9 9a4 4 0 0 0 6 6" /></svg>Only you can see this chat</span><button className="stage-outline" disabled={isBusy} onClick={startNewConversation}>New chat</button></header>
+    <div ref={interviewLogRef} className={`stage-chat-log${!messages.length ? ' is-empty' : ''}`} role="log" aria-label="Interview assistant" aria-busy={isBusy}>
+      {!messages.length && !isBusy && !restoreError && <div className="stage-assistant-welcome"><strong>Ask the assistant about this interview</strong><p>It uses the job description and this candidate’s screening data. It can make mistakes, so check anything important.</p><div>{['Suggest follow-up questions', 'Which criteria should I probe?', 'Compare the CV with this job'].map(prompt => <button className="stage-outline" key={prompt} disabled={!canCompose} onClick={() => sendMessage(prompt)}>{prompt}</button>)}</div></div>}
+      {messages.map((message, index) => <ChatMessage key={message.id ?? index} role={message.role} content={message.content} />)}
+      {isBusy && <div className="stage-reply-status"><p role="status">{restoring ? 'Restoring chat…' : 'The assistant is writing…'}</p>{busy && <button className="stage-outline" onClick={() => {
+        requestRef.current?.abort()
+        requestRef.current = null
+        setBusy(false)
+        setStopped(true)
+        setError('Stopped waiting for this reply. Reload chat to check whether it completed.')
+      }}>Stop waiting</button>}</div>}
+      {(error || restoreError) && <div role="alert"><p>{error ?? restoreError}</p><button className="stage-outline" disabled={isBusy} onClick={restoreError ? retryRestore : () => { if (conversation) void runRequest(signal => getAssistant(token, conversation.conversation_id, signal)); else { setError(null); setStopped(false) } }}>{restoreError ? 'Try again' : 'Reload chat'}</button></div>}
+    </div>
+    <footer><label>Message to the assistant</label><ChatInput value={input} onChange={setInput} onSend={sendMessage} disabled={isBusy || !canCompose} placeholder="Ask while you interview" /></footer>
+  </div>
+
   return (
     <div className="jd-chat">
-      <ConversationHistory token={token} activeId={conversation?.conversation_id}
-        refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
-        onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal), true) }} />
       <ChatWindow
         title="Distill AI Assistant"
-        description={
-          jd?.job_description
-            ? `Selected JD: ${jd.job_description.title}`
-            : 'Create a job description, review it, then continue chatting.'
-        }
         busy={isBusy}
         scrollKey={
           `${conversation?.checkpoint_id ?? 'new'}:` +
           `${jd?.checkpoint_id ?? ''}:${isBusy}`
         }
         actions={
-          <div className="flex flex-wrap gap-2">
-            {restoreError && (
+          <>
+            <ConversationHistory token={token} activeId={conversation?.conversation_id}
+              refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
+              onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal), true) }} />
+            <div className="flex flex-wrap gap-2">
+              {restoreError && (
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={isBusy}
+                  onClick={retryRestore}
+                >
+                  Retry restoration
+                </button>
+              )}
+
+              {conversation && (
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={isBusy}
+                  onClick={() => {
+                    void runRequest(
+                      (signal) => getAssistant(
+                        token,
+                        conversation.conversation_id,
+                        signal,
+                      ),
+                    )
+                  }}
+                >
+                  Reload conversation
+                </button>
+              )}
+
               <button
                 type="button"
                 className="button-secondary"
                 disabled={isBusy}
-                onClick={retryRestore}
+                onClick={startNewConversation}
               >
-                Retry restoration
+                {interviewSessionId ? 'New conversation' : 'Create new JD'}
               </button>
-            )}
-
-            {conversation && (
-              <button
-                type="button"
-                className="button-secondary"
-                disabled={isBusy}
-                onClick={() => {
-                  void runRequest(
-                    (signal) => getAssistant(
-                      token,
-                      conversation.conversation_id,
-                      signal,
-                    ),
-                  )
-                }}
-              >
-                Reload conversation
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="button-secondary"
-              disabled={isBusy}
-              onClick={startNewConversation}
-            >
-              Create new JD
-            </button>
-          </div>
+            </div>
+          </>
         }
         composer={
           canCompose ? (
@@ -273,7 +304,9 @@ export default function RecruiterChat({
               onSend={sendMessage}
               disabled={isBusy}
               placeholder={
-                canRevise
+                interviewSessionId
+                  ? 'Suggest questions I can ask this candidate...'
+                  : canRevise
                   ? 'Request changes, accept and save, or cancel...'
                   : canReply
                     ? 'Answer the JD question...'
@@ -283,6 +316,12 @@ export default function RecruiterChat({
           ) : undefined
         }
       >
+        {interviewSessionId && conversation?.mode === 'jd_workflow' && (
+          <p role="status" className="text-sm text-slate-600">
+            This conversation has an active JD workflow. Finish it in Job Descriptions,
+            or choose New conversation here to ask interview questions.
+          </p>
+        )}
         {!conversation && !restoring && !restoreError && (
           <ChatMessage
             role="assistant"
@@ -348,12 +387,6 @@ export default function RecruiterChat({
           />
         )}
 
-        {jd?.status === 'awaiting_review' && (
-          <ChatMessage
-            role="assistant"
-            content={'Review the draft above. Tell me what to change, say **accept and save** to save it, or **cancel** to discard this workflow.'}
-          />
-        )}
         {canReply && <ChatMessage role="assistant" content="Reply with the job details, or say **cancel** to stop this workflow." />}
         {canRecoverSave && <ChatMessage role="assistant" content="Your JD was approved but its save needs to be recovered. Say **save** to retry." />}
 
@@ -368,19 +401,26 @@ export default function RecruiterChat({
                   <td className="break-all pr-2">{criterion.id}</td>
                   <td className="pr-2">{criterion.dimension.replaceAll('_', ' ')}</td>
                   <td className="pr-2">{criterion.text}{criterion.source === 'suggested' && <span className="block text-xs text-slate-500">Suggested from role knowledge — review this criterion</span>}</td>
-                  <td>{criterion.priority ?? 'Needs confirmation'}</td>
+                  <td>{criterion.priority ?? 'Needs confirmation'}{criterion.priority_source === 'suggested' && <span className="block text-xs text-slate-500">AI suggested</span>}</td>
                 </tr>
               ))}</tbody>
             </table>
             <p className="mt-3">Minimum experience: {jd.screening_profile.minimum_years_experience ?? 'Unspecified'}</p>
             <p>Fresher eligibility: {jd.screening_profile.fresher_eligibility ?? 'Unspecified'}</p>
-            <p className="mt-3 font-semibold">Dimension weights {jd.screening_profile.weights_confirmed ? '(confirmed)' : '(needs confirmation)'}</p>
+            <p className="mt-3 font-semibold">Dimension weights {jd.screening_profile.weights_confirmed ? '(confirmed)' : jd.screening_profile.weights_source === 'suggested' ? '(AI suggested; included in JD approval)' : '(needs confirmation)'}</p>
             {Object.entries(jd.screening_profile.dimension_weights).map(([dimension, weight]) => (
               <p key={dimension}>{dimension.replaceAll('_', ' ')}: {weight}%</p>
             ))}
             <p>Google Form: {jd.screening_profile.google_form_url ?? 'Not provided (optional)'}</p>
             <p className="text-slate-500">URL format is validated; form accessibility and configuration are not checked.</p>
           </div>
+        )}
+
+        {jd?.status === 'awaiting_review' && (
+          <ChatMessage
+            role="assistant"
+            content={'Review the JD and screening profile above. AI suggestions are marked. Tell me what to add, change, or remove. Say **accept and save** to approve the JD together with the displayed criteria, priorities, and weights, or **cancel** to discard this workflow.'}
+          />
         )}
 
         {jd?.status === 'awaiting_review' && (jd.acceptance_errors ?? []).length > 0 && (

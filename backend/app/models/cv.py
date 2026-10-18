@@ -6,6 +6,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     UniqueConstraint,
     Uuid,
@@ -51,6 +52,16 @@ class CVSource(Base):
         server_default=func.now(),
         onupdate=func.now(),
     )
+
+
+class CVSourceCheck(Base):
+    """Durable metadata-only checks; importing remains a recruiter action."""
+    __tablename__ = "cv_source_checks"
+    source_id: Mapped[UUID] = mapped_column(ForeignKey("cv_sources.id", ondelete="CASCADE"), primary_key=True)
+    pending_file_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error_code: Mapped[str | None] = mapped_column(String(80))
 
 
 class CVDocument(Base):
@@ -153,9 +164,6 @@ class CVFileVersion(Base):
 
 class Candidate(Base):
     __tablename__ = "candidates"
-    __table_args__ = (
-        UniqueConstraint("recruiter_id", "email", name="uq_candidates_recruiter_email"),
-    )
 
     id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     recruiter_id: Mapped[UUID] = mapped_column(

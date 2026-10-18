@@ -91,3 +91,13 @@
 .cv-screening-details blockquote { margin: 12px 0; padding: 10px 14px; background: #f5f9f7; border-left: 3px solid #59c7a8; overflow-wrap: anywhere; }
 .cv-criterion-result, .cv-incomplete-result { padding: 16px 0; border-top: 1px solid #e3ebe7; }
 .cv-review-flag { color: #856316; background: #fff8df; padding: 10px; border-radius: 8px; }
+.cv-source-notification { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 16px 0; padding: 16px; border: 1px solid #97e9c6; border-radius: 12px; background: #f0faf6; font-size: 13px; }
+.cv-source-notification strong { color: #172033; }
+.cv-source-notification p { margin-top: 4px; color: #526075; font-size: 12px; }
+.cv-source-notification button { flex-shrink: 0; }
+.cv-source-notification.has-error, .cv-check-warning { border-color: #f8d487; background: #fff8e8; }
+.cv-check-warning { padding: 12px; border: 1px solid #f8d487; border-radius: 10px; font-size: 13px; }
+.cv-other-notifications { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; font-size: 13px; }
+.cv-other-notifications button, .cv-new-badge { border-radius: 12px; padding: 3px 9px; background: #def6eb; color: #006747; font-size: 12px; font-weight: 600; }
+.cv-job-heading .cv-new-badge { display: inline-flex; width: fit-content; margin-top: 5px; }
+@media (max-width: 640px) { .cv-source-notification { align-items: flex-start; flex-direction: column; } }

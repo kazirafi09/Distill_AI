@@ -2,6 +2,7 @@
 import asyncio
 import httpx
 from app.core.config import get_settings
+from app.integrations.gemini_rate_limit import acquire_gemini_slot, pause_gemini_requests, retry_delay
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/"
 ADAPTER_VERSION = "cv-model-transport-1"
@@ -57,11 +58,26 @@ def check_response(response):
         raise ValueError(code)
 
 
+async def gemini_request(client, method, url, **kwargs):
+    settings = get_settings()
+    for attempt in range(settings.gemini_max_retries + 1):
+        await acquire_gemini_slot()
+        # Queue and cooldown waiting do not consume the network timeout.
+        async with asyncio.timeout(settings.cv_model_timeout_seconds):
+            response = await client.request(method, url, headers=headers(), **kwargs)
+        if response.status_code == 429:
+            await pause_gemini_requests(retry_delay(response, attempt))
+            if attempt < settings.gemini_max_retries:
+                continue
+        check_response(response)
+        return response
+
+
 async def model_version():
     settings = get_settings()
     async with httpx.AsyncClient(timeout=15) as client:
         if provider() == "gemini":
-            response = await client.get(API + model_name(), headers=headers())
+            response = await gemini_request(client, "GET", API + model_name())
             check_response(response)
             data = response.json()
             if "generateContent" not in data.get("supportedGenerationMethods", []):
@@ -79,9 +95,10 @@ async def model_version():
 async def generate_json(system, payload, schema, output_error):
     settings = get_settings()
     async with httpx.AsyncClient(timeout=httpx.Timeout(settings.cv_model_timeout_seconds, connect=10)) as client:
-        async with asyncio.timeout(settings.cv_model_timeout_seconds):
+        # Gemini manages its timeout per attempt, after acquiring a rate-limit slot.
+        async with asyncio.timeout(None if provider() == "gemini" else settings.cv_model_timeout_seconds):
             if provider() == "gemini":
-                response = await client.post(API + model_name() + ":generateContent", headers=headers(), json={
+                response = await gemini_request(client, "POST", API + model_name() + ":generateContent", json={
                     "systemInstruction": {"parts": [{"text": system.replace("/no_think", "")}]},
                     "contents": [{"role": "user", "parts": [{"text": payload}]}],
                     "generationConfig": {"responseFormat": {"text": {"mimeType": "APPLICATION_JSON", "schema": gemini_schema(schema)}},

@@ -11,12 +11,20 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models.user import User
+from app.models.auth_session import AuthSession
+from app.models.model_rate_limit import ModelRateLimit
 from app.models.jd import JDConversation, JobDescription
 from app.models.jd_reference import JDReference
+from app.models.question_bank import QuestionBank
 from app.models.assistant import AssistantConversation
 from app.models.cv import CVSource, CVDocument, CVFileVersion
 from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVIndex, ScreeningRun, CVAssessment
+from app.models.interviews import (
+    InterviewShortlist, InterviewShortlistMember, InterviewInvitation,
+    InvitationBatch, InvitationEmailJob, InterviewSession,
+)
+from app.models.interview_transcripts import InterviewTranscript, InterviewTranscriptTurn
 
 config = context.config
 

@@ -1,5 +1,6 @@
 """Durable entry points; wrappers supply authenticated recruiter identity."""
 import asyncio
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from time import monotonic
@@ -10,6 +11,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, text
 from starlette.concurrency import run_in_threadpool
 from app.core.config import get_settings
+from app.core.mcp_servers import get_mcp_servers
 from app.core.security import ALGORITHM
 from app.db.session import SessionFactory
 from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion
@@ -20,11 +22,40 @@ from app.services.cv.indexing import INDEX_VERSION, digest
 from app.services.cv.matching import MATCH_PROMPT, MATCH_VERSION, RequirementMatch
 from app.services.cv.parsing import local_versions, verify_integrity
 from app.integrations.cv_model import model_version, provider, model_name, context_tokens
-from app.services.cv.scoring import RUBRIC, calculate_scores, rank_assessments, validate_scoring_profile
+from app.services.cv.scoring import RUBRIC, rank_assessments, validate_scoring_profile
 
 WORKER_LOCK = 73101984023
 _versions_cache = None
 _versions_lock = asyncio.Lock()
+
+
+async def lock_screening_job(db, job_id):
+    """Serialize short saves and screening writes, before taking row locks."""
+    with db.no_autoflush:
+        await db.execute(text("SELECT pg_advisory_xact_lock(:key)"),
+                         {"key": job_id.int % (2**63 - 1)})
+
+
+async def commit_screening_write(db, job_id):
+    await lock_screening_job(db, job_id)
+    # A long-running worker may have cached a run before it was invalidated.
+    with db.no_autoflush:
+        for row in list(db.dirty):
+            if isinstance(row, ScreeningRun):
+                status = await db.scalar(select(ScreeningRun.status).where(ScreeningRun.id == row.id))
+                if status == "outdated":
+                    row.status = "outdated"
+    await db.commit()
+
+
+def valid_aggregate_score(score):
+    if not isinstance(score, dict) or isinstance(score.get("aggregate"), bool):
+        return False
+    try:
+        value = Decimal(str(score.get("aggregate")))
+        return value.is_finite() and 0 <= value <= 100
+    except (InvalidOperation, ValueError, TypeError):
+        return False
 
 
 async def owned_job(db, job_id, recruiter_id):
@@ -102,8 +133,8 @@ def run_public(run, assessments):
 
 async def start_job_screening(job_id, recruiter_id):
     async with SessionFactory() as db:
+        await lock_screening_job(db, job_id)
         job = await owned_job(db, job_id, recruiter_id)
-        await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": job_id.int % (2**63 - 1)})
         try:
             inputs = await inputs_for(db, job, recruiter_id)
         except Exception:
@@ -137,6 +168,11 @@ async def start_job_screening(job_id, recruiter_id):
 
 async def resume_run(run_id, recruiter_id):
     async with SessionFactory() as db:
+        job_id = await db.scalar(select(ScreeningRun.job_id).where(
+            ScreeningRun.id == run_id, ScreeningRun.recruiter_id == recruiter_id))
+        if job_id is None:
+            raise HTTPException(404, "Run not found.")
+        await lock_screening_job(db, job_id)
         run = await db.scalar(select(ScreeningRun).where(ScreeningRun.id == run_id, ScreeningRun.recruiter_id == recruiter_id).with_for_update())
         if not run:
             raise HTTPException(404, "Run not found.")
@@ -168,56 +204,119 @@ async def run_status(run_id, recruiter_id):
             "warnings": a.warnings, "error_code": a.error_code} for a in assessments]}
 
 
-async def get_screening_results(job_id, recruiter_id):
-    async with SessionFactory() as db:
-        job = await owned_job(db, job_id, recruiter_id)
-        runs = list(await db.scalars(select(ScreeningRun).where(ScreeningRun.job_id == job_id,
-            ScreeningRun.recruiter_id == recruiter_id).order_by(ScreeningRun.created_at.desc())))
-        current_key = None
-        warnings = []
+async def _get_current_screening_key(db, job, recruiter_id):
+    try:
+        return digest(await inputs_for(db, job, recruiter_id)), []
+    except Exception:
+        return None, ["CURRENT_MODEL_VERSIONS_UNAVAILABLE_RANKING_WITHHELD"]
+
+
+async def _assessment_parses_are_valid(db, assessment):
+    if assessment.status != "completed":
+        return True
+
+    for parse_id in assessment.parse_result_ids:
+        parsed = await db.get(CVParseResult, UUID(parse_id))
+        if not parsed or parsed.status != "completed":
+            return False
         try:
-            current_key = digest(await inputs_for(db, job, recruiter_id))
+            version = await db.get(CVFileVersion, parsed.file_version_id)
+            await run_in_threadpool(verify_integrity, version)
         except Exception:
-            warnings = ["CURRENT_MODEL_VERSIONS_UNAVAILABLE_RANKING_WITHHELD"]
-        results, history = [], []
-        for position, run in enumerate(runs):
-            outdated = current_key is not None and run.input_key != current_key
-            if outdated:
+            return False
+    return True
+
+
+def _assessment_result(assessment, candidate, outdated):
+    return {
+        "id": str(assessment.id),
+        "application_id": str(assessment.application_id),
+        "name": candidate.full_name,
+        "status": assessment.status,
+        "outdated": outdated,
+        "file_version_ids": assessment.file_version_ids,
+        "parse_result_ids": assessment.parse_result_ids,
+        "index_ids": assessment.index_ids,
+        "score": assessment.score,
+        "matches": assessment.matches,
+        "warnings": assessment.warnings,
+        "error_code": assessment.error_code,
+        "reused_from": assessment.reused_from,
+    }
+
+
+async def get_screening_results(job_id, recruiter_id, *, db=None):
+    """Return the latest run's results and summaries of previous runs."""
+    if db is None:
+        async with SessionFactory() as session:
+            result = await get_screening_results(job_id, recruiter_id, db=session)
+            await session.commit()
+            return result
+    await lock_screening_job(db, job_id)
+    # Save calls this twice. Reload committed state, rather than cached ORM rows.
+    db.expire_all()
+    return await _screening_results_in_session(db, job_id, recruiter_id)
+
+
+async def _screening_results_in_session(db, job_id, recruiter_id):
+    job = await owned_job(db, job_id, recruiter_id)
+    runs = list(await db.scalars(
+        select(ScreeningRun)
+        .where(ScreeningRun.job_id == job_id, ScreeningRun.recruiter_id == recruiter_id)
+        .order_by(ScreeningRun.created_at.desc())
+    ))
+    current_key, warnings = await _get_current_screening_key(db, job, recruiter_id)
+    results = []
+    history = []
+
+    for position, run in enumerate(runs):
+        inputs_changed = current_key is not None and run.input_key != current_key
+        if inputs_changed:
+            run.status = "outdated"
+        assessments = list(await db.scalars(
+            select(CVAssessment).where(CVAssessment.run_id == run.id)
+        ))
+        if position > 0:
+            history.append(run_public(run, assessments))
+            continue
+
+        for assessment in assessments:
+            application = await db.get(CandidateApplication, assessment.application_id)
+            candidate = await db.get(Candidate, application.candidate_id)
+            valid_parses = await _assessment_parses_are_valid(db, assessment)
+            if not valid_parses:
                 run.status = "outdated"
-            assessments = list(await db.scalars(select(CVAssessment).where(CVAssessment.run_id == run.id)))
-            if position:
-                history.append(run_public(run, assessments))
-                continue
-            for assessment in assessments:
-                application = await db.get(CandidateApplication, assessment.application_id)
-                candidate = await db.get(Candidate, application.candidate_id)
-                valid_parses = True
-                if assessment.status == "completed":
-                    for parse_id in assessment.parse_result_ids:
-                        parsed = await db.get(CVParseResult, UUID(parse_id))
-                        if not parsed or parsed.status != "completed":
-                            valid_parses = False
-                            break
-                        try:
-                            version = await db.get(CVFileVersion, parsed.file_version_id)
-                            await run_in_threadpool(verify_integrity, version)
-                        except Exception:
-                            valid_parses = False
-                            break
-                    if not valid_parses:
-                        run.status = "outdated"
-                results.append({"id": str(assessment.id), "application_id": str(assessment.application_id), "name": candidate.full_name,
-                    "status": assessment.status, "outdated": outdated or run.status == "outdated" or not valid_parses, "file_version_ids": assessment.file_version_ids,
-                    "parse_result_ids": assessment.parse_result_ids, "index_ids": assessment.index_ids,
-                    "score": assessment.score, "matches": assessment.matches, "warnings": assessment.warnings,
-                    "error_code": assessment.error_code, "reused_from": assessment.reused_from})
-        await db.commit()
-        ranked = rank_assessments([r for r in results if r["status"] == "completed" and not r["outdated"] and current_key])
-        ranked_ids = {r["id"] for r in ranked}
-        return {"job_id": str(job_id), "run": run_public(runs[0], list(await db.scalars(select(CVAssessment).where(CVAssessment.run_id == runs[0].id)))) if runs else None,
-            "profile": runs[0].inputs.get("profile") if runs else job.screening_profile,
-            "versions": runs[0].inputs.get("versions") if runs else None, "rubric": RUBRIC,
-            "ranked": ranked, "incomplete": [r for r in results if r["id"] not in ranked_ids], "history": history, "warnings": warnings}
+            outdated = inputs_changed or run.status == "outdated" or not valid_parses
+            results.append(_assessment_result(assessment, candidate, outdated))
+
+    eligible_results = [
+        result for result in results
+        if result["status"] == "completed" and not result["outdated"] and current_key
+        and valid_aggregate_score(result["score"])
+    ]
+    ranked = rank_assessments(eligible_results)
+    ranked_ids = {result["id"] for result in ranked}
+    incomplete = [result for result in results if result["id"] not in ranked_ids]
+
+    latest_run = runs[0] if runs else None
+    latest_run_summary = None
+    if latest_run:
+        latest_assessments = list(await db.scalars(
+            select(CVAssessment).where(CVAssessment.run_id == latest_run.id)
+        ))
+        latest_run_summary = run_public(latest_run, latest_assessments)
+
+    return {
+        "job_id": str(job_id),
+        "run": latest_run_summary,
+        "profile": latest_run.inputs.get("profile") if latest_run else job.screening_profile,
+        "versions": latest_run.inputs.get("versions") if latest_run else None,
+        "rubric": RUBRIC,
+        "ranked": ranked,
+        "incomplete": incomplete,
+        "history": history,
+        "warnings": warnings,
+    }
 
 
 def evidence_token(recruiter_id, assessment_id):
@@ -232,7 +331,7 @@ async def retrieve_through_mcp(job_id, application_id, query, recruiter_id, asse
     try:
         async with asyncio.timeout(180):
             async with httpx.AsyncClient(headers={"Authorization": "Bearer " + evidence_token(recruiter_id, assessment_id)}, timeout=180) as client:
-                async with streamable_http_client(get_settings().cv_mcp_url, http_client=client) as (read, write, _):
+                async with streamable_http_client(get_mcp_servers()["cv"]["url"], http_client=client) as (read, write, _):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
                         result = await session.call_tool("search_cv_evidence", {"job_id": str(job_id), "application_id": str(application_id), "query": query})

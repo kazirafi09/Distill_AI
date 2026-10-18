@@ -1,4 +1,5 @@
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 type ChatMessageProps = {
   role: 'user' | 'assistant'
@@ -32,7 +33,13 @@ export default function ChatMessage({
         </p>
       ) : (
         <div className="markdown text-sm text-slate-800">
-          <Markdown skipHtml>{content}</Markdown>
+          <Markdown skipHtml remarkPlugins={[remarkGfm]} components={{
+            table: ({ children }) => (
+              <div className="markdown-table-scroll" tabIndex={0} role="region" aria-label="Table">
+                <table>{children}</table>
+              </div>
+            ),
+          }}>{content}</Markdown>
         </div>
       )}
     </article>

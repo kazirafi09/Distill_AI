@@ -19,6 +19,21 @@ services:
       retries: 10
       start_period: 10s
 
+  pgadmin:
+    image: dpage/pgadmin4:9.18
+    profiles: ["tools"]
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@distill.example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}}
+    ports:
+      - "127.0.0.1:5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   chromadb:
     image: chromadb/chroma:1.5.9
     restart: unless-stopped
@@ -46,6 +61,23 @@ services:
       retries: 10
       start_period: 20s
 
+  # Same-laptop development only. Remote media uses LiveKit Cloud or a public deployment.
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command:
+      - --dev
+      - --bind
+      - 0.0.0.0
+      - --node-ip
+      - 127.0.0.1
+      - --udp-port
+      - "7882"
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "127.0.0.1:7881:7881"
+      - "127.0.0.1:7882:7882/udp"
+
   backend: &backend_runtime
     build:
       context: ./backend
@@ -59,6 +91,13 @@ services:
       OLLAMA_EMBEDDING_MODEL: "qwen3-embedding:0.6b"
       CV_PARSER_MODEL: "${CV_PARSER_MODEL:-qwen3:4b}"
       CV_MCP_URL: "http://backend:8000/mcp/"
+      EMAIL_MCP_URL: "http://email-mcp:8003/mcp/"
+      LIVEKIT_API_URL: "${LIVEKIT_API_URL:-http://livekit:7880}"
+      LIVEKIT_WS_URL: "${LIVEKIT_WS_URL:-ws://localhost:7880}"
+      LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:-devkey}"
+      LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:-secret}"
+      LIVEKIT_TOKEN_TTL_SECONDS: "300"
+      LIVEKIT_API_TIMEOUT_SECONDS: "10"
       CHROMA_HOST: chromadb
       CHROMA_PORT: "8000"
       WATCHFILES_FORCE_POLLING: "true"
@@ -106,6 +145,44 @@ services:
       backend:
         condition: service_healthy
 
+  cv-source-check-worker:
+    <<: *backend_runtime
+    command: ["python", "-m", "app.scripts.cv_source_check_worker"]
+    ports: []
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  email-mcp:
+    <<: *backend_runtime
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app.mcp_email:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8003"
+    ports:
+      - "127.0.0.1:8003:8003"
+    healthcheck:
+      disable: true
+
+  invitation-worker:
+    <<: *backend_runtime
+    command: ["python", "-m", "app.scripts.invitation_worker"]
+    ports: []
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+      email-mcp:
+        condition: service_started
+
   frontend:
     build:
       context: ./frontend
@@ -113,6 +190,7 @@ services:
     environment:
       API_PROXY_TARGET: "http://backend:8000"
       DOCKER_WATCH_POLLING: "true"
+      VITE_ALLOWED_HOST: "${VITE_ALLOWED_HOST:-}"
     ports:
       - "127.0.0.1:5173:5173"
     volumes:
@@ -122,8 +200,20 @@ services:
       backend:
         condition: service_healthy
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["remote-test"]
+    command:
+      - tunnel
+      - --no-autoupdate
+      - --url
+      - http://frontend:5173
+    depends_on:
+      - frontend
+
 volumes:
   postgres_data:
+  pgadmin_data:
   chroma_data:
   ollama_data:
   frontend_node_modules:

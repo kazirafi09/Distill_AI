@@ -13,6 +13,33 @@ type RequestOptions = {
   token?: string
   body?: unknown
   signal?: AbortSignal
+  cache?: RequestCache
+}
+
+let accessToken: string | null = null
+let refreshPromise: Promise<string> | null = null
+let sessionGeneration = 0
+
+export function clearSession() {
+  sessionGeneration += 1
+  accessToken = null
+  refreshPromise = null
+}
+
+async function refreshAccessToken() {
+  if (!refreshPromise) {
+    const generation = sessionGeneration
+    const pending = apiRequest<LoginResponse>('/auth/refresh', { method: 'POST' })
+      .then(result => {
+        if (generation !== sessionGeneration) throw new Error('Session changed')
+        accessToken = result.access_token
+        return accessToken
+      }).finally(() => {
+        if (refreshPromise === pending) refreshPromise = null
+      })
+    refreshPromise = pending
+  }
+  return refreshPromise
 }
 
 export async function apiRequest<T>(
@@ -26,11 +53,12 @@ export async function apiRequest<T>(
     headers.set('Content-Type', 'application/json')
   }
 
-  if (options.token) {
-    headers.set('Authorization', `Bearer ${options.token}`)
+  const requestToken = options.token ? accessToken ?? options.token : undefined
+  if (requestToken) {
+    headers.set('Authorization', `Bearer ${requestToken}`)
   }
 
-  const response = await fetch(`/api${path}`, {
+  const request = {
     method: options.method ?? 'GET',
     headers,
     body:
@@ -40,7 +68,24 @@ export async function apiRequest<T>(
           ? options.body as FormData
           : JSON.stringify(options.body),
     signal: options.signal,
-  })
+    cache: options.cache,
+    credentials: 'same-origin' as const,
+  }
+  let response = await fetch(`/api${path}`, request)
+  if (response.status === 401 && options.token) {
+    try {
+      const token = accessToken && accessToken !== requestToken
+        ? accessToken : await refreshAccessToken()
+      headers.set('Authorization', `Bearer ${token}`)
+      response = await fetch(`/api${path}`, request)
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        clearSession()
+        window.dispatchEvent(new Event('distill-session-expired'))
+      }
+      throw error
+    }
+  }
 
   const data: unknown = await response.json().catch(() => null)
 
@@ -95,6 +140,48 @@ export function loginRecruiter(email: string, password: string) {
     method: 'POST',
     body: { email, password },
   })
+}
+
+export function signupRecruiter(email: string, password: string) {
+  return apiRequest<LoginResponse>('/auth/signup', {
+    method: 'POST', body: { email, password },
+  })
+}
+
+export async function acceptSession(token: string): Promise<RecruiterSession> {
+  clearSession()
+  accessToken = token
+  const user = await getCurrentUser(token)
+  if (user.role !== 'recruiter') {
+    await logoutRecruiter()
+    throw new Error('Please sign in with a recruiter account.')
+  }
+  return { token: accessToken ?? token, user }
+}
+
+export async function restoreSession(): Promise<RecruiterSession | null> {
+  try {
+    const token = await refreshAccessToken()
+    const user = await getCurrentUser(token)
+    if (user.role !== 'recruiter') {
+      await logoutRecruiter()
+      return null
+    }
+    return { token, user }
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      clearSession()
+      return null
+    }
+    throw error
+  }
+}
+
+export async function logoutRecruiter() {
+  // Wait for a pending renewal before revoking its server session.
+  if (refreshPromise) await refreshPromise.catch(() => undefined)
+  await apiRequest<void>('/auth/logout', { method: 'POST' })
+  clearSession()
 }
 
 export function getCurrentUser(token: string) {

@@ -56,6 +56,7 @@ export function sendAssistantMessage(
   conversation: AssistantConversation,
   message: string,
   signal?: AbortSignal,
+  interviewSessionId?: string,
 ) {
   return apiRequest<AssistantConversation>(
     `/assistant/conversations/${conversation.conversation_id}/messages`,
@@ -66,6 +67,7 @@ export function sendAssistantMessage(
       body: {
         message,
         checkpoint_id: conversation.checkpoint_id,
+        ...(interviewSessionId ? { interview_session_id: interviewSessionId } : {}),
       },
     },
   )

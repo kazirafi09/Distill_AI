@@ -20,7 +20,7 @@ def verify_password(password: str, password_hash: str) -> bool:
     return password_hasher.verify(password, password_hash)
 
 
-def create_access_token(user_id: UUID) -> str:
+def create_access_token(user_id: UUID, session_id: UUID | None = None) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
 
@@ -32,6 +32,9 @@ def create_access_token(user_id: UUID) -> str:
         ),
     }
 
+    if session_id is not None:
+        payload["sid"] = str(session_id)
+
     return jwt.encode(
         payload,
         settings.jwt_secret_key.get_secret_value(),
@@ -39,7 +42,7 @@ def create_access_token(user_id: UUID) -> str:
     )
 
 
-def decode_access_token(token: str) -> UUID:
+def decode_access_identity(token: str) -> tuple[UUID, UUID | None]:
     settings = get_settings()
 
     payload = jwt.decode(
@@ -50,6 +53,10 @@ def decode_access_token(token: str) -> UUID:
     )
 
     try:
-        return UUID(payload["sub"])
+        return UUID(payload["sub"]), UUID(payload["sid"]) if "sid" in payload else None
     except (ValueError, TypeError, AttributeError):
         raise InvalidTokenError("Invalid user ID") from None
+
+
+def decode_access_token(token: str) -> UUID:
+    return decode_access_identity(token)[0]

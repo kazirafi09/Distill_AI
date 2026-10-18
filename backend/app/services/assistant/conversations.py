@@ -8,12 +8,15 @@ from starlette.concurrency import run_in_threadpool
 
 from app.models.assistant import AssistantConversation
 from app.models.jd import JDConversation, JobDescription
+from app.models.interviews import InterviewSession
+from app.models.cv import Candidate, CandidateApplication
 from app.services.jd.conversations import (
     act_on_jd_conversation,
     initialize_jd_conversation,
     load_jd_conversation,
 )
 from app.workflows.jd.intent import interpret_jd_message
+from app.workflows.jd.chat_routing import recruiter_context
 
 
 def assistant_config(conversation_id: UUID, user_id: UUID) -> dict:
@@ -118,7 +121,7 @@ async def list_assistant_conversations(db, graph, user_id, *, limit=20, offset=0
     return {"items": items, "limit": limit, "offset": offset}
 
 
-async def start_linked_jd(db, jd_graph, user_id, assistant_id, message):
+async def start_linked_jd(db, jd_graph, user_id, assistant_id, message, *, recruiter_messages=None, chat_context=None):
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     if assistant.jd_conversation_id is None:
         jd = JDConversation(recruiter_id=user_id)
@@ -127,7 +130,10 @@ async def start_linked_jd(db, jd_graph, user_id, assistant_id, message):
         assistant.jd_conversation_id = jd.id
     jd_id = assistant.jd_conversation_id
     await db.commit()
-    return await initialize_jd_conversation(db, jd_graph, user_id, jd_id, message)
+    return await initialize_jd_conversation(
+        db, jd_graph, user_id, jd_id, message,
+        recruiter_messages=recruiter_messages, chat_context=chat_context,
+    )
 
 
 async def complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_id):
@@ -141,7 +147,14 @@ async def complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_
     ), None)
     if not message:
         raise HTTPException(409, "The JD request is missing. Reload the conversation.")
-    await start_linked_jd(db, jd_graph, user_id, assistant_id, message)
+    messages = snapshot.values.get("messages", [])
+    await start_linked_jd(
+        db, jd_graph, user_id, assistant_id, message,
+        recruiter_messages=recruiter_context(messages),
+        chat_context=[{"role": m.type, "content": m.content} for m in messages
+                      if m.type in {"human", "ai"} and isinstance(m.content, str)
+                      and not getattr(m, "tool_calls", None)],
+    )
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     jd = await linked_jd(db, jd_graph, assistant)
     await run_in_threadpool(
@@ -154,11 +167,42 @@ async def complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_
 
 async def send_assistant_message(
     db, assistant_graph, jd_graph, user_id, assistant_id, message, checkpoint_id,
+    *, session_id: UUID | None = None, interview_session_id: UUID | None = None,
 ):
     assistant = await get_owned_assistant(db, user_id, assistant_id, lock=True)
     config = assistant_config(assistant_id, user_id)
+    if session_id is not None:
+        config["configurable"]["auth_session_id"] = str(session_id)
+    if interview_session_id is not None:
+        document = await db.scalar(
+            select(JobDescription)
+            .join(JDConversation, JobDescription.conversation_id == JDConversation.id)
+            .join(InterviewSession, InterviewSession.job_description_id == JobDescription.id)
+            .where(
+                InterviewSession.id == interview_session_id,
+                InterviewSession.recruiter_id == user_id,
+                JDConversation.recruiter_id == user_id,
+            )
+        )
+        if document is None:
+            raise HTTPException(404, "Interview session not found.")
+        config["configurable"]["interview_session_id"] = str(interview_session_id)
+        candidate_name = await db.scalar(
+            select(Candidate.full_name)
+            .join(CandidateApplication, CandidateApplication.candidate_id == Candidate.id)
+            .join(InterviewSession, InterviewSession.application_id == CandidateApplication.id)
+            .where(InterviewSession.id == interview_session_id, Candidate.recruiter_id == user_id)
+        )
+        config["configurable"]["interview_context"] = {
+            "job_title": document.title, "candidate_name": candidate_name,
+        }
+        config["configurable"]["saved_jd_content"] = (
+            f"Selected interview job title: {document.title}\n\n{document.content}"
+        )
     snapshot = await run_in_threadpool(assistant_graph.get_state, config)
     if snapshot.next or snapshot.values.get("jd_start_requested"):
+        if interview_session_id is not None:
+            raise HTTPException(409, "Finish the pending conversation request before using interview chat.")
         if snapshot.next:
             await run_in_threadpool(assistant_graph.invoke, None, config)
         await complete_jd_handoff(db, assistant_graph, jd_graph, user_id, assistant_id)
@@ -169,6 +213,8 @@ async def send_assistant_message(
         raise HTTPException(409, "Conversation changed. Reload it before continuing.")
     jd = await linked_jd(db, jd_graph, assistant)
     updates = context_updates(jd)
+    if interview_session_id is not None and updates["mode"] == "jd_workflow":
+        raise HTTPException(409, "Finish or cancel the active JD workflow before using this conversation for an interview.")
     if updates["mode"] == "jd_workflow":
         try:
             chat_context = [{"role": m.type, "content": m.content} for m in snapshot.values.get("messages", [])
@@ -214,7 +260,7 @@ async def send_assistant_message(
             interrupt_id=pending["id"] if pending else "workflow-recovery",
             action=action, message=message,
         )
-    if jd and jd.get("job_description"):
+    if interview_session_id is None and jd and jd.get("job_description"):
         # Fetch approved content from the ownership-checked database association.
         document = await db.scalar(select(JobDescription).where(
             JobDescription.conversation_id == assistant.jd_conversation_id,

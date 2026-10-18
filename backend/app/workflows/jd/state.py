@@ -43,3 +43,5 @@ class JDState(TypedDict):
     knowledge_authorization_quote: NotRequired[str | None]
     previous_draft_jd: NotRequired[str]
     assistant_context: NotRequired[list[dict]]
+    requirement_overrides: NotRequired[dict[str, dict[str, str]]]
+    targeted_edit: NotRequired[bool]

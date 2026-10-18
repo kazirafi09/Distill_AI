@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.models.jd import JDConversation, JobDescription
 from app.services.jd.screening_profiles import acceptance_errors, profile_errors
+from app.workflows.jd.chat_routing import recruiter_context
 
 
 def validate_acceptance(state: dict) -> None:
@@ -198,12 +199,17 @@ async def create_jd_conversation(
 async def initialize_jd_conversation(
     db: AsyncSession, graph: Any, recruiter_id: UUID,
     conversation_id: UUID, message: str,
+    *, recruiter_messages: list | None = None, chat_context: list[dict] | None = None,
 ) -> dict:
     conversation = await get_owned_conversation(db, recruiter_id, conversation_id, lock=True)
     config = workflow_config(conversation.id, recruiter_id)
     snapshot = await run_in_threadpool(graph.get_state, config)
     if not snapshot.values:
-        await run_in_threadpool(graph.invoke, {"messages": [HumanMessage(content=message)]}, config)
+        await run_in_threadpool(graph.invoke, {
+            "messages": [HumanMessage(content=m.content) for m in recruiter_messages]
+                        if recruiter_messages else [HumanMessage(content=message)],
+            "assistant_context": chat_context or [],
+        }, config)
     elif snapshot.next and not any(task.interrupts for task in snapshot.tasks):
         await run_in_threadpool(graph.invoke, None, config)
     snapshot = await run_in_threadpool(graph.get_state, config)
@@ -334,6 +340,7 @@ async def act_on_jd_conversation(
         )
 
     decision = {"action": action}
+    context_update = {"assistant_context": chat_context} if chat_context is not None else {}
 
     if action in {"reply", "revise"}:
         if not message:
@@ -344,15 +351,27 @@ async def act_on_jd_conversation(
 
         key = "message" if action == "reply" else "feedback"
         decision[key] = message
+        if action == "reply" and chat_context:
+            # Recover old chats whose workflow started from only "save this JD".
+            # Only user-authored facts become evidence; AI drafts stay references.
+            existing = {m.content for m in snapshot.values.get("messages", [])
+                        if isinstance(m, HumanMessage) and isinstance(m.content, str)}
+            candidates = [HumanMessage(content=item["content"]) for item in chat_context
+                          if item.get("role") in {"user", "human"}
+                          and isinstance(item.get("content"), str)]
+            missing = [m for m in recruiter_context(candidates) if m.content not in existing]
+            if missing:
+                context_update["messages"] = missing
 
     if action == "approve":
         validate_acceptance(snapshot.values)
+        decision["approval_message"] = message or "Approved via JD review."
         # Check the title before committing approval in the graph.
         extract_jd_title(snapshot.values["draft_jd"])
 
     await run_in_threadpool(
         graph.invoke,
-        Command(resume=decision, update={"assistant_context": chat_context} if chat_context is not None else None),
+        Command(resume=decision, update=context_update or None),
         config,
     )
 

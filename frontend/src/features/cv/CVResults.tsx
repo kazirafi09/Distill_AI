@@ -4,11 +4,11 @@ import { apiRequest } from '../../services/api'
 type Run = { id: string; status: string; total: number; finished: number; completed: number; error_code: string | null; profile_version: number; rubric_version: string }
 type Evidence = { quote: string; source_id: string; file_version_id: string; ocr_derived: boolean }
 type Match = { requirement_id: string; decision: string; justification: string; unsupported_requirement_parts?: string[]; evidence: Evidence[] }
-type Score = { aggregate: string; evidence_coverage: string; must_have_review_flags: string[];
+export type Score = { aggregate: string; evidence_coverage: string; must_have_review_flags: string[];
   dimensions: { dimension: string; score: string; approved_percentage: string; aggregate_contribution: string; justifications: { requirement_id: string; justification: string }[] }[];
   contributions: { requirement_id: string; priority: string; weight: string; credit: string; weighted_credit: string }[] }
-type Assessment = { id: string; application_id: string; name: string; rank?: number; status: string; outdated: boolean; score: Score | null; matches: Match[]; warnings: string[]; error_code: string | null }
-type Results = { run: Run | null; profile: { criteria: { id: string; text: string; priority: string }[] } | null;
+export type Assessment = { id: string; application_id: string; name: string; rank?: number; status: string; outdated: boolean; score: Score | null; matches: Match[]; warnings: string[]; error_code: string | null }
+type Results = { run: Run | null; profile: { criteria: { id: string; text: string; priority: string | null }[] } | null;
   ranked: Assessment[]; incomplete: Assessment[]; history: Run[]; warnings: string[] }
 
 const label = (value: string) => value.replaceAll('_', ' ').toLowerCase()
@@ -24,17 +24,19 @@ const errorLabels: Record<string, string> = {
   MATCH_SCHEMA_OR_EVIDENCE_INVALID: 'The model output did not pass evidence validation. Resume to retry.',
 }
 
-function AssessmentDetails({ item, criteria }: { item: Assessment; criteria: Results['profile'] }) {
+export function AssessmentDetails({ item, criteria }: { item: Assessment; criteria: Results['profile'] }) {
+  const aggregate = item.score?.aggregate == null ? NaN : Number(item.score.aggregate)
+  const score = Number.isFinite(aggregate) && aggregate >= 0 && aggregate <= 100 ? item.score : null
   return <details className="cv-screening-details"><summary>View breakdown, matches and evidence</summary>
-    {item.score && <>
-      <p>Evidence coverage (criteria with checked excerpts): {percent(String(Number(item.score.evidence_coverage) * 100))}. Missing documented support earns zero credit and is not proof of inability.</p>
-      {!!item.score.must_have_review_flags.length && <p className="cv-review-flag">Recruiter review: {item.score.must_have_review_flags.length} Must-have criteria are not fully met. No automatic rejection.</p>}
+    {score && <>
+      <p>Evidence coverage (criteria with checked excerpts): {percent(String(Number(score.evidence_coverage) * 100))}. Missing documented support earns zero credit and is not proof of inability.</p>
+      {!!(score.must_have_review_flags ?? []).length && <p className="cv-review-flag">Recruiter review: {(score.must_have_review_flags ?? []).length} Must-have criteria are not fully met. No automatic rejection.</p>}
       <table><thead><tr><th>Dimension</th><th>Score</th><th>Approved weight</th><th>Overall contribution</th></tr></thead>
-        <tbody>{item.score.dimensions.map(d => <tr key={d.dimension}><td>{label(d.dimension)}</td><td>{percent(d.score)}</td><td>{percent(d.approved_percentage)}</td><td>{Number(d.aggregate_contribution).toFixed(2)}</td></tr>)}</tbody></table>
+        <tbody>{(score.dimensions ?? []).map(d => <tr key={d.dimension}><td>{label(d.dimension)}</td><td>{percent(d.score)}</td><td>{percent(d.approved_percentage)}</td><td>{Number(d.aggregate_contribution).toFixed(2)}</td></tr>)}</tbody></table>
     </>}
     {item.matches.map(match => {
       const criterion = criteria?.criteria.find(c => c.id === match.requirement_id)
-      const contribution = item.score?.contributions.find(c => c.requirement_id === match.requirement_id)
+      const contribution = score?.contributions?.find(c => c.requirement_id === match.requirement_id)
       return <article className="cv-criterion-result" key={match.requirement_id}>
         <h4>{criterion?.text ?? match.requirement_id}</h4>
         <p>{criterion?.priority} · <strong>{label(match.decision)}</strong>{contribution && ` · weight ${contribution.weight}, credit ${contribution.credit}, weighted credit ${contribution.weighted_credit}`}</p>

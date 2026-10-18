@@ -1,0 +1,116 @@
+.invitation-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.invitation-panel-heading h3 {
+  color: #172033;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.invitation-panel-heading p {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.invitation-panel .invitation-refresh {
+  display: inline-flex;
+  min-height: 38px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.invitation-send-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.invitation-send-controls label {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.invitation-send-controls select {
+  width: 320px;
+  max-width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.invitation-send-controls .button-primary {
+  min-height: 40px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.invitation-panel .interview-table > tbody > tr > td:last-child {
+  min-width: 120px;
+  vertical-align: middle;
+}
+
+.invitation-revoke {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  padding: 5px 10px;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.invitation-revoke:hover:not(:disabled) {
+  border-color: #fca5a5;
+  background: #fef2f2;
+}
+
+.invitation-revoke:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.invitation-panel > .interview-hint:last-child {
+  margin-top: 16px;
+}
+
+@media (max-width: 640px) {
+  .invitation-send-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .invitation-send-controls select {
+    width: 100%;
+  }
+}
