@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     cv_parser_model: str = "qwen3:4b"
     gemini_api_key: SecretStr | None = None
     gemini_cv_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^[a-zA-Z0-9._-]+$")
-    gemini_requests_per_minute: int = Field(default=12, ge=1, le=14)
+    gemini_requests_per_minute: int = Field(default=12, ge=1, le=12)
     gemini_max_retries: int = Field(default=3, ge=0, le=5)
     cv_model_provider: Literal["auto", "ollama", "gemini"] = "auto"
     cv_gemini_context_tokens: int = Field(default=65536, ge=8192, le=1048576)
@@ -38,6 +38,17 @@ class Settings(BaseSettings):
     cv_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
     cv_model_context_tokens: int = Field(default=16384, ge=4096, le=32768)
     cv_model_output_tokens: int = Field(default=4096, ge=1024, le=8192)
+    # Interview analysis is explicit: never inherit CV provider auto-selection.
+    f5_model_provider: Literal["ollama", "gemini"] = "gemini"
+    f5_model_name: str = Field(default="gemini-3.5-flash-lite", min_length=1)
+    f5_model_context_tokens: int = Field(default=65536, ge=8192, le=1048576)
+    f5_model_output_tokens: int = Field(default=4096, ge=512, le=8192)
+    f5_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
+    f6_model_provider: Literal["ollama", "gemini"] = "gemini"
+    f6_model_name: str = Field(default="gemini-3.5-flash-lite", min_length=1)
+    f6_model_context_tokens: int = Field(default=262144, ge=8192, le=1048576)
+    f6_model_output_tokens: int = Field(default=8192, ge=512, le=16384)
+    f6_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
     cv_ocr_language: str = Field(default="eng", pattern=r"^[A-Za-z0-9_]+(?:\+[A-Za-z0-9_]+)*$")
     cv_ocr_timeout_seconds: int = Field(default=25, ge=1, le=60)
     cv_document_timeout_seconds: int = Field(default=180, ge=10, le=600)
