@@ -12,6 +12,7 @@ from app.models.interviews import InterviewSession, InterviewInvitation, Invitat
 from app.services.interviews.assessment_runs import owned_run, public_run
 from app.services.interviews.rubric import DIMENSIONS
 from app.services.interviews.analysis import digest
+from app.services.interviews.transcript_preparation import ordered_turns
 from app.services.recruitment_access import owned_job, owned_application
 
 
@@ -20,7 +21,8 @@ def label(value):
 
 
 def score(value):
-    return "Not assessed" if value is None else f"{value}/100"
+    from app.services.interviews.recruiter_report import number
+    return "Not assessed" if value is None else f"{number(value)}/100"
 
 
 def moment(value):
@@ -32,11 +34,15 @@ def moment(value):
 
 
 def clock(ms):
+    if ms is None:
+        return "Timing unavailable"
     seconds = max(0, ms or 0) // 1000
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
-async def document(run_id, recruiter_id):
+async def document(run_id, recruiter_id, report_type="recruiter", include_evidence=False):
+    if report_type not in {"recruiter", "technical"}:
+        raise HTTPException(422, "Choose a recruiter or technical report.")
     async with SessionFactory() as db:
         run = await owned_run(db, run_id, recruiter_id)
         if run.status != "completed":
@@ -68,15 +74,25 @@ async def document(run_id, recruiter_id):
         metadata = {"candidate": candidate, "job": {"id": str(job.id), "number": job.number, "title": job.title},
             "run": public_run(run), "generated_at": datetime.now(timezone.utc).isoformat(),
             "outdated": job.profile_version != run.inputs["profile_version"] or digest(job.screening_profile) != digest(run.inputs["profile_snapshot"])}
-        return assemble(metadata, run.inputs, f5, artifact if run.kind == "f6" else None, cv, parent,
+        if report_type == "recruiter":
+            from app.services.interviews.recruiter_report import assemble as recruiter_document
+            return recruiter_document(metadata, run.inputs, f5, artifact if run.kind == "f6" else None, cv, include_evidence)
+        report = assemble(metadata, run.inputs, f5, artifact if run.kind == "f6" else None, cv, parent,
             application=application, session=session, invitation=invitation, delivery=delivery)
+        report["report_type"] = "technical"
+        report["filename"] = f"distill-assessment-{run.id}-technical.pdf"
+        return report
 
 
 def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None, invitation=None, delivery=None):
     sections = []
+    evidence_entries = []
+    evidence_keys = {}
+    evidence_by_criterion = {}
     criteria = {c["id"]: c["text"] for c in inputs["criteria"]}
     prepared = inputs["prepared"]
-    turns = sorted(prepared["turns"], key=lambda t: (t["session_start_ms"], t["session_end_ms"], t["id"]))
+    turns = ordered_turns(prepared["turns"])
+    text_only = prepared.get("text_only", False)
     by_turn = {t["id"]: t for t in turns}
 
     def section(title):
@@ -88,15 +104,27 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
         if text is not None:
             blocks.append({"kind": kind, "text": str(text)})
 
-    def quotes(blocks, evidence):
+    def quotes(blocks, evidence, criterion_ids=()):
         for e in evidence:
             if e.get("turn_id"):
                 turn = by_turn.get(e["turn_id"], {})
-                origin = f"{clock(turn.get('session_start_ms', e.get('session_start_ms', 0)))} | {e['turn_id']}"
+                kind = "Interview"
+                origin = (f"Interview | {label(turn.get('speaker_role', 'Not recorded'))} | turn {e['turn_id']} | "
+                    f"{clock(turn.get('session_start_ms', e.get('session_start_ms', 0)))}-"
+                    f"{clock(turn.get('session_end_ms', e.get('session_end_ms', 0)))} | "
+                    f"transcript version {prepared.get('source_version') or prepared.get('fixture_revision') or 'Not recorded'}")
             else:
+                kind = "CV"
                 origin = f"CV {e.get('source_id')} | characters {e.get('start')}-{e.get('end')} | file {e.get('file_version_id')} | parse {e.get('parse_id')}"
-            add(blocks, e["quote"], "quote")
-            add(blocks, origin, "note")
+            key = digest({"origin": origin, "quote": e["quote"]})
+            if key not in evidence_keys:
+                evidence_keys[key] = f"E{len(evidence_entries) + 1}"
+                evidence_entries.append({"id": evidence_keys[key], "kind": kind, "source": origin, "quote": e["quote"]})
+            citation = evidence_keys[key]
+            blocks.append({"kind": "quote", "text": e["quote"], "citation_id": citation})
+            add(blocks, f"[{citation}] {origin}", "note")
+            for criterion_id in criterion_ids:
+                evidence_by_criterion.setdefault(criterion_id, set()).add(citation)
 
     b = section("1. Assessment overview")
     add(b, f"Candidate: {meta['candidate']['name']}", "heading")
@@ -111,8 +139,12 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
     for d in DIMENSIONS:
         summary = f5["dimension_summaries"][d]
         add(b, f"Interview {label(d)}: {score(summary['score_100'])} ({summary['assessed_count']} assessed; {summary['not_assessable_count']} not assessed)")
-    add(b, "Contents: assessment overview; job criteria; recruitment timeline; CV screening; interview scores; detailed Q&A; consolidated findings; complete chronological transcript; provenance.")
-    add(b, f"Recorded transcript span: {clock(turns[0]['session_start_ms'])} to {clock(max(t['session_end_ms'] for t in turns))}; {len(turns)} segments; {len(f5['results'])} question groups. This is the transcript span, not measured speaking time.")
+    add(b, "Contents: assessment overview; job criteria; recruitment timeline; CV screening; interview scores and full criterion coverage; detailed Q&A; consolidated findings; complete saved transcript; provenance; numbered evidence appendix." if text_only else "Contents: assessment overview; job criteria; recruitment timeline; CV screening; interview scores and full criterion coverage; detailed Q&A; consolidated findings; complete chronological transcript; provenance; numbered evidence appendix.")
+    if text_only:
+        add(b, prepared["timing_warning"], "warning")
+        add(b, f"Final saved text: {len(turns)} segments; {len(f5['results'])} question groups. No reliable shared transcript times or speaking duration are available.")
+    else:
+        add(b, f"Recorded transcript span: {clock(turns[0]['session_start_ms'])} to {clock(max(t['session_end_ms'] for t in turns))}; {len(turns)} segments; {len(f5['results'])} question groups. This is the transcript span, not measured speaking time.")
     if f6:
         add(b, f"Suitability: {label(f6['findings']['suitability']['position'])}", "heading")
         add(b, f6["findings"]["suitability"]["rationale"])
@@ -162,7 +194,7 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
             add(b, f"Saved decision: {label(m['decision'])}. {m['justification']}")
             for missing in m.get("unsupported_requirement_parts", []):
                 add(b, f"Unsupported requirement part: {missing}", "note")
-            quotes(b, m.get("evidence", []))
+            quotes(b, m.get("evidence", []), [m["requirement_id"]])
 
     b = section("5. Interview scoring and requirement coverage")
     add(b, "Each dimension averages its assessed 0-4 group scores and scales to 0-100. Unknown scores are excluded; assessed zeros are included. No combined CV/interview score is calculated.")
@@ -174,7 +206,7 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
         add(b, f"{criteria.get(c['criterion_id'], c['criterion_id'])}: {label(c['exploration'])}; groups {', '.join(c['group_ids']) or 'None'}")
 
     b = section("6. Detailed interview questions and answers")
-    add(b, "Groups bring together original questions, follow-ups, clarifications and later revisits. Within each group, segments retain chronological order. See section 8 for the uninterrupted interview sequence.", "note")
+    add(b, "Groups use saved text and conversational context. Segment save order is not verified cross-speaker chronology." if text_only else "Groups bring together original questions, follow-ups, clarifications and later revisits. Within each group, segments retain chronological order. See section 8 for the uninterrupted interview sequence.", "note")
     roles = (("question_turn_ids", "Question"), ("follow_up_turn_ids", "Follow-up"), ("clarification_turn_ids", "Clarification"),
              ("revisit_turn_ids", "Later revisit"), ("answer_turn_ids", "Answer"))
     for result in f5["results"]:
@@ -196,7 +228,7 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
             add(b, f"Reason: {label(e['reason'])}; accuracy basis: {label(e.get('accuracy_basis', 'Not recorded'))}", "note")
             if e.get("accuracy_warning"):
                 add(b, "Accuracy includes unverified model knowledge; it is not independently certified.", "warning")
-            quotes(b, e.get("evidence", []))
+            quotes(b, e.get("evidence", []), g["criterion_ids"])
             for ref in e.get("reference_evidence", []):
                 add(b, ref["quote"], "quote")
                 add(b, f"Reference {ref['reference_id']} | {ref.get('version', 'Not recorded')} | {ref.get('url', 'No URL recorded')}", "note")
@@ -211,7 +243,7 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
                 s = sources[sid]
                 add(b, f"Source {sid} | {label(s['kind'])}", "note")
                 add(b, s.get("justification") or f"Coverage: {label(s.get('exploration', 'Not recorded'))}")
-                quotes(b, s.get("evidence", []))
+                quotes(b, s.get("evidence", []), s.get("criterion_ids", []))
         add(b, f"Suitability: {label(f6['findings']['suitability']['position'])}", "heading")
         add(b, f6["findings"]["suitability"]["rationale"])
         cite(f6["findings"]["suitability"]["source_ids"])
@@ -225,8 +257,8 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
                 add(b, criteria[finding["criterion_id"]], "note")
                 cite(finding["source_ids"])
 
-    b = section("8. Complete chronological interview transcript")
-    add(b, "Every stored segment from the frozen analysis input is included, including unscored conversation and interruptions. Timing reflects the source timeline; overlapping segments are preserved. Audio and video are not embedded.", "note")
+    b = section("8. Complete saved interview transcript" if text_only else "8. Complete chronological interview transcript")
+    add(b, prepared["timing_warning"] if text_only else "Every stored segment from the frozen analysis input is included, including unscored conversation and interruptions. Timing reflects the source timeline; overlapping segments are preserved. Audio and video are not embedded.", "note")
     group_by_turn = {}
     for r in f5["results"]:
         for field, role in roles:
@@ -257,5 +289,33 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
     for warning in sorted(set(f5.get("warnings", []) + (f6 or {}).get("warnings", []))):
         add(b, label(warning), "warning")
     add(b, "Traceability verifies source references and quotes; it does not establish that every AI interpretation is correct. Review prompting, later corrections, missing evidence and transcription quality before using conclusions. This export contains no new model judgments.")
-    return {"schema": "distill-full-assessment-v1", "title": "Full candidate assessment report", "metadata": meta, "sections": sections,
+    coverage = {row["criterion_id"]: row for row in f5.get("coverage", [])}
+    matches = {row["requirement_id"]: row for row in (cv or {}).get("matches", [])}
+    coverage_rows = []
+    for criterion in inputs["criteria"]:
+        cid = criterion["id"]
+        row = coverage.get(cid)
+        refs = sorted(evidence_by_criterion.get(cid, []), key=lambda ref: int(ref[1:]))
+        coverage_rows.append([f"{cid}: {criterion['text']} ({criterion.get('priority') or 'Priority not recorded'})",
+            label(matches[cid]["decision"]) if cid in matches else "Not recorded",
+            label(row["exploration"]) if row else "Not recorded",
+            ", ".join(row["group_ids"]) if row and row["group_ids"] else "None recorded",
+            ", ".join(refs) if refs else "No cited quote"])
+    sections[4]["table"] = {"columns": ["Criterion", "CV screening", "Interview coverage", "Question groups", "Evidence"], "rows": coverage_rows}
+    b = section("10. Evidence appendix")
+    sections[-1]["id"] = "evidence-appendix"
+    add(b, "Numbered references identify exact saved quotes. Interview and CV sources remain distinct. These are frozen assessment sources; current original-file availability is not checked by this export.", "note")
+    if not evidence_entries:
+        add(b, "No quoted evidence was stored for this assessment. Missing evidence is not a zero score.", "warning")
+    for entry in evidence_entries:
+        blocks = [{"kind": "note", "text": entry["source"]}, {"kind": "quote", "text": entry["quote"]}]
+        # Each reference stays addressable in the browser and readable in exported PDFs.
+        b.append({"kind": "heading", "text": f"{entry['id']} | {entry['kind']} evidence", "anchor": entry["id"]})
+        b.extend(blocks)
+    source_versions = {"criteria": inputs["profile_version"],
+        "transcript": prepared.get("source_version") or prepared.get("fixture_revision"),
+        "interview_rubric": f5.get("rubric_version"),
+        "interview_prompt": inputs.get("f5_prompt_version", inputs.get("prompt_version")),
+        "assessment_report": inputs.get("rubric_version") if f6 else None}
+    return {"schema": "distill-full-assessment-v1", "title": "Full candidate assessment report", "metadata": {**meta, "source_versions": source_versions}, "sections": sections,
         "filename": f"distill-assessment-{meta['run']['id']}.pdf"}

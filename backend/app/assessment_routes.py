@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from app.auth import require_recruiter
@@ -51,15 +51,17 @@ async def recover(run_id: UUID, recruiter: Recruiter):
 
 
 @router.get("/runs/{run_id}/report")
-async def report(run_id: UUID, recruiter: Recruiter, response: Response):
+async def report(run_id: UUID, recruiter: Recruiter, response: Response,
+        report_type: Literal["recruiter", "technical"] = "recruiter", include_evidence: bool = False):
     response.headers["Cache-Control"] = "no-store"
-    return await full_report.document(run_id, recruiter.id)
+    return await full_report.document(run_id, recruiter.id, report_type, include_evidence)
 
 
 @router.get("/runs/{run_id}/report.pdf")
-async def pdf_report(run_id: UUID, recruiter: Recruiter):
+async def pdf_report(run_id: UUID, recruiter: Recruiter,
+        report_type: Literal["recruiter", "technical"] = "recruiter", include_evidence: bool = False):
     from app.services.interviews.report_pdf import render
-    document = await full_report.document(run_id, recruiter.id)
+    document = await full_report.document(run_id, recruiter.id, report_type, include_evidence)
     content = await run_in_threadpool(render, document)
     return Response(content, media_type="application/pdf", headers={"Cache-Control": "no-store",
         "Content-Disposition": f'attachment; filename="{document["filename"]}"',
