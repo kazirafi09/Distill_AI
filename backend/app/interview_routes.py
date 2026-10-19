@@ -106,6 +106,18 @@ async def read_transcript(job_id: UUID, application_id: UUID, recruiter: Recruit
     return await get_transcript(job_id, application_id, recruiter.id)
 
 
+class FinalizeTranscriptRequest(BaseModel):
+    transcript_id: UUID
+
+
+@router.post("/jobs/{job_id}/applications/{application_id}/transcript/finalize")
+async def finalize_saved_transcript(job_id: UUID, application_id: UUID,
+                                    request: FinalizeTranscriptRequest, recruiter: Recruiter, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    from app.services.interviews.transcript_finalization import retry_finalization
+    return await retry_finalization(job_id, application_id, recruiter.id, request.transcript_id)
+
+
 @router.get("/jobs/{job_id}/applications/{application_id}/session")
 async def get_session(job_id: UUID, application_id: UUID, recruiter: Recruiter, response: Response):
     response.headers["Cache-Control"] = "no-store"

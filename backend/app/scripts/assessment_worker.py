@@ -134,6 +134,8 @@ async def main(once=False, run_id=None):
     try:
         while True:
             try:
+                from app.services.interviews.transcript_finalization import reconcile_finalization
+                await reconcile_finalization()
                 worked = await run_once(run_id)
             except Exception:
                 logger.warning("Assessment queue unavailable; retrying")

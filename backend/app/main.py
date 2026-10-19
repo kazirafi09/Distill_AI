@@ -29,7 +29,7 @@ from app.assessment_routes import router as assessment_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
 from app.mcp_recruitment import mcp as recruitment_mcp, transport_app as recruitment_mcp_app
 from app.integrations.assistant_mcp import configure_mcp_loop
-from app.services.interviews.live_transcription import shutdown_transcriptions
+from app.services.interviews.live_transcription import shutdown_transcriptions, resume_active_transcriptions
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
         )
         async with cv_mcp.session_manager.run():
             async with recruitment_mcp.session_manager.run():
+                await resume_active_transcriptions()
                 yield
 
     finally:

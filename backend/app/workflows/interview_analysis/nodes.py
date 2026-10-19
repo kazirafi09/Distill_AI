@@ -94,6 +94,8 @@ async def persist_analysis(state: InterviewAnalysisState):
     results = state.get("results", [])
     synthetic = state["prepared"].get("synthetic", True)
     warnings = ["MODEL_JUDGMENTS_REQUIRE_REVIEW"]
+    if state["prepared"].get("text_only"):
+        warnings += ["TEXT_ONLY_FINALIZED", "UNVERIFIED_TIMING_AND_CROSS_SPEAKER_ORDER", "AUDIO_GAPS_MAY_OMIT_SPEECH"]
     if synthetic:
         warnings += ["SYNTHETIC_DEVELOPMENT_ONLY", "REAL_TRANSCRIPT_FINALIZATION_PENDING"]
     if not state.get("storage_run_id"):

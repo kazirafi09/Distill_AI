@@ -8,7 +8,7 @@ import json
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, model_validator
 from typing import Literal
-from sqlalchemy import select, func
+from sqlalchemy import select, func, cast, String, case
 
 from app.core.config import get_settings
 from app.db.session import SessionFactory
@@ -21,7 +21,7 @@ from app.models.interview_transcripts import InterviewTranscript, InterviewTrans
 from app.services.recruitment_access import owned_job, owned_application, lock_job
 from app.services.interviews.analysis import PROMPT_VERSION, digest
 from app.services.interviews.rubric import RUBRIC_VERSION, dimension_summaries
-from app.services.interviews.transcript_preparation import AlignedTurn, load_fixture
+from app.services.interviews.transcript_preparation import AlignedTurn, load_fixture, saved_text_content, ordered_turns
 
 FIXTURE = Path(__file__).resolve().parents[4] / "docs/fixtures/interview-analysis/jd-5"
 MAX_ATTEMPTS = 6
@@ -56,8 +56,21 @@ def transcript_blocker(transcript):
     if transcript is None:
         return "No saved transcript yet."
     if transcript.status != "completed" or not transcript.finalized_at or not transcript.content_sha256:
+        if transcript.status == "finalizing":
+            return "Finalizing the transcript. Analysis becomes available when timing and saved content are validated."
+        code = getattr(transcript, "error_code", None)
+        if code == "STREAM_TIMING_MISSING":
+            return "Audio timing was not recorded for this transcript. Saved text is available, but a new interview is needed for timed analysis."
+        if code == "CAPTURE_PROCESS_LOST":
+            return "Transcription was interrupted by a process restart. Saved text is retained; audio timing cannot be verified."
+        if code in {"TRANSCRIPT_CAPTURE_NEEDS_REVIEW", "STREAM_TIMING_OR_FLUSH_UNVERIFIED"}:
+            return "Audio capture contains an interruption or unverified timing. Review the saved transcript; analysis remains blocked."
         return "Transcript timing and finalization are not ready."
-    if BLOCKING_FLAGS.intersection(transcript.quality_flags):
+    if "NO_USABLE_TRANSCRIPT_TEXT" in transcript.quality_flags:
+        return "The interview ended without usable saved speech. No Q&A can be analyzed."
+    if "NO_USABLE_QA_TEXT" in transcript.quality_flags:
+        return "The transcript is final, but speech from both interviewer and candidate is needed for Q&A analysis."
+    if "TEXT_ONLY_FINALIZED" not in transcript.quality_flags and BLOCKING_FLAGS.intersection(transcript.quality_flags):
         return "Transcript has unresolved capture or timing gaps."
     return None
 
@@ -72,8 +85,14 @@ def real_prepared(transcript, rows, session):
     synthetic = transcript.provider == "synthetic_fixture"
     if synthetic and "SYNTHETIC_DEVELOPMENT_ONLY" not in transcript.quality_flags:
         raise HTTPException(409, "Synthetic transcript is missing its development label.")
+    text_only = "TEXT_ONLY_FINALIZED" in transcript.quality_flags and not synthetic
     turns = []
-    for row in rows:
+    if text_only:
+        try:
+            turns = saved_text_content(transcript, rows, session)
+        except ValueError:
+            raise HTTPException(409, "Saved transcript source identity or content is invalid.") from None
+    for row in ([] if text_only else rows):
         if BLOCKING_FLAGS.intersection(row.quality_flags):
             raise HTTPException(409, "Transcript segment has unresolved capture or timing gaps.")
         identity = f"recruiter-{session.recruiter_id}" if row.speaker_role == "recruiter" else f"candidate-{session.application_id}"
@@ -86,7 +105,7 @@ def real_prepared(transcript, rows, session):
             turns.append(AlignedTurn.model_validate({**data, "timing_basis": "synthetic_authoring_ground_truth" if synthetic else "finalized_session_timeline"}).model_dump(mode="json"))
         except ValueError:
             raise HTTPException(409, "Transcript has incomplete or invalid session timing.") from None
-    turns.sort(key=lambda t: (t["session_start_ms"], t["session_end_ms"], t["id"]))
+    turns = ordered_turns(turns)
     if {t["speaker_role"] for t in turns} != {"recruiter", "candidate"}:
         raise HTTPException(409, "Both speakers are required for interview analysis.")
     if digest(turns) != transcript.content_sha256:
@@ -98,7 +117,8 @@ def real_prepared(transcript, rows, session):
         "fixture_revision": transcript.version if synthetic else None,
         "source_snapshot_sha256": digest({"transcript": str(transcript.id), "version": transcript.version,
             "finalized_at": transcript.finalized_at.isoformat(), "content": transcript.content_sha256}),
-        "aligned_content_sha256": transcript.content_sha256, "turns": turns}
+        "aligned_content_sha256": transcript.content_sha256, "turns": turns,
+        **({"text_only": True, "timing_warning": "Saved text is final. Common timestamps and cross-speaker chronology are unverified; audio gaps may omit speech."} if text_only else {})}
 
 
 async def latest_transcript(db, job_id, application_id, recruiter_id):
@@ -268,6 +288,12 @@ async def run_result(run_id, recruiter_id):
     async with SessionFactory() as db:
         run = await owned_run(db, run_id, recruiter_id)
         result = await db.get(AssessmentResult, run.id)
+        result_payload = dict(result.payload) if result else None
+        if result_payload is not None and run.kind == "f6" and run.status == "needs_review":
+            # Older withheld results predate validation_error; keep their reason visible too.
+            validation = await db.get(AssessmentStage, (run.id, "f6-validation"))
+            if validation:
+                result_payload["validation_error"] = validation.payload.get("error")
         answers = list(await db.scalars(select(AssessmentAnswer).where(AssessmentAnswer.run_id == (run.parent_run_id if run.kind == "f6" else run.id))
             .order_by(AssessmentAnswer.ordinal)))
         payloads = [answer.payload for answer in answers]
@@ -276,7 +302,7 @@ async def run_result(run_id, recruiter_id):
         if run.kind == "f5":
             from app.services.interviews.consolidation_runs import eligibility
             f6 = await eligibility(db, run)
-        return {"run": public_run(run), "result": result.payload if result else None, "f6": f6,
+        return {"run": public_run(run), "result": result_payload, "f6": f6,
             "answers": payloads, "dimension_summaries": dimension_summaries(payloads),
             "criteria": run.inputs["criteria"], "source_turns": run.inputs["prepared"]["turns"],
             "outdated": job.profile_version != run.inputs.get("profile_version") or digest(
@@ -284,21 +310,58 @@ async def run_result(run_id, recruiter_id):
 
 
 async def workspace(job_id, recruiter_id, offset=0):
+    page_size = 5
     async with SessionFactory() as db:
         job = await owned_job(db, job_id, recruiter_id)
         rows = (await db.execute(select(CandidateApplication, Candidate).join(Candidate).where(
             CandidateApplication.job_description_id == job_id, Candidate.recruiter_id == recruiter_id)
-            .order_by(Candidate.full_name, CandidateApplication.id).offset(offset).limit(51))).all()
+            .order_by(Candidate.full_name, CandidateApplication.id).offset(offset).limit(page_size + 1))).all()
+        application_ids = [application.id for application, _ in rows[:page_size]]
+        # Load each candidate's latest stages independently of the 50-run history window.
+        # Synthetic interview runs deliberately have no real candidate outcome FK.
+        # Their owned test-source link is retained in inputs for display and reuse.
+        candidate_key = func.coalesce(cast(AssessmentRun.application_id, String), case(
+            (AssessmentRun.synthetic.is_(True), AssessmentRun.inputs["test_application_id"].astext)))
+        ranked_runs = select(AssessmentRun.id, func.row_number().over(
+            partition_by=(candidate_key, AssessmentRun.kind),
+            order_by=(AssessmentRun.created_at.desc(), AssessmentRun.id.desc())).label("ordinal")).where(
+            AssessmentRun.job_id == job_id, AssessmentRun.recruiter_id == recruiter_id,
+            candidate_key.in_([str(application_id) for application_id in application_ids])).subquery()
+        latest_runs = list(await db.scalars(select(AssessmentRun).where(AssessmentRun.id.in_(
+            select(ranked_runs.c.id).where(ranked_runs.c.ordinal == 1)))))
+        by_candidate = {(str(run.application_id) if run.application_id else
+            run.inputs.get("test_application_id") if run.synthetic else None, run.kind): run for run in latest_runs}
+        sessions = list(await db.scalars(select(InterviewSession).where(
+            InterviewSession.job_description_id == job_id, InterviewSession.recruiter_id == recruiter_id,
+            InterviewSession.application_id.in_(application_ids))))
+        by_session = {session.application_id: session for session in sessions}
         candidates = []
-        for application, candidate in rows[:50]:
+        for application, candidate in rows[:page_size]:
             transcript = await latest_transcript(db, job_id, application.id, recruiter_id)
             synthetic = transcript is not None and transcript.provider == "synthetic_fixture"
+            session = by_session.get(application.id)
+            f5 = by_candidate.get((str(application.id), "f5"))
+            f6 = by_candidate.get((str(application.id), "f6"))
+            def stage(run):
+                if run is None:
+                    return None
+                outdated = job.profile_version != run.inputs.get("profile_version") or digest(
+                    job.screening_profile) != digest(run.inputs.get("profile_snapshot"))
+                return {**public_run(run), "outdated": outdated}
             candidates.append({"id": str(application.id), "name": candidate.full_name + (" — synthetic test" if synthetic else ""),
+                "email": candidate.email, "synthetic": synthetic,
+                "interview_status": session.status if session else None,
+                "interviewed_at": session.completed_at.isoformat() if session and session.completed_at else None,
                 "transcript_status": transcript.status if transcript else None,
+                "transcript_version": transcript.version if transcript else None,
+                "analysis": stage(f5), "assessment": stage(f6),
+                "assessment_blocker": "The CV screening result pinned to this interview analysis is missing." if (
+                    f5 and f5.status == "completed" and not f6 and not f5.synthetic and not f5.cv_assessment_id) else None,
                 "blocker": transcript_blocker(transcript), "ready": transcript_blocker(transcript) is None})
         runs = list(await db.scalars(select(AssessmentRun).where(AssessmentRun.job_id == job_id,
             AssessmentRun.recruiter_id == recruiter_id).order_by(AssessmentRun.created_at.desc(), AssessmentRun.id.desc()).limit(51)))
         return {"candidates": candidates, "synthetic_demo_available": synthetic_demo_available(),
-            "has_more_candidates": len(rows) > 50, "offset": offset,
+            "has_more_candidates": len(rows) > page_size, "offset": offset, "page_size": page_size,
             "runs": [public_run(run) for run in runs[:50]], "has_more_runs": len(runs) > 50,
+            "profile_version": job.profile_version,
             "profile_ready": bool((job.screening_profile or {}).get("criteria") and job.profile_version)}

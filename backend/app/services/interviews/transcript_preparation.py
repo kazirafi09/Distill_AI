@@ -69,6 +69,39 @@ class AlignedTurn(SourceSegment):
     timing_basis: Literal["synthetic_authoring_ground_truth", "finalized_session_timeline"]
 
 
+class SavedTextTurn(SourceSegment):
+    """Final saved speech with no asserted common-clock or verified chronology."""
+    timing_basis: Literal["saved_text_order"] = "saved_text_order"
+
+    @model_validator(mode="after")
+    def no_invented_timing(self):
+        if self.session_start_ms is not None or self.session_end_ms is not None:
+            raise ValueError("TEXT_ONLY_TIMING_MUST_BE_UNKNOWN")
+        return self
+
+
+def ordered_turns(turns):
+    if turns and turns[0].get("timing_basis") == "saved_text_order":
+        return sorted(turns, key=lambda turn: (str(turn["created_at"]), turn["id"]))
+    return sorted(turns, key=lambda turn: (turn["session_start_ms"], turn["session_end_ms"], turn["id"]))
+
+
+def saved_text_content(transcript, rows, session):
+    """Keep real text and raw clocks; do not derive common timing from save order."""
+    result = []
+    for row in rows:
+        expected = (f"recruiter-{session.recruiter_id}" if row.speaker_role == "recruiter"
+                    else f"candidate-{session.application_id}")
+        if row.transcript_id != transcript.id or row.participant_identity != expected:
+            raise ValueError("TRANSCRIPT_SOURCE_IDENTITY_INVALID")
+        data = {name: getattr(row, name) for name in (
+            "id", "transcript_id", "stream_id", "source_event_key", "speaker_role", "participant_identity", "text",
+            "stream_start_ms", "stream_end_ms", "quality_flags", "created_at")}
+        data.update(session_start_ms=None, session_end_ms=None, timing_basis="saved_text_order")
+        result.append(SavedTextTurn.model_validate(data).model_dump(mode="json"))
+    return ordered_turns(result)
+
+
 def _parse(model, value):
     try:
         return model.model_validate(value)
