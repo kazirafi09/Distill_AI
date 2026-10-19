@@ -165,7 +165,7 @@ export default function App() {
   return (
     <div className="workspace-shell">
       <aside className={`workspace-sidebar${navigationOpen ? ' is-open' : ''}`}>
-        <button className="sidebar-menu" aria-label="Toggle navigation" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(value => !value)}>☰</button>
+        <button className="sidebar-menu" aria-label="Toggle navigation" aria-controls="workspace-navigation" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(value => !value)}>☰</button>
         <NavLink
           to="/recruiter/job-descriptions"
           className="sidebar-brand"
@@ -176,9 +176,10 @@ export default function App() {
           <span>Distill AI</span>
         </NavLink>
 
+        <span className="mobile-page-label">{navigation.find(item => location.pathname.startsWith(item.path))?.label ?? 'Recruiter workspace'}</span>
         <p className="sidebar-caption">Recruiter workspace</p>
 
-        <nav aria-label="Main navigation" className="sidebar-navigation">
+        <nav id="workspace-navigation" aria-label="Main navigation" className="sidebar-navigation" onKeyDown={event => { if (event.key === 'Escape') { setNavigationOpen(false); document.querySelector<HTMLButtonElement>('.sidebar-menu')?.focus() } }}>
           {navigation.map((item) => (
             <NavLink
               key={item.path}

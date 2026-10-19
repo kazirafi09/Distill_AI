@@ -11,10 +11,16 @@ export type Run = {
   parent_run_id: string | null
   can_recover?: boolean; recovered_from?: string | null
 }
-export type Candidate = { id: string; name: string; transcript_status: string | null; blocker: string | null; ready: boolean }
-export type Workspace = { candidates: Candidate[]; synthetic_demo_available: boolean; has_more_candidates: boolean; offset: number; runs: Run[]; has_more_runs: boolean; profile_ready: boolean }
-export type Turn = { id: string; speaker_role: 'candidate' | 'recruiter'; text: string; session_start_ms: number; session_end_ms: number }
-export type Evidence = { turn_id: string; quote: string; session_start_ms: number; session_end_ms: number }
+export type Candidate = {
+  id: string; name: string; email?: string; synthetic?: boolean
+  interview_status?: string | null; interviewed_at?: string | null
+  transcript_status: string | null; transcript_version?: number | null; blocker: string | null; ready: boolean
+  analysis?: (Run & { outdated: boolean }) | null; assessment?: (Run & { outdated: boolean }) | null
+  assessment_blocker?: string | null
+}
+export type Workspace = { candidates: Candidate[]; synthetic_demo_available: boolean; has_more_candidates: boolean; offset: number; page_size?: number; runs: Run[]; has_more_runs: boolean; profile_ready: boolean; profile_version?: number }
+export type Turn = { id: string; speaker_role: 'candidate' | 'recruiter'; text: string; session_start_ms: number | null; session_end_ms: number | null }
+export type Evidence = { turn_id: string; quote: string; session_start_ms: number | null; session_end_ms: number | null }
 export type Evaluation = {
   score: number | null; score_100: number | null; reason: string; justification: string; evidence: Evidence[]
   accuracy_warning: string | null; reference_evidence: { reference_id: string; quote: string; url: string; version: string }[]
@@ -27,7 +33,7 @@ export type Summary = { score_100: string | null; assessed_count: number; total_
 export type Finding = { criterion_id: string; text: string; source_ids: string[] }
 export type F6Source = { id: string; kind: 'cv' | 'interview' | 'coverage'; criterion_ids: string[];
   decision?: string; justification?: string; dimension?: string; score_100?: number | null; exploration?: string
-  evidence?: { quote: string; turn_id?: string; session_start_ms?: number; parse_id?: string; file_version_id?: string; source_id?: string; start?: number; end?: number }[] }
+  evidence?: { quote: string; turn_id?: string; session_start_ms?: number | null; parse_id?: string; file_version_id?: string; source_id?: string; start?: number; end?: number }[] }
 export type F6Report = { findings: Record<'strengths' | 'weaknesses' | 'evidence_gaps' | 'recommended_areas', Finding[]> & {
   suitability: { position: string; rationale: string; source_ids: string[] } }
   component_scores: { cv: { aggregate: string; dimensions: {dimension: string; score: string; approved_percentage: string}[]; note: string }; interview: Record<Dimension, Summary> }
@@ -35,6 +41,7 @@ export type F6Report = { findings: Record<'strengths' | 'weaknesses' | 'evidence
 }
 export type Result = {
   run: Run; result: null | { publishable: boolean; f6_ready: boolean; warnings: string[];
+    validation_error?: string | null;
     coverage?: { criterion_id: string; group_ids: string[]; exploration: string; performance_score: number | null }[];
     findings?: F6Report['findings']; component_scores?: F6Report['component_scores']; source_registry?: F6Source[]; provenance?: F6Report['provenance'] }
   answers: Answer[]; dimension_summaries: Record<Dimension, Summary>; criteria: { id: string; text: string }[]
@@ -55,9 +62,14 @@ export const recoverF5 = (token: string, id: string) =>
 export const startF6 = (token: string, id: string, confirmReview: boolean) =>
   apiRequest<Run>(`/assessments/runs/${id}/f6`, { token, method: 'POST', body: { confirm_f5_review: confirmReview } })
 
-export type FullReport = { title: string; filename: string; metadata: { run: Run; candidate: { name: string } };
-  sections: { title: string; blocks: { kind: 'text' | 'heading' | 'quote' | 'note' | 'warning'; text: string }[] }[] }
-export const loadFullReport = (token: string, id: string, signal?: AbortSignal) =>
-  apiRequest<FullReport>(`/assessments/runs/${id}/report`, { token, signal, cache: 'no-store' })
-export const downloadFullReport = (token: string, id: string, signal?: AbortSignal) =>
-  apiRequest<Blob>(`/assessments/runs/${id}/report.pdf`, { token, signal, cache: 'no-store', responseType: 'blob' })
+export type ReportType = 'recruiter' | 'technical'
+export type ReportBlock = { kind: 'text' | 'heading' | 'quote' | 'note' | 'warning'; text: string; citation_id?: string; citation_ids?: string[]; anchor?: string }
+export type FullReport = { title: string; filename: string; report_type?: ReportType; include_evidence?: boolean; metadata: {
+  run: Run; candidate: { name: string }; job?: { id: string; number: number; title: string }; generated_at?: string; outdated?: boolean
+  source_versions?: { criteria: number; transcript?: number | null; interview_rubric?: string | null; interview_prompt?: string | null; assessment_report?: string | null }
+}; sections: { id?: string; title: string; page_break_before?: boolean; blocks: ReportBlock[]; table?: { caption?: string; columns: string[]; rows: string[][]; widths?: number[] } }[] }
+const reportQuery = (reportType: ReportType, includeEvidence: boolean) => new URLSearchParams({report_type:reportType, include_evidence:String(includeEvidence)}).toString()
+export const loadFullReport = (token: string, id: string, signal?: AbortSignal, reportType: ReportType = 'recruiter', includeEvidence = false) =>
+  apiRequest<FullReport>(`/assessments/runs/${id}/report?${reportQuery(reportType, includeEvidence)}`, { token, signal, cache: 'no-store' })
+export const downloadFullReport = (token: string, id: string, signal?: AbortSignal, reportType: ReportType = 'recruiter', includeEvidence = false) =>
+  apiRequest<Blob>(`/assessments/runs/${id}/report.pdf?${reportQuery(reportType, includeEvidence)}`, { token, signal, cache: 'no-store', responseType: 'blob' })

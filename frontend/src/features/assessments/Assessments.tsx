@@ -5,6 +5,8 @@ import { useRecruitmentJob } from '../interviews/useRecruitmentJob'
 import { dimensions, loadResult, loadWorkspace, retryF5, recoverF5, startF5, startF6 } from './api'
 import ConsolidatedAssessment from './ConsolidatedAssessment'
 import FullReport from './FullReport'
+import CandidateWorkspace from './CandidateWorkspace'
+import { ActionButton, DemoBanner } from '../../components/recruitment/RecruitmentUI'
 import type { Answer, Result, Run, Turn, Workspace } from './api'
 import { errorLabel, scoreLabel, stageLabel, timeLabel } from './format'
 import '../interviews/InterviewLobby.css'
@@ -89,7 +91,7 @@ function RunDetails({ token, jobId, runId, onRetry, onRecover, onConsolidate, on
     {activeRun(run) && <div className="assessment-progress" role="status"><strong>{stageLabel(run.stage)}</strong><p>{run.completed_groups} of {run.total_groups || '…'} {run.kind === 'f6' ? 'analysis branches saved' : 'Q&A groups saved'} · execution attempt {run.attempt}/{run.max_attempts}</p>
       {run.total_groups > 0 && <progress value={run.completed_groups} max={run.total_groups} aria-label="Saved answer groups" />}
       {run.stage === 'retry_wait' && <p>Automatic retry scheduled for {new Date(run.next_attempt_at).toLocaleTimeString()}.</p>}</div>}
-    {run.error_code && <div className="assessment-error" role="alert"><p>{errorLabel(run.error_code)}</p>{run.can_retry && <button className="button-secondary" onClick={onRetry}>Retry from saved work</button>}{run.can_recover && <button className="button-secondary" disabled={busy} onClick={onRecover}>{busy ? 'Saving…' : 'Recover failed evaluation'}</button>}</div>}
+    {run.error_code && <div className="assessment-error" role="alert"><p>{errorLabel(run.error_code, data.result?.validation_error)}</p>{run.can_retry && <button className="button-secondary" onClick={onRetry}>Retry from saved work</button>}{run.can_recover && <button className="button-secondary" disabled={busy} onClick={onRecover}>{busy ? 'Saving…' : 'Recover failed evaluation'}</button>}</div>}
     {run.kind === 'f6' && data.result?.findings && data.result.source_registry && <ConsolidatedAssessment data={data} onEvidence={showEvidence} onParent={onSelect} />}
     {run.kind === 'f6' && <h2 className="f6-interview-heading">Saved interview scores</h2>}
     <div className="assessment-score-grid">{dimensions.map(dimension => {
@@ -104,7 +106,7 @@ function RunDetails({ token, jobId, runId, onRetry, onRecover, onConsolidate, on
     {!!data.result?.coverage?.length && <section className="assessment-coverage"><h2>Job requirement coverage</h2><p className="assessment-muted">Explored means discussed; it does not establish proficiency or verified experience.</p>
       {data.result.coverage.map(item => <div key={item.criterion_id}><span>{data.criteria.find(criterion => criterion.id === item.criterion_id)?.text ?? item.criterion_id}</span><strong>{item.exploration === 'unasked' ? 'Not asked' : `Explored · ${item.group_ids.length} groups`}</strong></div>)}</section>}
     <details ref={transcript} className="assessment-source"><summary>Source transcript · {data.source_turns.length} segments</summary>
-      <p className="assessment-muted">{run.synthetic ? 'Times come from the synthetic fixture timeline.' : 'Times come from the finalized interview timeline.'}</p>
+      <p className="assessment-muted">{data.source_turns.some(turn => turn.session_start_ms == null) ? 'Saved text is final. Shared timestamps and cross-speaker chronology are unverified; audio gaps may omit speech. Uncertain answers are not assessed.' : run.synthetic ? 'Times come from the synthetic fixture timeline.' : 'Times come from the finalized interview timeline.'}</p>
       {data.source_turns.map(turn => <div id={`assessment-turn-${turn.id}`} tabIndex={-1} key={turn.id} className={`assessment-source-turn ${highlight === turn.id ? 'is-highlighted' : ''}`}>
         <small>{turn.speaker_role === 'candidate' ? 'Candidate' : 'Interviewer'} · {timeLabel(turn.session_start_ms)}</small><p>{turn.text}</p></div>)}
     </details>
@@ -137,14 +139,14 @@ function AssessmentWorkspace({ token, jobId }: { token: string; jobId: string })
     void poll()
     return () => { controller.abort(); clearTimeout(timer) }
   }, [token, jobId, revision, offset])
-  const runId = params.get('run') ?? data?.runs[0]?.id
+  const runId = params.get('run') ?? undefined
   const candidate = data?.candidates.find(item => item.id === choice)
   function selectRun(id: string) { setParams(current => { current.set('run', id); return current }) }
-  async function act(retry = false, recover = false) {
+  async function act(retry = false, recover = false, applicationId?: string) {
     if (lock.current || (retry && !runId)) return
     lock.current = true; setBusy(true); setError('')
     try {
-      const run = recover ? await recoverF5(token, runId!) : retry ? await retryF5(token, runId!) : await startF5(token, jobId, choice === 'sample' ? undefined : choice)
+      const run = recover ? await recoverF5(token, runId!) : retry ? await retryF5(token, runId!) : await startF5(token, jobId, applicationId ?? (choice === 'sample' ? undefined : choice))
       if (mounted.current) { selectRun(run.id); setRevision(value => value + 1) }
     } catch (caught) { if (mounted.current) setError(caught instanceof Error ? caught.message : 'Could not save the request.') }
     finally { lock.current = false; if (mounted.current) setBusy(false) }
@@ -159,28 +161,29 @@ function AssessmentWorkspace({ token, jobId }: { token: string; jobId: string })
     finally { lock.current = false; if (mounted.current) setBusy(false) }
   }
   return <>
-    <div className="recruitment-context"><span>Review interview scores, explanations and the exact supporting transcript.</span><Link to={`/recruiter/interviews?job=${jobId}`}>Open interviews</Link></div>
-    {error && <p className="assessment-error" role="alert">{error}</p>}
-    {!data && !error && <p role="status">Loading assessments…</p>}
-    {data && <><section className="assessment-controls"><div><h2>Analyze an interview</h2><p>Choose a completed interview to analyze against this job’s criteria.</p></div>
+    <CandidateWorkspace hidden={!!runId} data={data} error={error} jobId={jobId} busy={busy} onRetry={() => setRevision(value => value + 1)} onOpen={selectRun} onStart={id => void act(false, false, id)} onPage={next => { setData(null); setOffset(next) }} />
+    {runId && <><div className="assessment-back"><ActionButton onClick={() => setParams(current => { current.delete('run'); return current })}>← All assessments</ActionButton><Link to={`/recruiter/interviews?job=${jobId}`}>Open interviews</Link></div>
+      {error && <p className="assessment-error" role="alert">{error}</p>}
+      <RunDetails key={`${runId}:${revision}`} token={token} jobId={jobId} runId={runId} busy={busy} onConsolidate={confirm => void consolidate(confirm)} onSelect={selectRun} onRecover={() => { if (!busy) void act(true, true) }} onRetry={() => { if (!busy) void act(true) }} />
+    </>}
+    {data && <details className="assessment-tools"><summary>Analysis tools and saved run history</summary><section className="assessment-controls"><div><h2>Analyze an interview</h2><p>Choose a completed interview to analyze against this job’s criteria.</p></div>
       <div className="assessment-control-row"><label>Interview<select value={choice} onChange={event => setChoice(event.target.value)}><option value="sample">{data.synthetic_demo_available ? 'Synthetic Laravel sample' : 'Select an interview'}</option>{data.candidates.map(item => <option key={item.id} value={item.id}>{item.name}{item.ready ? '' : ' · transcript not ready'}</option>)}</select></label>
         <button className="button-primary" disabled={busy || !data.profile_ready || (choice === 'sample' ? !data.synthetic_demo_available : !candidate?.ready)} onClick={() => void act()}>{busy ? 'Saving…' : choice === 'sample' && data.synthetic_demo_available ? 'Analyze sample' : 'Analyze interview'}</button></div>
-      {choice === 'sample' && data.synthetic_demo_available ? <p className="assessment-muted">Invented interview content. It is stored separately from candidate assessments. Existing identical runs are reused.</p> : candidate?.blocker && <p className="assessment-warning">{candidate.blocker}</p>}
+      {choice === 'sample' && data.synthetic_demo_available ? <DemoBanner>Invented interview content. It is stored separately from candidate assessments. Existing identical runs are reused.</DemoBanner> : candidate?.blocker && <p className="assessment-warning">{candidate.blocker}</p>}
       {!data.profile_ready && <p className="assessment-warning">Save this job’s screening criteria before starting analysis.</p>}
-      {(offset > 0 || data.has_more_candidates) && <div className="assessment-pages"><button className="button-secondary" disabled={offset === 0} onClick={() => { setOffset(value => Math.max(0, value - 50)); setChoice('sample') }}>Previous candidates</button><button className="button-secondary" disabled={!data.has_more_candidates} onClick={() => { setOffset(value => value + 50); setChoice('sample') }}>More candidates</button></div>}
+      {(offset > 0 || data.has_more_candidates) && <div className="assessment-pages"><button className="button-secondary" disabled={offset === 0} onClick={() => { setOffset(value => Math.max(0, value - (data.page_size ?? 5))); setChoice('sample') }}>Previous candidates</button><button className="button-secondary" disabled={!data.has_more_candidates} onClick={() => { setOffset(value => value + (data.page_size ?? 5)); setChoice('sample') }}>More candidates</button></div>}
     </section>
-    <div className="assessment-layout"><aside className="assessment-run-list"><h2>Assessment history</h2>{!data.runs.length && <p className="assessment-muted">No assessments yet. Start an interview analysis above.</p>}
+    <aside className="assessment-run-list assessment-history"><h2>Assessment history</h2>{!data.runs.length && <p className="assessment-muted">No assessments yet. Start an interview analysis above.</p>}
       {data.runs.map(run => <button key={run.id} className={runId === run.id ? 'is-selected' : ''} onClick={() => selectRun(run.id)}><strong>{run.label}</strong><span>{run.kind.toUpperCase()} · {run.synthetic ? 'Synthetic sample' : 'Interview'} · {stageLabel(run.stage)}</span><small>{new Date(run.created_at).toLocaleDateString()} · {run.completed_groups}/{run.total_groups || '…'} {run.kind === 'f6' ? 'branches' : 'groups'}</small></button>)}
       {data.has_more_runs && <p className="assessment-muted">Showing the latest 50 runs.</p>}</aside>
-      {runId ? <RunDetails key={`${runId}:${revision}`} token={token} jobId={jobId} runId={runId} busy={busy} onConsolidate={confirm => void consolidate(confirm)} onSelect={selectRun} onRecover={() => { if (!busy) void act(true, true) }} onRetry={() => { if (!busy) void act(true) }} /> : <div className="assessment-empty"><h2>Your interview results will appear here</h2><p>Four independent scores, answer explanations and linked evidence.</p></div>}
-    </div></>}
+    </details>}
   </>
 }
 
 export default function Assessments({ token }: { token: string }) {
   const picker = useRecruitmentJob(token)
   return <section className="recruitment-page assessments-page">
-    <RecruitmentHeader title="Assessments" description="Understand each interview through scored answers and source evidence." jobs={picker.jobs} job={picker.job} onSelect={id => { picker.selectJob(id) }} />
+    <RecruitmentHeader title="Assessments" description="Pick a job, then open a candidate’s assessment." jobs={picker.jobs} job={picker.job} onSelect={id => { picker.selectJob(id) }} />
     {picker.loading && <p role="status">Loading jobs…</p>}
     {picker.error && <div role="alert"><p>{picker.error}</p><button className="button-secondary" onClick={picker.retry}>Try again</button></div>}
     {!picker.loading && !picker.error && !picker.job && <p>No jobs yet. <Link to="/recruiter/job-descriptions">Create a job description</Link> to get started.</p>}
