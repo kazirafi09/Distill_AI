@@ -32,6 +32,9 @@
 .stage-transcript-turn { padding: 8px 0; border-bottom: 1px solid #edf0f4; }
 .stage-transcript-turn time, .stage-transcript-turn small { color: #64748b; font-size: 11px; }
 .stage-transcript-turn p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stage-transcript-interim { margin-top: 6px; padding: 10px; border: 1px dashed #99cfc0; border-radius: 8px; background: #f0fdf8; }
+.stage-transcript-interim p { color: #426358; }
+.stage-live-label { margin-left: 10px; color: #18735a; font-size: 11px; font-weight: 500; }
 .stage-transcript-sources { margin-top: 6px; color: #64748b; font-size: 11px; }
 .stage-transcript-sources summary { cursor: pointer; }
 .stage-transcript-sources > div { padding: 6px 0; overflow-wrap: anywhere; }
@@ -85,6 +88,7 @@
 .interview-live-room.is-stage { height: 100%; padding: 0; position: relative; background: #101728; }
 .is-stage > .lk-start-audio-button { position: absolute; top: 44px; left: 16px; z-index: 5; }
 .stage-call { position: relative; height: 100%; }
+.stage-microphone-warning { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 4; margin: 0; padding: 10px 12px; border: 1px solid #fcd34d; border-radius: 8px; background: #fffbeb; color: #92400e; font-size: 12px; }
 .stage-call > .lk-start-audio-button { position: absolute; top: 44px; left: 16px; z-index: 5; }
 .stage-main-video { height: 100%; background: #101728; }
 .stage-main-video .lk-participant-tile { height: 100%; border-radius: 0; }
