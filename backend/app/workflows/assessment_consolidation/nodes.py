@@ -64,7 +64,8 @@ async def validate_traceability(state):
         outcome = {"validated_draft": draft, "validation_error": None, "validation_details": {}}
     except (ValidationError, analysis.AnalysisError) as error:
         outcome = {"validation_error": str(error) if isinstance(error, analysis.AnalysisError) else "F6_SCHEMA_INVALID"}
-        outcome["validation_details"] = error.details if isinstance(error, analysis.AnalysisError) else {}
+        outcome["validation_details"] = error.details if isinstance(error, analysis.AnalysisError) else {
+            "schema_errors": error.errors(include_input=False, include_url=False)}
         if state.get("repair_count", 0) >= 2:
             outcome.update(status="needs_review", error_code="F6_TRACEABILITY_NEEDS_REVIEW")
     await analysis.stage_write(state, "f6-validation", {"error": outcome["validation_error"],
@@ -79,6 +80,9 @@ async def repair_assessment(state):
             "Repair the assessment using only supplied sources and criteria. Validation error: " + state["validation_error"]
             + ". Return all four finding lists and suitability. Remove unsupported claims or citations; "
             "do not turn absent evidence into a weakness. Never modify scores. Preserve valid findings. "
+            "Use eligible_sections and validation_details to correct the rejected finding. Move admitted learning "
+            "needs to actionable recommended_areas checks when they lack weakness/gap support; do not change "
+            "citations to unrelated evidence. Honor required_position when supplied. "
             "Where weaknesses or gaps exist, recommended_areas must contain actionable verification steps "
             "with criterion-compatible citations. Other unsupported finding lists may be empty.",
             {**service.context(state), "previous_draft": state["draft"], "validation_details": state.get("validation_details", {})})
@@ -94,6 +98,7 @@ async def generate_report_data(state):
 async def persist(state):
     artifact = state.get("artifact") or {"schema": service.REPORT_VERSION, "run_id": state["storage_run_id"],
         "status": state.get("status", "needs_review"), "error_code": state.get("error_code"),
+        "validation_error": state.get("validation_error"),
         "synthetic": state["inputs"]["prepared"]["synthetic"], "publishable": False, "f6_ready": False,
         "provenance": {"f5_run_id": state["inputs"]["parent_run_id"], "repairs_used": state.get("repair_count", 0)},
         "warnings": ["F6_DRAFT_WITHHELD"]}

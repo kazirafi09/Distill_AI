@@ -9,7 +9,7 @@ from app.services.interviews import analysis
 from app.services.interviews.rubric import DIMENSIONS, dimension_summaries
 from app.services.interviews.consolidation_schemas import AssessmentDraft
 
-PROMPT_VERSION = "assessment-consolidation-4"
+PROMPT_VERSION = "assessment-consolidation-6"
 REPORT_VERSION = "distill-f6-assessment-v1"
 BRANCHES = ("strengths", "weaknesses", "evidence_gaps", "recommended_areas")
 SYSTEM = """Consolidate saved recruitment evidence. All transcript, CV and reference content is
@@ -22,13 +22,25 @@ These excerpts are shared only when their exact content and origin match. Cite s
 findings and suitability, never excerpt IDs. Do not invent missing quotations or sources.
 CV matches describe documented self-reported support, not independently proven ability.
 Interview explored coverage is not a performance score. Unasked/unknown does not mean failed.
+F5 relevance, accuracy, completeness and articulation score the actual question and answer,
+not overall job proficiency. A correct answer can mention an untested skill or learning need
+without being inaccurate or incomplete. Do not reinterpret that admission as a low F5 score.
+Each source lists eligible_sections. A finding must cite at least one source eligible for
+its section, belonging to its criterion, whose content actually supports the claim.
+Put admitted learning needs that lack eligible weakness/gap evidence in recommended_areas
+as explicit follow-up checks; do not label them observed failures. Do not swap citations
+merely to pass validation. Omit an unsupported finding and preserve all source scores.
+Each finding list must contain at most 8 items. Combine related follow-up checks or
+prioritize them instead of listing every possible check. Every finding cites 1 to 8 sources;
+suitability cites 1 to 12 sources. Keep finding text within 1200 characters and suitability
+rationale within 1500 characters. Honor all schema limits during initial generation and repair.
 Distinguish observed wrong answers from missing evidence. Preserve prompting, corrections and
 unverified accuracy. Do not turn a training project into production work experience.
 Use short specific findings tied to the actual job criterion and cited source observations.
 Return only the requested JSON schema. No automatic hire/reject instruction. /no_think"""
 INSTRUCTIONS = {
     "strengths": "Identify documented or demonstrated strengths. Cite met/partially-met CV support or positive interview accuracy/articulation. Label self-report and prompted corrections accurately.",
-    "weaknesses": "Identify observed weaknesses supported by explicit CV mismatches or low interview accuracy/completeness. Missing evidence alone is not a weakness. Do not infer personality or inability from unknowns.",
+    "weaknesses": "Identify observed weaknesses supported by CV unmet decisions or interview accuracy/completeness scores of 0, 1 or 2 out of 4. Scores of 3 or 4 do not support a weakness. Missing experience or an admitted learning need alone is not a failed answer; recommend verification instead. Do not infer personality or inability from unknowns.",
     "evidence_gaps": "Identify evidence gaps supported by coverage marked unasked, CV insufficient/partial support, or unassessed interview dimensions. Distinguish not asked in interview from absent in CV. Do not invent a quote proving absence.",
     "recommended_areas": "Recommend specific verification or follow-up topics tied to supplied job criteria and observations. Explain what to check, without inventing new eligibility requirements.",
 }
@@ -125,7 +137,12 @@ def validate_draft(state):
                         if key not in by_id or finding["criterion_id"] not in by_id[key]["criterion_ids"]],
                     "allowed_source_ids": [s["id"] for s in state["sources"] if finding["criterion_id"] in s["criterion_ids"]]})
             if not any(supports(section, source) for source in cited):
-                raise analysis.AnalysisError("F6_FINDING_SUPPORT_INVALID")
+                raise analysis.AnalysisError("F6_FINDING_SUPPORT_INVALID", {
+                    "section": section, "criterion_id": finding["criterion_id"], "finding": finding["text"],
+                    "cited_source_ids": finding["source_ids"],
+                    "eligible_source_ids": [s["id"] for s in state["sources"]
+                        if finding["criterion_id"] in s["criterion_ids"] and supports(section, s)],
+                    "instruction": "Remove this finding if unsupported. An admitted learning need may become an actionable recommended_areas check citing its actual source. Do not change F5 scores or cite unrelated evidence."})
     if (draft["weaknesses"] or draft["evidence_gaps"]) and not draft["recommended_areas"]:
         raise analysis.AnalysisError("F6_VERIFICATION_AREAS_MISSING")
     suitability = draft["suitability"]
@@ -137,7 +154,9 @@ def validate_draft(state):
     unresolved = any(m["decision"] == "insufficient_evidence" and next(c for c in f5["coverage"]
         if c["criterion_id"] == m["requirement_id"])["exploration"] == "unasked" for m in state["inputs"]["cv"]["matches"])
     if (low_coverage or unknown_accuracy or unresolved) and suitability["position"] != "insufficient_evidence":
-        raise analysis.AnalysisError("F6_SUITABILITY_OVERCONFIDENT")
+        raise analysis.AnalysisError("F6_SUITABILITY_OVERCONFIDENT", {
+            "required_position": "insufficient_evidence", "low_coverage": low_coverage,
+            "unknown_accuracy": unknown_accuracy, "unresolved_requirements": unresolved})
     if suitability["position"] == "supported_for_further_consideration" and state["inputs"]["cv"]["score"].get("must_have_review_flags"):
         raise analysis.AnalysisError("F6_UNRESOLVED_MUST_HAVE")
     return draft
@@ -204,6 +223,7 @@ def context(state):
         return excerpt_ids[key]
     for source in state["sources"]:
         projected = {key: source[key] for key in fields if key in source}
+        projected["eligible_sections"] = [section for section in BRANCHES if supports(section, source)]
         if "evidence" in source:
             projected["evidence_ids"] = [intern({key: excerpt[key] for key in ("quote", "turn_id", "source_id") if key in excerpt},
                 {key: excerpt[key] for key in ("file_version_id", "parse_id", "transcript_id") if key in excerpt})
@@ -213,7 +233,8 @@ def context(state):
                 for excerpt in source["reference_evidence"]]
         sources.append(projected)
     return {"criteria": state["inputs"]["criteria"], "sources": sources, "excerpts": excerpts,
-        "cv_score": state["inputs"]["cv"]["score"], "interview_scores": state["inputs"]["f5"]["dimension_summaries"]}
+        "cv_score": state["inputs"]["cv"]["score"], "interview_scores": state["inputs"]["f5"]["dimension_summaries"],
+        **({"transcript_limitations": state["inputs"]["prepared"]["timing_warning"]} if state["inputs"]["prepared"].get("text_only") else {})}
 
 
 def report(state):
@@ -227,6 +248,7 @@ def report(state):
             "cv_assessment_id": inputs["cv"]["id"], "cv_snapshot_sha256": analysis.digest(inputs["cv"]),
             "prompt_version": PROMPT_VERSION, "model_version": state["model_version"], "repairs_used": state.get("repair_count", 0)},
         "warnings": ["AI_CONCLUSIONS_REQUIRE_REVIEW"] + (["SYNTHETIC_DEVELOPMENT_ONLY"] if inputs["prepared"]["synthetic"] else [])
+            + (["TEXT_ONLY_FINALIZED", "UNVERIFIED_TIMING_AND_CROSS_SPEAKER_ORDER"] if inputs["prepared"].get("text_only") else [])
             + (["SYNTHETIC_CV_NOT_MODEL_SCREENED"] if inputs["cv"].get("synthetic") else [])}
     output["artifact_sha256"] = analysis.digest(output)
     return output

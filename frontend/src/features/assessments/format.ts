@@ -3,7 +3,8 @@ export function scoreLabel(value: string | number | null | undefined) {
   return `${Number(value).toFixed(Number(value) % 1 ? 2 : 0)}/100`
 }
 
-export function timeLabel(ms: number) {
+export function timeLabel(ms: number | null | undefined) {
+  if (ms == null) return 'Timing unavailable'
   const seconds = Math.floor(ms / 1000)
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
 }
@@ -19,9 +20,17 @@ export function stageLabel(stage: string) {
     completed: 'Completed', failed: 'Failed', needs_review: 'Needs review' } as Record<string, string>)[stage] ?? 'Processing'
 }
 
-export function errorLabel(code: string) {
+export function errorLabel(code: string, validationError?: string | null) {
   if (code === 'F6_INPUT_TOO_LARGE') return 'The saved assessment evidence exceeds the consolidation input budget. F5 results are preserved.'
-  if (code === 'F6_TRACEABILITY_NEEDS_REVIEW') return 'Traceability validation failed after two repairs. The draft report is withheld for review.'
+  if (code === 'F6_TRACEABILITY_NEEDS_REVIEW') {
+    const reason = ({
+      F6_FINDING_SUPPORT_INVALID: 'A finding cites evidence that does not support its classification as a strength, weakness or gap.',
+      F6_SUITABILITY_OVERCONFIDENT: 'The suitability conclusion is too confident for the available evidence.',
+      F6_CITATION_INVALID: 'A finding cites evidence that does not match its job requirement.',
+      F6_SCHEMA_INVALID: 'The generated assessment has an invalid structure.',
+    } as Record<string, string>)[validationError ?? ''] ?? 'The generated assessment failed evidence validation.'
+    return `${reason} Two repair attempts did not resolve it. The full report and PDF are unavailable until validation passes.`
+  }
   if (code === 'F6_SOURCE_CHANGED') return 'The pinned CV or interview result changed. Start a new compatible assessment.'
   return ({ MODEL_AUTH_FAILED: 'Model authentication failed. Check the API configuration before retrying.',
     MODEL_API_KEY_MISSING: 'Configure the model API key before retrying.',

@@ -12,7 +12,7 @@ function Source({ source, onEvidence }: { source: F6Source; onEvidence: (id: str
     {source.decision && <p className="assessment-muted">Saved decision: {label(source.decision)}</p>}
     {source.score_100 !== undefined && <p className="assessment-muted">Saved score: {scoreLabel(source.score_100)}</p>}
     {source.evidence?.map((evidence, index) => <blockquote key={index}><p>{evidence.quote}</p>
-      {evidence.turn_id ? <button type="button" onClick={() => onEvidence(evidence.turn_id!)}>View transcript · {timeLabel(evidence.session_start_ms ?? 0)}</button>
+      {evidence.turn_id ? <button type="button" onClick={() => onEvidence(evidence.turn_id!)}>View transcript · {timeLabel(evidence.session_start_ms)}</button>
         : <small>CV source {evidence.source_id} · characters {evidence.start}–{evidence.end}<br />File version {evidence.file_version_id} · parse {evidence.parse_id}</small>}
     </blockquote>)}
   </div>
