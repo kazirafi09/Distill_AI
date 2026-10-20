@@ -17,12 +17,18 @@
   font-size: 16px;
   line-height: 1.5;
   color: #172033;
-  background: #f3f4f6;
+  --workspace-background: #f1f8f5;
+  --workspace-page-padding: 16px;
+  background: var(--workspace-background);
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+@media (max-width: 700px) {
+  :root { --workspace-page-padding: 14px; }
 }
 
 body {
@@ -41,6 +47,85 @@ textarea {
 :focus-visible {
   outline: 2px solid #059669;
   outline-offset: 3px;
+}
+
+/* One rounded focus treatment for editable fields and compound composers. */
+:root :is(input:not([type="checkbox"], [type="radio"], [type="range"],
+  [type="color"], [type="file"], [type="hidden"], [type="button"],
+  [type="submit"], [type="reset"], [type="image"]), textarea, select,
+  .field-focus-group):focus-within {
+  outline: none;
+  border-color: #047857;
+  box-shadow: 0 0 0 2px #d1fae5;
+}
+
+/* A compound composer has one focus border around the whole control. */
+:root .field-focus-group :is(input, textarea, select):focus {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Enhance the existing semantic selects; unsupported browsers retain their
+   native picker, with the shared field focus treatment above. */
+@supports (appearance: base-select) {
+  select, select::picker(select) { appearance: base-select; }
+  :root select { display: inline-flex; flex-flow: row nowrap; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; text-align: start; }
+  select::picker-icon {
+    content: "";
+    flex: 0 0 7px;
+    inline-size: 7px;
+    block-size: 7px;
+    margin-inline-start: auto;
+    margin-inline-end: 3px;
+    border-inline-end: 1.5px solid #526075;
+    border-block-end: 1.5px solid #526075;
+    transform: translateY(-2px) rotate(45deg);
+    transition: rotate 160ms ease;
+  }
+  select:open::picker-icon { rotate: 180deg; }
+  select::picker(select) {
+    padding: 6px;
+    margin-block: 5px;
+    border: 1px solid #dfe4ec;
+    border-radius: 12px;
+    background: white;
+    color: #172033;
+    box-shadow: 0 12px 32px rgb(15 23 42 / 14%);
+    max-block-size: min(320px, 50dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    opacity: 0;
+    transform: translateY(-5px);
+    transition: opacity 160ms ease, transform 160ms ease,
+      display 160ms allow-discrete, overlay 160ms allow-discrete;
+  }
+  select:open::picker(select) { opacity: 1; transform: translateY(0); }
+  @starting-style {
+    select:open::picker(select) { opacity: 0; transform: translateY(-5px); }
+  }
+  select option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: white;
+    color: #172033;
+    font-size: 13px;
+    line-height: 1.4;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    transition: background-color 120ms ease;
+  }
+  select option:checked { background: #e1f7ef; color: #065f46; font-weight: 650; }
+  select option:hover, select option:focus-visible { outline: none; background: #eef8f3; }
+  select option::checkmark { color: #047857; }
+  select option:disabled { color: #94a3b8; cursor: not-allowed; }
+  select:disabled { cursor: not-allowed; }
+  @media (prefers-reduced-motion: reduce) {
+    select::picker-icon, select::picker(select), select option { transition: none; }
+  }
 }
 
 @layer components {

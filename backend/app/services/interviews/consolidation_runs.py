@@ -107,7 +107,7 @@ async def load_bundle(db, parent):
     cv = synthetic_cv(parent) if parent.synthetic and not parent.inputs.get("test_application_id") else await real_cv(db, parent)
     bundle = {"parent_run_id": str(parent.id), "criteria": parent.inputs["criteria"],
         "profile_version": parent.inputs["profile_version"], "profile_snapshot": parent.inputs["profile_snapshot"],
-        "prepared": parent.inputs["prepared"], "references": parent.inputs["references"], "f5": f5, "cv": cv,
+        "prepared": parent.inputs["prepared"], "references": f5.get("references", parent.inputs["references"]), "f5": f5, "cv": cv,
         "f5_input_key": parent.input_key, "f5_prompt_version": parent.inputs["prompt_version"]}
     if parent.inputs.get("test_application_id"):
         bundle["test_application_id"] = parent.inputs["test_application_id"]

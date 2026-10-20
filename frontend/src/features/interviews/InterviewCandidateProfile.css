@@ -1,0 +1,23 @@
+.interview-candidate-profile { min-width: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.interview-candidate-profile > header h2 { font-size: 18px; font-weight: 700; }
+.interview-candidate-profile > header p, .interview-profile-note { color: #526075; }
+.interview-profile-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.interview-profile-metrics > div { padding: 12px; border: 1px solid #dfe4ec; border-radius: 10px; background: #f1f8f5; }
+.interview-profile-metrics dt { font-size: 11px; color: #526075; }
+.interview-profile-metrics dd { margin-top: 3px; font-size: 15px; font-weight: 700; }
+.interview-profile-note { font-size: 11px; margin: 10px 0; }
+.interview-profile-warning { padding: 10px; border: 1px solid #ead3a3; border-radius: 9px; background: #fffbf2; color: #80500a; }
+.interview-profile-link { display: inline-block; margin: 4px 0 16px; color: #047857; text-decoration: underline; }
+.interview-probe-topics { padding: 12px; margin-bottom: 18px; border: 1px solid #dfe4ec; border-radius: 10px; }
+.interview-probe-topics h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.interview-probe-topics ul { padding-left: 18px; list-style: disc; }
+.interview-probe-topics li + li { margin-top: 10px; }
+.interview-probe-topics li p { color: #526075; margin-top: 3px; }
+.interview-probe-topics details { margin-top: 12px; }
+.interview-probe-topics summary { cursor: pointer; color: #047857; }
+.interview-probe-topics table { display: block; overflow-x: auto; max-width: 100%; font-size: 11px; }
+.interview-probe-topics th, .interview-probe-topics td { padding: 6px; }
+.interview-probe-topics blockquote { padding: 8px; margin-block: 8px; background: #f1f8f5; border-radius: 8px; }
+.interview-profile-preview { margin-bottom: 14px; padding: 12px 16px; border: 1px solid #dfe4ec; border-radius: 12px; background: white; }
+.interview-profile-preview > summary { cursor: pointer; color: #047857; font-weight: 650; }
+.interview-profile-preview[open] > summary { margin-bottom: 16px; }

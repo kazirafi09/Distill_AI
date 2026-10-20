@@ -64,7 +64,7 @@ function ProfileDocument({ token, versionId, fileUrl, onSource }: { token: strin
   const prefix = `profile-${versionId}`
   function jump(id: string) {
     const section = sectionRefs.current?.querySelector<HTMLElement>(`[data-section="${id}"]`)
-    section?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    section?.scrollIntoView({ block: 'start', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }
   const excerpt = (path: string) => <Evidence items={result!.evidence ?? []} path={path} fileUrl={fileUrl} />
   return <div className="candidate-profile" ref={sectionRefs}>
@@ -90,5 +90,5 @@ export default function CandidateProfile({ token, application, initialFileId, on
   const files = application.cv_documents
   const file = files.find(item => item.id === selectedId) ?? files[0]
   if (!file) return <div className="ui-state"><h3>No CV linked</h3><p>Sync the application source to import this candidate’s CV.</p><button className="button-secondary" onClick={onSource}>View source information</button></div>
-  return <div className="profile-document">{files.length > 1 && <header className="profile-document-header"><label>CV document<select value={file.id} onChange={event => setSelectedId(event.target.value)}>{files.map((item, index) => <option value={item.id} key={item.id}>{candidateFileLabel(application.full_name, item.original_filename, index, files.length)}</option>)}</select></label></header>}{file.file_version_id ? <ProfileDocument key={file.file_version_id} token={token} versionId={file.file_version_id} fileUrl={`https://drive.google.com/file/d/${encodeURIComponent(file.drive_file_id)}/view`} onSource={onSource} /> : <div className="ui-state"><h3>CV download needed</h3><p>The profile will be available after this CV has been downloaded and read.</p><button className="button-secondary" onClick={onSource}>View source information</button></div>}</div>
+  return <div className="profile-document">{files.length > 1 && <header className="profile-document-header"><label>CV document<select aria-label="CV document" value={file.id} onChange={event => setSelectedId(event.target.value)}>{files.map((item, index) => <option value={item.id} key={item.id}>{candidateFileLabel(application.full_name, item.original_filename, index, files.length)}</option>)}</select></label></header>}{file.file_version_id ? <ProfileDocument key={file.file_version_id} token={token} versionId={file.file_version_id} fileUrl={`https://drive.google.com/file/d/${encodeURIComponent(file.drive_file_id)}/view`} onSource={onSource} /> : <div className="ui-state"><h3>CV download needed</h3><p>The profile will be available after this CV has been downloaded and read.</p><button className="button-secondary" onClick={onSource}>View source information</button></div>}</div>
 }

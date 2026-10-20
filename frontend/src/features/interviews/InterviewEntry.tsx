@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LocalUserChoices } from '@livekit/components-react'
 import { ApiError } from '../../services/api'
-import InterviewRoom, { DeviceCheck } from './InterviewRoom'
+import InterviewRoom from './InterviewRoom'
+import DeviceCheck from './DeviceCheck'
 import { joinCandidateInterview, loadCandidateInterviewStatus } from './sessionApi'
 import type { CandidateInterviewStatus, RoomCredentials } from './sessionApi'
+import CandidateInterviewView from './CandidateInterviewView'
+import type { CandidatePhase } from './CandidateInterviewView'
 
 type Entry = {
+  candidate_name: string
   job_title: string
   instructions: string
   expires_at: string
@@ -17,7 +21,9 @@ export default function InterviewEntry() {
   const [entry, setEntry] = useState<Entry | null>(null)
   const [status, setStatus] = useState<CandidateInterviewStatus | null>(null)
   const [choices, setChoices] = useState<LocalUserChoices | null>(null)
+  const [checkingDevices, setCheckingDevices] = useState(false)
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null)
+  const [connected, setConnected] = useState(false)
   const [busy, setBusy] = useState(false)
   const [invalidLink, setInvalidLink] = useState(false)
   const [pollError, setPollError] = useState('')
@@ -30,6 +36,7 @@ export default function InterviewEntry() {
   const reportError = useCallback((caught: Error) => setError(caught.message), [])
   const leave = useCallback(() => {
     setCredentials(null)
+    setConnected(false)
     setMessage('You left the call. You can rejoin while the interview is active.')
   }, [])
 
@@ -115,34 +122,24 @@ export default function InterviewEntry() {
   }
 
   const finished = status?.status === 'completed' || status?.status === 'cancelled'
-  return <main className="candidate-interview-page">
-    <h1>Join your interview</h1>
-    {error && <p role="alert">{error}</p>}
-    {!entry && !error && <p role="status">Checking your interview link…</p>}
-    {entry && <>
-      <h2>{entry.job_title}</h2>
-      <p>{entry.instructions}</p>
-      <p>Your link is valid until {new Date(entry.expires_at).toLocaleString()}.</p>
-      {pollError && <p role="alert">Status check failed: {pollError}</p>}
-      {finished ? <p role="status">This interview has finished.</p>
-        : status?.status === 'closing' ? <p role="status">The recruiter is ending this interview.</p>
-        : !invalidLink && <>
-          {!choices && <DeviceCheck name="Candidate" onReady={value => { setChoices(value); setError('') }} />}
-          {choices && !credentials && <>
-            <p role="status">{!status ? 'Checking interview status…' : status.can_join
-              ? 'The recruiter admitted you. You can join now.'
-              : status.status === 'waiting_for_recruiter' ? 'Waiting for the recruiter to start the interview.'
-                : 'Waiting for the recruiter to admit you.'}</p>
-            <div className="interview-test-actions">
-              <button className="button-primary" disabled={busy || !status?.can_join} onClick={() => void join()}>{busy ? 'Joining…' : 'Join interview'}</button>
-              <button className="button-secondary" disabled={busy} onClick={() => setChoices(null)}>Check devices again</button>
-            </div>
-          </>}
-          {credentials && choices && <InterviewRoom credentials={credentials} choices={choices}
-            onLeave={leave} onError={reportError} />}
-          {message && <p role="status">{message}</p>}
-          <p>Leave exits your call; the recruiter ends the interview. Audio and video are not being recorded in this test.</p>
-        </>}
-    </>}
-  </main>
+  const phase: CandidatePhase = invalidLink || (!entry && error) ? 'unavailable'
+    : finished ? 'finished' : status?.status === 'closing' ? 'ending'
+      : credentials && choices ? 'call' : !entry ? 'checking' : !choices || checkingDevices ? 'devices'
+        : status?.can_join ? 'ready' : 'waiting'
+  const statusText = phase === 'call' ? connected ? 'Connected' : 'Connecting…'
+    : phase === 'finished' ? 'Interview finished' : phase === 'ending' ? 'Interview ending'
+      : phase === 'unavailable' ? 'Invitation unavailable' : phase === 'checking' ? 'Checking invitation…'
+        : phase === 'devices' ? 'Check your devices' : !status ? 'Checking interview status…'
+          : status.can_join ? 'The recruiter admitted you. You can join now.'
+            : status.status === 'waiting_for_recruiter' ? 'Waiting for the recruiter to start the interview.'
+              : 'Waiting for the recruiter to admit you.'
+  return <CandidateInterviewView phase={phase} statusText={statusText} jobTitle={entry?.job_title}
+    instructions={entry?.instructions} expiresAt={entry?.expires_at} busy={busy}
+    error={[error, pollError && `Status check failed: ${pollError}`].filter(Boolean).join(' ')} notice={message}
+    onJoin={() => void join()} onRecheck={() => setCheckingDevices(true)}
+    canReturnToWaiting={!!choices} onWaiting={() => setCheckingDevices(false)}
+    deviceCheck={entry && phase === 'devices' ? <DeviceCheck name={entry.candidate_name} choices={choices} onReady={value => { setChoices(value); setCheckingDevices(false); setError('') }} /> : undefined}
+    call={credentials && choices ? <InterviewRoom credentials={credentials} choices={choices}
+      stage participantRole="candidate" candidateName="Interviewer"
+      onConnectionChange={setConnected} onLeave={leave} onError={reportError} /> : undefined} />
 }

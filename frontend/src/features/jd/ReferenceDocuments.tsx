@@ -14,6 +14,12 @@ import {
 import type { JDReference, ReferenceDocumentType, QuestionBank } from './api'
 
 type UploadDocumentType = ReferenceDocumentType | 'question_bank'
+const documentLabels: Record<UploadDocumentType, string> = {
+  prior_jd: 'Prior job description',
+  company_policy: 'Company policy',
+  question_bank: 'Question bank',
+  technical_reference: 'Technical / answer reference',
+}
 type ReferenceItem = Omit<JDReference, 'document_type'> & {
   document_type: UploadDocumentType
   is_archived?: boolean
@@ -194,8 +200,9 @@ export default function ReferenceDocuments({
       </div>
 
       <p className="mt-2 text-sm text-slate-500">
-        Upload prior JDs or company policies for JD creation, or question banks
-        for interview assistance. Question banks can be reused across your jobs.
+        Upload prior JDs and company policies for drafting, question banks for
+        interview assistance, or technical documentation and answer explanations
+        to support Q&A accuracy analysis. Documents can be reused across your jobs.
       </p>
 
       <form
@@ -206,6 +213,7 @@ export default function ReferenceDocuments({
         <label className="block text-sm font-medium">
           Document type
           <select
+            aria-label="Document type"
             value={documentType}
             disabled={busy}
             onChange={(event) => {
@@ -217,9 +225,8 @@ export default function ReferenceDocuments({
             className="mt-1 block w-full rounded-xl border
               border-slate-200 bg-white px-3 py-2 text-sm"
           >
-            <option value="prior_jd">Prior job description</option>
-            <option value="company_policy">Company policy</option>
-            <option value="question_bank">Question bank</option>
+            {Object.entries(documentLabels).map(([value, label]) =>
+              <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
 
@@ -301,11 +308,7 @@ export default function ReferenceDocuments({
 
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span className="text-xs text-slate-500">
-                  {reference.document_type === 'question_bank'
-                    ? 'Question bank'
-                    : reference.document_type === 'prior_jd'
-                    ? 'Prior JD'
-                    : 'Company policy'}
+                  {documentLabels[reference.document_type]}
                 </span>
 
                 <span
@@ -379,7 +382,9 @@ export default function ReferenceDocuments({
 
       <p className="mt-3 text-xs text-slate-500">
         {questionBanks
-          ? 'Ready question banks are searched by JD title when you ask for questions in the interview chat. PDF/DOCX extraction includes local OCR when needed.'
+          ? 'Ready question banks support interview suggestions and Q&A analysis. Only passages containing answer information can support technical accuracy; questions alone are not answer evidence.'
+          : documentType === 'technical_reference'
+          ? 'Upload PDF/DOCX technical documentation or reviewed answer explanations. Include the technology version in the document. Relevant passages support accuracy in new analyses; existing results stay unchanged.'
           : 'Ready references are searched when drafting or revising a JD. Uploading a reference does not change an existing draft.'}
       </p>
     </section>

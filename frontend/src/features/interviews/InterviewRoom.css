@@ -3,7 +3,7 @@
 .interview-test-panel p { margin: 10px 0; }
 .interview-test-panel select { display: block; max-width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; }
 .interview-test-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
-.interview-device-check { padding: 16px; border-radius: 8px; }
+.interview-device-check { padding: 16px; border-radius: 8px; --lk-font-family: "Roboto", Arial, sans-serif; font-family: var(--lk-font-family); }
 .interview-device-check .lk-prejoin { margin: 16px auto; }
 .interview-live-room { border-radius: 8px; padding: 12px; }
 .interview-connection-status { padding: 8px; }

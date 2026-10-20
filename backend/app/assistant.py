@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.auth import DatabaseSession, bearer, require_recruiter
 from app.core.security import decode_access_identity
 from app.models.user import User
+from app.services.assistant.streaming import conversation_stream
 from app.services.assistant.conversations import (
     assistant_response, create_assistant_conversation, get_owned_assistant,
     open_saved_jd, send_assistant_jd_action, send_assistant_message,
@@ -66,12 +67,17 @@ async def send_message(
     user: Recruiter, db: DatabaseSession,
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer)],
 ):
-    return await send_assistant_message(
-        db, request.app.state.assistant_graph, request.app.state.jd_graph,
-        user.id, conversation_id, body.message, body.checkpoint_id,
-        session_id=decode_access_identity(credentials.credentials)[1],
-        interview_session_id=body.interview_session_id,
-    )
+    async def send():
+        return await send_assistant_message(
+            db, request.app.state.assistant_graph, request.app.state.jd_graph,
+            user.id, conversation_id, body.message, body.checkpoint_id,
+            session_id=decode_access_identity(credentials.credentials)[1],
+            interview_session_id=body.interview_session_id,
+        )
+
+    if "text/event-stream" in request.headers.get("accept", ""):
+        return conversation_stream(send)
+    return await send()
 
 
 @router.post("/conversations/{conversation_id}/jd-actions")
@@ -79,10 +85,15 @@ async def send_jd_action(
     conversation_id: UUID, body: AssistantJDAction, request: Request,
     user: Recruiter, db: DatabaseSession,
 ):
-    return await send_assistant_jd_action(
-        db, request.app.state.assistant_graph, request.app.state.jd_graph,
-        user.id, conversation_id, **body.model_dump(),
-    )
+    async def send():
+        return await send_assistant_jd_action(
+            db, request.app.state.assistant_graph, request.app.state.jd_graph,
+            user.id, conversation_id, **body.model_dump(),
+        )
+
+    if "text/event-stream" in request.headers.get("accept", ""):
+        return conversation_stream(send)
+    return await send()
 
 
 @router.post("/job-descriptions/{description_id}/conversation")

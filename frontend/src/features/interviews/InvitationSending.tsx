@@ -16,6 +16,7 @@ export default function InvitationSending({ token, jobId, canSend }: {
   const [preview, setPreview] = useState<InvitationPreview | null>(null)
   const [statuses, setStatuses] = useState<InvitationStatus[]>([])
   const [busy, setBusy] = useState(false)
+  const [operation, setOperation] = useState<'preview' | 'queue' | 'revoke' | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [refresh, setRefresh] = useState(0)
@@ -42,10 +43,11 @@ export default function InvitationSending({ token, jobId, canSend }: {
     return () => { mounted.current = false; controller.abort(); clearTimeout(timer) }
   }, [token, jobId, refresh])
 
-  async function perform(action: () => Promise<void>) {
+  async function perform(action: () => Promise<void>, operation: 'preview' | 'queue' | 'revoke') {
     if (requestLock.current) return
     requestLock.current = true
     setBusy(true)
+    setOperation(operation)
     setError('')
     try {
       await action()
@@ -56,7 +58,7 @@ export default function InvitationSending({ token, jobId, canSend }: {
       }
     } finally {
       requestLock.current = false
-      if (mounted.current) setBusy(false)
+      if (mounted.current) { setBusy(false); setOperation(null) }
     }
   }
 
@@ -71,9 +73,9 @@ export default function InvitationSending({ token, jobId, canSend }: {
     </div>
     {!canSend && <p className="interview-hint">Save your current selection and refresh outdated screening results first.</p>}
     {error && <p role="alert" className="interview-notice is-error">{error}</p>}
-    {message && <p role="status" className="interview-notice">{message}</p>}
+    {message && <p role="status" data-motion-success className="interview-notice">{message}</p>}
     <div className="invitation-send-controls">
-      <label>Invitation action <select value={mode} disabled={busy} onChange={event => {
+      <label>Invitation action <select aria-label="Invitation action" value={mode} disabled={busy} onChange={event => {
         setMode(event.target.value as InvitationMode); setPreview(null)
       }}>
         <option value="new">Send new invitations</option>
@@ -83,7 +85,7 @@ export default function InvitationSending({ token, jobId, canSend }: {
       <button type="button" className="button-primary" disabled={busy || !canSend} onClick={() => void perform(async () => {
         const next = await prepareInvitations(token, jobId, mode)
         if (mounted.current) setPreview(next)
-      })}>Send interview invitations</button>
+      }, 'preview')}>{operation === 'preview' ? 'Preparing preview…' : 'Review invitations'}</button>
     </div>
     {preview && <div className="interview-notice">
       <h4>Review {preview.job_title}</h4>
@@ -99,7 +101,7 @@ export default function InvitationSending({ token, jobId, canSend }: {
         <button className="button-primary" disabled={busy || !canSend || !preview.send_count} onClick={() => void perform(async () => {
           const result = await confirmInvitations(token, jobId, preview)
           if (mounted.current) { setMessage(result.message); setPreview(null); setRefresh(value => value + 1) }
-        })}>Confirm and queue {preview.send_count} emails</button>
+        }, 'queue')}>{operation === 'queue' ? 'Queueing emails…' : `Confirm and queue ${preview.send_count} emails`}</button>
         <button className="button-secondary" disabled={busy} onClick={() => setPreview(null)}>Cancel</button>
       </div>
     </div>}
@@ -115,7 +117,7 @@ export default function InvitationSending({ token, jobId, canSend }: {
             await revokeInvitation(token, jobId, item.id)
             const next = await loadInvitations(token, jobId)
             if (mounted.current) { setStatuses(next); setPreview(null) }
-          })
+          }, 'revoke')
         }}>Revoke link</button></td>
       </tr>)}</tbody>
     </table></div>}

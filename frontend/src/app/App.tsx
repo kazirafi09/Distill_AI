@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Navigate,
   NavLink,
@@ -15,10 +15,15 @@ import { useCVSourceChecks } from '../features/cv/useCVSourceChecks'
 import Interviews from '../features/interviews/Interviews'
 import Invitations from '../features/interviews/Invitations'
 import InterviewEntry from '../features/interviews/InterviewEntry'
+import CandidateInterviewPreview from '../features/interviews/CandidateInterviewPreview'
 import Assessments from '../features/assessments/Assessments'
+import Dashboard from '../features/dashboard/Dashboard'
+import SidebarDrawer from '../components/motion/SidebarDrawer'
+import { useSidebarIndicator, useWorkspaceMotion } from '../components/motion/useWorkspaceMotion'
 import type { RecruiterSession } from '../services/api'
 import { logoutRecruiter, restoreSession } from '../services/api'
 import './App.css'
+import '../components/motion/motion.css'
 
 
 const navigation = [
@@ -30,21 +35,12 @@ const navigation = [
   { path: '/recruiter/assessments', label: 'Assessments', mark: 'A' },
 ]
 
-function FeaturePlaceholder({ title }: { title: string }) {
-  return (
-    <section className="feature-placeholder">
-      <h1 className="text-2xl font-bold">{title}</h1>
-      <p className="mt-2 text-sm text-slate-500">
-        This feature is planned. Its workspace will be added here.
-      </p>
-    </section>
-  )
-}
 
 export default function App() {
   const navigate = useNavigate()
   const location = useLocation()
-  const isInterviewEntry = location.pathname === '/interview'
+  const isInterviewPreview = import.meta.env.DEV && location.pathname === '/interview-preview'
+  const isInterviewEntry = location.pathname === '/interview' || isInterviewPreview
 
   const [connection, setConnection] = useState('Checking connection…')
   const [session, setSession] = useState<RecruiterSession | null>(null)
@@ -53,7 +49,17 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [restoreAttempt, setRestoreAttempt] = useState(0)
   const [signingOut, setSigningOut] = useState(false)
+  const [dashboardWelcome, setDashboardWelcome] = useState(false)
+  const finishDashboardWelcome = useCallback(() => setDashboardWelcome(false), [])
   const [navigationOpen, setNavigationOpen] = useState(false)
+  const menuRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  const navigationRef = useRef<HTMLElement>(null)
+  const closeNavigation = useCallback(() => setNavigationOpen(false), [])
+  const animatedPage = ['/recruiter/job-descriptions', '/recruiter/cv-screening', '/recruiter/interviews', '/recruiter/invitations'].includes(location.pathname)
+  useWorkspaceMotion(mainRef, session ? location.pathname : '')
+  useSidebarIndicator(navigationRef, `${session?.user.id ?? ''}:${location.pathname}`)
   const cvChecks = useCVSourceChecks(isInterviewEntry ? undefined : session?.token)
 
   useEffect(() => {
@@ -111,8 +117,9 @@ export default function App() {
 
   function handleLogin(nextSession: RecruiterSession) {
     setAuthError(null)
+    setDashboardWelcome(true)
     setSession(nextSession)
-    navigate('/recruiter/job-descriptions', { replace: true })
+    navigate('/recruiter/dashboard', { replace: true })
   }
 
   async function handleSignOut() {
@@ -128,7 +135,7 @@ export default function App() {
   }
 
   if (isInterviewEntry) {
-    return <InterviewEntry key={location.hash} />
+    return isInterviewPreview ? <CandidateInterviewPreview /> : <InterviewEntry key={location.hash} />
   }
 
   if (restoring || (!session && restoreFailed)) {
@@ -142,29 +149,19 @@ export default function App() {
 
   if (!session) {
     return (
-      <main className="app">
-        <h1 className="text-3xl font-bold">Distill AI</h1>
-        <p>Recruitment & Interview Intelligence Platform</p>
-
-        <p role="status" className="text-sm text-slate-500">
-          {connection}
-        </p>
-        {authError && <p role="alert">{authError}</p>}
-
         <Routes>
-          <Route path="/" element={<LoginForm onLogin={handleLogin} />} />
+          <Route path="/" element={<LoginForm onLogin={handleLogin} connection={connection} sessionError={authError} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </main>
     )
   }
 
   return (
     <div className="workspace-shell">
       <aside className={`workspace-sidebar${navigationOpen ? ' is-open' : ''}`}>
-        <button className="sidebar-menu" aria-label="Toggle navigation" aria-controls="workspace-navigation" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(value => !value)}>☰</button>
+        <button ref={menuRef} className="sidebar-menu" aria-label="Toggle navigation" aria-controls="workspace-navigation" aria-expanded={navigationOpen} onClick={() => setNavigationOpen(value => !value)}>☰</button>
         <NavLink
-          to="/recruiter/job-descriptions"
+          to="/recruiter/dashboard"
           className="sidebar-brand"
           aria-label="Distill AI home"
           onClick={() => setNavigationOpen(false)}
@@ -174,9 +171,10 @@ export default function App() {
         </NavLink>
 
         <span className="mobile-page-label">{navigation.find(item => location.pathname.startsWith(item.path))?.label ?? 'Recruiter workspace'}</span>
+        <SidebarDrawer open={navigationOpen} onClose={closeNavigation} trigger={menuRef} content={mainRef} drawer={drawerRef}>
         <p className="sidebar-caption">Recruiter workspace</p>
 
-        <nav id="workspace-navigation" aria-label="Main navigation" className="sidebar-navigation" onKeyDown={event => { if (event.key === 'Escape') { setNavigationOpen(false); document.querySelector<HTMLButtonElement>('.sidebar-menu')?.focus() } }}>
+        <nav ref={navigationRef} id="workspace-navigation" aria-label="Main navigation" className="sidebar-navigation" onKeyDown={event => { if (event.key === 'Escape') { setNavigationOpen(false); menuRef.current?.focus() } }}>
           {navigation.map((item) => (
             <NavLink
               key={item.path}
@@ -219,9 +217,11 @@ export default function App() {
           </button>
           {authError && <p role="alert">{authError}</p>}
         </div>
+        </SidebarDrawer>
       </aside>
+      <button className={`sidebar-backdrop${navigationOpen ? ' is-open' : ''}`} aria-label="Close navigation" tabIndex={-1} inert={!navigationOpen} onClick={closeNavigation} />
 
-      <main className="workspace-main">
+      <main ref={mainRef} className={`workspace-main${animatedPage ? ' motion-workspace' : ''}`}>
         <Routes>
           <Route
             path="/recruiter/invitations"
@@ -251,26 +251,11 @@ export default function App() {
             element={<Interviews key={session.user.id} token={session.token} userId={session.user.id} />}
           />
           <Route path="/recruiter/assessments" element={<Assessments key={session.user.id} token={session.token} />} />
-          {navigation
-            .filter(
-              (item) =>
-                item.path !== '/recruiter/job-descriptions' &&
-                item.path !== '/recruiter/cv-screening' &&
-                item.path !== '/recruiter/invitations' &&
-                item.path !== '/recruiter/interviews' &&
-                item.path !== '/recruiter/assessments',
-            )
-            .map((item) => (
-              <Route
-                key={item.path}
-                path={item.path}
-                element={<FeaturePlaceholder title={item.label} />}
-              />
-            ))}
+          <Route path="/recruiter/dashboard" element={<Dashboard key={session.user.id} token={session.token} userId={session.user.id} welcomeOnArrival={dashboardWelcome} onWelcomeHandled={finishDashboardWelcome} />} />
 
           <Route
             path="*"
-            element={<Navigate to="/recruiter/job-descriptions" replace />}
+            element={<Navigate to="/recruiter/dashboard" replace />}
           />
         </Routes>
       </main>

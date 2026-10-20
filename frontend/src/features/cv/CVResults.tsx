@@ -2,7 +2,7 @@ import { errorLabels } from './screeningMessages'
 import { useEffect, useRef, useState } from 'react'
 import { apiRequest } from '../../services/api'
 
-export type Run = { id: string; status: string; total: number; finished: number; completed: number; error_code: string | null; profile_version: number; rubric_version: string }
+export type Run = { id: string; status: string; total: number; finished: number; completed: number; error_code: string | null; profile_version: number; rubric_version: string; updated_at?: string }
 export type Evidence = { quote: string; source_id: string; file_version_id: string; ocr_derived: boolean }
 type Match = { requirement_id: string; decision: string; justification: string; unsupported_requirement_parts?: string[]; evidence: Evidence[] }
 export type Score = { aggregate: string; evidence_coverage: string; must_have_review_flags: string[];

@@ -264,6 +264,23 @@ async def load_jd_conversation(
         description_summary(document) if document else None
     )
 
+    # Approved SQL documents may have been edited after the graph finished.
+    # Expose the current document, rather than the historical approval checkpoint.
+    if document is not None:
+        from app.services.jd.edit_policy import description_details
+        details = await description_details(db, document)
+        response.update(
+            status="approved", draft_jd=document.content, approved_jd=document.content,
+            screening_profile=document.screening_profile, profile_version=document.profile_version,
+            interrupt=None, acceptance_errors=[],
+            screening_warnings=profile_errors(document.screening_profile),
+            **{key: details[key] for key in ("editable_content", "edit_version", "editing_locked", "posting_status")},
+        )
+    else:
+        from app.services.jd.screening_profiles import public_jd_narrative
+        response.update(editable_content=public_jd_narrative(response.get("draft_jd") or ""),
+                        edit_version=response["checkpoint_id"], editing_locked=False, posting_status=None)
+
     return response
 
 

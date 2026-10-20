@@ -5,8 +5,6 @@ from hashlib import sha256
 from threading import Lock
 from urllib.request import Request, urlopen
 
-import chromadb
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import get_settings
 
@@ -22,6 +20,8 @@ _index_lock = Lock()
 
 @lru_cache
 def get_reference_collection():
+    import chromadb
+
     settings = get_settings()
 
     client = chromadb.HttpClient(
@@ -92,6 +92,8 @@ def index_reference_document(
     document_type: str,
     extracted_text: str,
 ) -> int:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,

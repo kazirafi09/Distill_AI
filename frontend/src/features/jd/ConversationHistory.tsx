@@ -8,10 +8,9 @@ type Props = {
   refreshKey: string
   disabled: boolean
   onSelect: (id: string) => void
-  onNew: () => void
 }
 
-export default function ConversationHistory({ token, activeId, refreshKey, disabled, onSelect, onNew }: Props) {
+export default function ConversationHistory({ token, activeId, refreshKey, disabled, onSelect }: Props) {
   const [page, setPage] = useState(0)
   const [query, setQuery] = useState('')
   const [reload, setReload] = useState(0)
@@ -31,7 +30,6 @@ export default function ConversationHistory({ token, activeId, refreshKey, disab
     return () => controller.abort()
   }, [token, page, key])
   return <aside className="jd-conversations" aria-label="Conversations">
-    <button className="button-primary" disabled={disabled} onClick={onNew}>＋ New conversation</button>
     <label>Search conversations<input type="search" placeholder="Title on this page" value={query} onChange={event => setQuery(event.target.value)} /></label>
     <p className="panel-caption">All conversations</p>
     <div className="jd-conversation-list">

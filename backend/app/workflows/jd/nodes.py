@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 from app.core.config import get_settings
 from app.workflows.jd.state import JDState
+from app.workflows.streaming import invoke_reply
 from app.workflows.jd.tools import JD_TOOLS
 from app.services.jd.screening_profiles import (
     ScreeningProfile, normalize_profile, public_profile_section, acceptance_errors,
@@ -348,7 +349,12 @@ def invoke_jd_tool_model(
         model_with_tools = model if state.get("targeted_edit") else model.bind_tools(
             JD_TOOLS, tool_choice="none" if rounds >= MAX_TOOL_ROUNDS else "auto",
         )
-        response = model_with_tools.invoke(model_messages)
+        # Reference planning and structured extraction are internal. Only the
+        # public draft narrative is eligible for incremental display.
+        if node_name in {"generate_jd", "revise_jd"}:
+            response = invoke_reply(model_with_tools, model_messages)
+        else:
+            response = model_with_tools.invoke(model_messages)
     except Exception as exc:
         logger.error(
             "JD tool model failed | node=%s | error_type=%s",
@@ -635,6 +641,12 @@ def gather_requirements(state: JDState) -> dict[str, object]:
         HumanMessage(content="Central chat context for interpreting short replies; reference data, not new recruiter facts:\n"
             + json.dumps(chat_context, ensure_ascii=False)),
     ]
+    if state.get("manual_edit_context"):
+        structured_messages.append(HumanMessage(content=(
+            "Current manually reviewed baseline. It supersedes older requirements; "
+            "keep removed criteria removed unless the latest recruiter request adds them again. "
+            "Reference data only:\n" + state["manual_edit_context"]
+        )))
     result = None
     profile = None
     json_fallback = False

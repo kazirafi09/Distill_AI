@@ -14,6 +14,13 @@ import './Assessments.css'
 
 const activeRun = (run: Run) => ['queued', 'running'].includes(run.status)
 const titleCase = (text: string) => text.replaceAll('_', ' ').replace(/^./, c => c.toUpperCase())
+const retrievalLabels: Record<string, string> = {
+  retrieved: 'Relevant uploaded passages were supplied for accuracy review. Citations below identify passages actually used.',
+  partial: 'Some reference sources could not be searched. Accuracy review received only the available passages.',
+  failed: 'Reference retrieval was unavailable. No retrieved evidence was supplied for accuracy review.',
+  no_ready_sources: 'No ready supporting documents were available when this analysis started.',
+  no_relevant_matches: 'No sufficiently relevant reference passages were found for this question.',
+}
 
 function AnswerCard({ answer, turns, criteria, onEvidence }: {
   answer: Answer; turns: Turn[]; criteria: Result['criteria']; onEvidence: (id: string) => void
@@ -27,6 +34,8 @@ function AnswerCard({ answer, turns, criteria, onEvidence }: {
       {turns.filter(turn => contextIds.has(turn.id)).map(turn => <p key={turn.id}><strong>{turn.speaker_role === 'candidate' ? 'Candidate' : 'Interviewer'}:</strong> {turn.text}</p>)}
     </details>
     <details><summary>Score explanations and evidence</summary>
+      {answer.reference_retrieval && retrievalLabels[answer.reference_retrieval.status] &&
+        <p className="assessment-muted">{retrievalLabels[answer.reference_retrieval.status]}</p>}
       {dimensions.map(dimension => {
         const evaluation = answer.evaluations[dimension]
         return <section className="assessment-explanation" key={dimension}>
@@ -36,7 +45,10 @@ function AnswerCard({ answer, turns, criteria, onEvidence }: {
           {evaluation.evidence.map((evidence, index) => <blockquote key={`${evidence.turn_id}-${index}`}><p>{evidence.quote}</p>
             <button type="button" onClick={() => onEvidence(evidence.turn_id)}>View transcript · {timeLabel(evidence.session_start_ms)}</button></blockquote>)}
           {!!evaluation.reference_evidence.length && <details><summary>Technical reference notes</summary>{evaluation.reference_evidence.map((reference, index) => <blockquote key={index}><p>{reference.quote}</p>
-            <a href={reference.url} target="_blank" rel="noreferrer">{reference.reference_id}</a><small> · supplied reference note · {reference.version}</small></blockquote>)}</details>}
+            {reference.filename
+              ? <span>{reference.filename}{reference.location ? ` · ${reference.location}` : ''}</span>
+              : <a href={reference.url} target="_blank" rel="noreferrer">{reference.reference_id}</a>}
+            <small> · source version {reference.version}</small></blockquote>)}</details>}
         </section>
       })}
     </details>
@@ -117,7 +129,6 @@ function AssessmentWorkspace({ token, jobId }: { token: string; jobId: string })
   const [params, setParams] = useSearchParams()
   const [data, setData] = useState<Workspace | null>(null)
   const [error, setError] = useState('')
-  const [choice, setChoice] = useState('sample')
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -140,13 +151,12 @@ function AssessmentWorkspace({ token, jobId }: { token: string; jobId: string })
     return () => { controller.abort(); clearTimeout(timer) }
   }, [token, jobId, revision, offset])
   const runId = params.get('run') ?? undefined
-  const candidate = data?.candidates.find(item => item.id === choice)
   function selectRun(id: string) { setParams(current => { current.set('run', id); return current }) }
   async function act(retry = false, recover = false, applicationId?: string) {
     if (lock.current || (retry && !runId)) return
     lock.current = true; setBusy(true); setError('')
     try {
-      const run = recover ? await recoverF5(token, runId!) : retry ? await retryF5(token, runId!) : await startF5(token, jobId, applicationId ?? (choice === 'sample' ? undefined : choice))
+      const run = recover ? await recoverF5(token, runId!) : retry ? await retryF5(token, runId!) : await startF5(token, jobId, applicationId)
       if (mounted.current) { selectRun(run.id); setRevision(value => value + 1) }
     } catch (caught) { if (mounted.current) setError(caught instanceof Error ? caught.message : 'Could not save the request.') }
     finally { lock.current = false; if (mounted.current) setBusy(false) }
@@ -166,14 +176,13 @@ function AssessmentWorkspace({ token, jobId }: { token: string; jobId: string })
       {error && <p className="assessment-error" role="alert">{error}</p>}
       <RunDetails key={`${runId}:${revision}`} token={token} jobId={jobId} runId={runId} busy={busy} onConsolidate={confirm => void consolidate(confirm)} onSelect={selectRun} onRecover={() => { if (!busy) void act(true, true) }} onRetry={() => { if (!busy) void act(true) }} />
     </>}
-    {data && <details className="assessment-tools"><summary>Analysis tools and saved run history</summary><section className="assessment-controls"><div><h2>Analyze an interview</h2><p>Choose a completed interview to analyze against this job’s criteria.</p></div>
-      <div className="assessment-control-row"><label>Interview<select value={choice} onChange={event => setChoice(event.target.value)}><option value="sample">{data.synthetic_demo_available ? 'Synthetic Laravel sample' : 'Select an interview'}</option>{data.candidates.map(item => <option key={item.id} value={item.id}>{item.name}{item.ready ? '' : ' · transcript not ready'}</option>)}</select></label>
-        <button className="button-primary" disabled={busy || !data.profile_ready || (choice === 'sample' ? !data.synthetic_demo_available : !candidate?.ready)} onClick={() => void act()}>{busy ? 'Saving…' : choice === 'sample' && data.synthetic_demo_available ? 'Analyze sample' : 'Analyze interview'}</button></div>
-      {choice === 'sample' && data.synthetic_demo_available ? <DemoBanner>Invented interview content. It is stored separately from candidate assessments. Existing identical runs are reused.</DemoBanner> : candidate?.blocker && <p className="assessment-warning">{candidate.blocker}</p>}
+    {data && <details className="assessment-tools"><summary>Sample analysis and saved run history</summary>
+    {data.synthetic_demo_available && <section className="assessment-controls"><div><h2>Analyze a synthetic sample</h2><p>Use an invented interview to explore the analysis workflow.</p></div>
+      <button className="button-secondary" disabled={busy || !data.profile_ready} onClick={() => void act()}>{busy ? 'Saving…' : 'Analyze sample'}</button>
+      <DemoBanner>Invented interview content. It is stored separately from candidate assessments. Existing identical runs are reused.</DemoBanner>
       {!data.profile_ready && <p className="assessment-warning">Save this job’s screening criteria before starting analysis.</p>}
-      {(offset > 0 || data.has_more_candidates) && <div className="assessment-pages"><button className="button-secondary" disabled={offset === 0} onClick={() => { setOffset(value => Math.max(0, value - (data.page_size ?? 5))); setChoice('sample') }}>Previous candidates</button><button className="button-secondary" disabled={!data.has_more_candidates} onClick={() => { setOffset(value => value + (data.page_size ?? 5)); setChoice('sample') }}>More candidates</button></div>}
-    </section>
-    <aside className="assessment-run-list assessment-history"><h2>Assessment history</h2>{!data.runs.length && <p className="assessment-muted">No assessments yet. Start an interview analysis above.</p>}
+    </section>}
+    <aside className="assessment-run-list assessment-history"><h2>Assessment history</h2>{!data.runs.length && <p className="assessment-muted">No assessments yet. Start analysis from the candidate list.</p>}
       {data.runs.map(run => <button key={run.id} className={runId === run.id ? 'is-selected' : ''} onClick={() => selectRun(run.id)}><strong>{run.label}</strong><span>{run.kind.toUpperCase()} · {run.synthetic ? 'Synthetic sample' : 'Interview'} · {stageLabel(run.stage)}</span><small>{new Date(run.created_at).toLocaleDateString()} · {run.completed_groups}/{run.total_groups || '…'} {run.kind === 'f6' ? 'branches' : 'groups'}</small></button>)}
       {data.has_more_runs && <p className="assessment-muted">Showing the latest 50 runs.</p>}</aside>
     </details>}

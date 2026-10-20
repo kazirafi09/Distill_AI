@@ -1,5 +1,5 @@
 import { apiRequest } from '../../services/api'
-import type { Assessment, Score } from '../cv/CVResults'
+import type { Assessment, Results, Score } from '../cv/CVResults'
 
 export type ShortlistFilters = {
   mode: 'top_k' | 'minimum_score' | 'both'
@@ -15,6 +15,7 @@ type ScreeningRun = {
 export type PreviewCandidate = Assessment
 
 export type ScreeningResults = {
+  profile?: Results['profile']
   run: ScreeningRun | null
   ranked: Assessment[]
   incomplete: Assessment[]

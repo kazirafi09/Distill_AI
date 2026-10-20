@@ -23,12 +23,12 @@ export type Turn = { id: string; speaker_role: 'candidate' | 'recruiter'; text: 
 export type Evidence = { turn_id: string; quote: string; session_start_ms: number | null; session_end_ms: number | null }
 export type Evaluation = {
   score: number | null; score_100: number | null; reason: string; justification: string; evidence: Evidence[]
-  accuracy_warning: string | null; reference_evidence: { reference_id: string; quote: string; url: string; version: string }[]
+  accuracy_warning: string | null; reference_evidence: { reference_id: string; quote: string; url: string; version: string; filename?: string; location?: string }[]
 }
 export type Answer = { group: {
   id: string; topic: string; question_turn_ids: string[]; answer_turn_ids: string[]; follow_up_turn_ids: string[]
   clarification_turn_ids: string[]; revisit_turn_ids: string[]; answer_state: string; criterion_ids: string[]
-}; evaluations: Record<Dimension, Evaluation> }
+}; evaluations: Record<Dimension, Evaluation>; reference_retrieval?: { status: string; failed_sources: string[] } }
 export type Summary = { score_100: string | null; assessed_count: number; total_groups: number; not_assessable_count: number }
 export type Finding = { criterion_id: string; text: string; source_ids: string[] }
 export type F6Source = { id: string; kind: 'cv' | 'interview' | 'coverage'; criterion_ids: string[];

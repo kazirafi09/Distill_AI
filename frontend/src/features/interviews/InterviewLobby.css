@@ -1,4 +1,4 @@
-.recruitment-page { max-width: 1400px; margin: 0 auto; font-size: 13px; color: #172033; }
+.recruitment-page { width: 100%; min-width: 0; font-size: 13px; color: #172033; }
 .recruitment-page-header { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .recruitment-page-header h1 { font-size: 30px; line-height: 1.2; font-weight: 700; letter-spacing: -.4px; }
 .recruitment-page-header p:not(.workspace-eyebrow) { margin-top: 5px; color: #526075; }

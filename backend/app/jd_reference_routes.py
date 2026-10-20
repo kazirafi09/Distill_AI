@@ -40,7 +40,7 @@ logger = logging.getLogger("distill_ai.jd_references")
 
 DatabaseSession = Annotated[AsyncSession, Depends(get_db)]
 Recruiter = Annotated[User, Depends(require_recruiter)]
-DocumentType = Literal["prior_jd", "company_policy"]
+DocumentType = Literal["prior_jd", "company_policy", "technical_reference"]
 
 
 class ReferenceResponse(BaseModel):

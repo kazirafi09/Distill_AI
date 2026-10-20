@@ -4,6 +4,7 @@ import type { Ref } from 'react'
 import ChatInput from '../../components/chat/ChatInput'
 import ChatMessage from '../../components/chat/ChatMessage'
 import ChatWindow from '../../components/chat/ChatWindow'
+import TypingIndicator from '../../components/motion/TypingIndicator'
 import ConversationHistory from './ConversationHistory'
 import { ApiError } from '../../services/api'
 import {
@@ -25,15 +26,18 @@ type RecruiterChatProps = {
   interviewSessionId?: string
   interviewCandidateName?: string
   startFresh?: boolean
+  compact?: boolean
   ref?: Ref<RecruiterChatHandle>
   onStateChange?: (conversation: AssistantConversation | null, busy: boolean) => void
   onReviewTab?: (tab: 'description' | 'criteria') => void
 }
 
 export type RecruiterChatHandle = {
+  reload: () => void
   openJob: (id: string) => void
   startNew: () => void
   approve: () => void
+  send: (message: string) => void
 }
 
 export default function RecruiterChat({
@@ -42,6 +46,7 @@ export default function RecruiterChat({
   onSaved,
   interviewSessionId,
   startFresh = false,
+  compact = false,
   ref,
   onStateChange,
   onReviewTab,
@@ -72,6 +77,8 @@ export default function RecruiterChat({
   const [busy, setBusy] = useState(false)
   const [stopped, setStopped] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState('')
 
   const requestRef = useRef<AbortController | null>(null)
   const interviewLogRef = useRef<HTMLDivElement | null>(null)
@@ -80,6 +87,8 @@ export default function RecruiterChat({
   useEffect(() => { onStateChange?.(conversation, isBusy) }, [conversation, isBusy, onStateChange])
 
   useImperativeHandle(ref, () => ({
+    send: sendMessage,
+    reload: () => { if (conversation) void runRequest(signal => getAssistant(token, conversation.conversation_id, signal)) },
     openJob: (id) => { void runRequest(signal => openSavedJD(token, id, signal)) },
     startNew: startNewConversation,
     approve: () => {
@@ -95,7 +104,7 @@ export default function RecruiterChat({
     if (interviewSessionId && interviewLogRef.current) {
       interviewLogRef.current.scrollTop = interviewLogRef.current.scrollHeight
     }
-  }, [interviewSessionId, conversation?.checkpoint_id, busy])
+  }, [interviewSessionId, conversation?.checkpoint_id, busy, replyText])
 
   const jd = interviewSessionId ? null : conversation?.jd_conversation
   const allowedActions = jd?.interrupt?.payload.allowed_actions ?? []
@@ -129,6 +138,7 @@ export default function RecruiterChat({
     requestRef.current = controller
     setBusy(true)
     setError(null)
+    setReplyText('')
 
     try {
       const updated = await operation(controller.signal)
@@ -184,6 +194,7 @@ export default function RecruiterChat({
           }
         }
       } else {
+        setStopped(true)
         setError(
           caught instanceof Error
             ? caught.message
@@ -194,6 +205,8 @@ export default function RecruiterChat({
       if (!controller.signal.aborted) {
         requestRef.current = null
         setBusy(false)
+        setPendingMessage(null)
+        setReplyText('')
       }
     }
   }
@@ -216,9 +229,32 @@ export default function RecruiterChat({
         setConversation(current)
       }
 
-      return sendAssistantMessage(token, current, message, signal, interviewSessionId)
+      setPendingMessage(message)
+      return sendAssistantMessage(token, current, message, signal, interviewSessionId, text => {
+        if (!signal.aborted) setReplyText(text)
+      })
     }, true)
   }
+
+  function stopWaiting() {
+    requestRef.current?.abort()
+    requestRef.current = null
+    setBusy(false)
+    setPendingMessage(null)
+    setReplyText('')
+    setStopped(true)
+    setError('Stopped waiting for this reply. Reload chat to check whether it completed.')
+  }
+
+  // Partial text is a preview. Only the final server snapshot enters history.
+  // Suppress per-token live announcements; the completed message is announced
+  // by the chat log when it replaces this preview.
+  const pendingMessages = pendingMessage && (
+    <div aria-live="off" aria-label="Reply in progress" className="space-y-4">
+      <ChatMessage role="user" content={pendingMessage} />
+      {replyText && <ChatMessage role="assistant" content={replyText} name="Distill AI · writing…" />}
+    </div>
+  )
 
   function startNewConversation() {
     if (requestRef.current || restoring) return
@@ -266,12 +302,9 @@ export default function RecruiterChat({
     <div ref={interviewLogRef} className={`stage-chat-log${!messages.length ? ' is-empty' : ''}`} role="log" aria-label="Interview assistant" aria-busy={isBusy}>
       {!messages.length && !isBusy && !restoreError && <div className="stage-assistant-welcome"><strong>Ask the assistant about this interview</strong><p>It uses the job description and this candidate’s screening data. It can make mistakes, so check anything important.</p><div>{['Suggest follow-up questions', 'Which criteria should I probe?', 'Compare the CV with this job'].map(prompt => <button className="stage-outline" key={prompt} disabled={!canCompose} onClick={() => sendMessage(prompt)}>{prompt}</button>)}</div></div>}
       {messages.map((message, index) => <ChatMessage key={message.id ?? index} role={message.role} content={message.content} />)}
-      {isBusy && <div className="stage-reply-status"><p role="status">{restoring ? 'Restoring chat…' : 'The assistant is writing…'}</p>{busy && <button className="stage-outline" onClick={() => {
-        requestRef.current?.abort()
-        requestRef.current = null
-        setBusy(false)
-        setStopped(true)
-        setError('Stopped waiting for this reply. Reload chat to check whether it completed.')
+      {pendingMessages}
+      {isBusy && <div className="stage-reply-status"><p role="status">{restoring ? 'Restoring chat…' : 'The assistant is writing…'}<TypingIndicator /></p>{busy && <button className="stage-outline" onClick={() => {
+        stopWaiting()
       }}>Stop waiting</button>}</div>}
       {(error || restoreError) && <div role="alert"><p>{error ?? restoreError}</p><button className="stage-outline" disabled={isBusy} onClick={restoreError ? retryRestore : () => { if (conversation) void runRequest(signal => getAssistant(token, conversation.conversation_id, signal)); else { setError(null); setStopped(false) } }}>{restoreError ? 'Try again' : 'Reload chat'}</button></div>}
     </div>
@@ -280,20 +313,20 @@ export default function RecruiterChat({
 
   return (
     <div className="jd-chat jd-assistant-layout">
-      <ConversationHistory token={token} activeId={conversation?.conversation_id}
+      {!compact && <ConversationHistory token={token} activeId={conversation?.conversation_id}
         refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
-        onNew={startNewConversation}
-        onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal)) }} />
+        onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal)) }} />}
       <ChatWindow
         title="Distill AI Assistant"
         busy={isBusy}
         scrollKey={
           `${conversation?.checkpoint_id ?? 'new'}:` +
-          `${jd?.checkpoint_id ?? ''}:${isBusy}`
+          `${jd?.checkpoint_id ?? ''}:${isBusy}:${replyText.length}`
         }
         actions={
           <>
             <div className="flex flex-wrap gap-2">
+              {busy && <button type="button" className="button-secondary" onClick={stopWaiting}>Stop waiting</button>}
               {restoreError && (
                 <button
                   type="button"
@@ -324,14 +357,6 @@ export default function RecruiterChat({
                 </button>
               )}
 
-              <button
-                type="button"
-                className="button-secondary"
-                disabled={isBusy}
-                onClick={startNewConversation}
-              >
-                {interviewSessionId ? 'New conversation' : 'Create new JD'}
-              </button>
             </div>
           </>
         }
@@ -506,6 +531,8 @@ export default function RecruiterChat({
             content={message.content}
           />
         ))}
+
+        {pendingMessages}
 
         {(error || restoreError) && (
           <p role="alert" className="text-sm text-red-700">

@@ -382,7 +382,7 @@ async def _run(session_id, capture):
         token = (api.AccessToken(key, secret).with_identity(f"transcription-{uuid4()}")
                  .with_ttl(timedelta(minutes=5)).with_grants(api.VideoGrants(
                      room_join=True, room=room_name, can_publish=False, can_publish_data=False,
-                     can_subscribe=True, can_update_own_metadata=False)).to_jwt())
+                     can_subscribe=True, can_update_own_metadata=False, hidden=True)).to_jwt())
         address = urlsplit(settings.livekit_api_url)
         scheme = {"http": "ws", "https": "wss", "ws": "ws", "wss": "wss"}[address.scheme]
         rtc_url = urlunsplit((scheme, address.netloc, address.path, "", ""))

@@ -1,3 +1,4 @@
+import json
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -265,7 +266,7 @@ async def send_assistant_message(
         document = await db.scalar(select(JobDescription).where(
             JobDescription.conversation_id == assistant.jd_conversation_id,
         ))
-        config["configurable"]["saved_jd_content"] = document.content
+        config["configurable"]["saved_jd_content"] = document.content + "\n\nCurrent reviewed screening profile:\n" + json.dumps(document.screening_profile, ensure_ascii=False)
     await run_in_threadpool(
         assistant_graph.invoke,
         {**updates, "messages": [HumanMessage(content=message)],

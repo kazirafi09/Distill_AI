@@ -22,6 +22,12 @@ def after_merge(state):
     return "save_answer" if state.get("status") == "running" else "persist_analysis"
 
 
+def after_prepare(state):
+    if state.get("status") != "running":
+        return "persist_analysis"
+    return ["evaluate_relevance", "evaluate_accuracy", "evaluate_completeness", "evaluate_articulation"]
+
+
 def after_save(state):
     limit = state.get("group_limit", 0) or len(state["groups"])
     if state["group_index"] < min(limit, len(state["groups"])):
@@ -40,8 +46,7 @@ def build_interview_analysis_graph(checkpointer=None):
     builder.add_conditional_edges("segment_qa_pairs", after_grouping, ["classify_requirements", "persist_analysis"])
     builder.add_conditional_edges("classify_requirements", after_mapping, ["prepare_answer", "persist_analysis"])
     evaluators = ["evaluate_relevance", "evaluate_accuracy", "evaluate_completeness", "evaluate_articulation"]
-    for name in evaluators:
-        builder.add_edge("prepare_answer", name)
+    builder.add_conditional_edges("prepare_answer", after_prepare, [*evaluators, "persist_analysis"])
     # A list of source nodes creates a barrier: merge waits for all four.
     builder.add_edge(evaluators, "merge_evaluation")
     builder.add_conditional_edges("merge_evaluation", after_merge, ["save_answer", "persist_analysis"])

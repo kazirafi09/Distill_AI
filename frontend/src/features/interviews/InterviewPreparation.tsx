@@ -4,6 +4,7 @@ import type { LocalUserChoices } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { LocalAudioTrack } from 'livekit-client'
 import { CallIcon } from './InterviewRoom'
+import { useAvailableDevices } from './useAvailableDevices'
 import type { SavedInterviewee, InvitationStatus } from './api'
 
 type Props = {
@@ -23,10 +24,8 @@ export default function InterviewPreparation(props: Props) {
   const [microphone, setMicrophone] = useState(false)
   const [cameraDevice, setCameraDevice] = useState('default')
   const [microphoneDevice, setMicrophoneDevice] = useState('default')
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [cameraError, setCameraError] = useState('')
   const [microphoneError, setMicrophoneError] = useState('')
-  const [deviceError, setDeviceError] = useState('')
   const reportCamera = useCallback((error: Error) => { setCameraError(error.message); setCamera(false) }, [])
   const reportMicrophone = useCallback((error: Error) => {
     const message = error.name === 'NotAllowedError'
@@ -49,19 +48,7 @@ export default function InterviewPreparation(props: Props) {
     videoTrack.attach(element)
     return () => { videoTrack.detach(element) }
   }, [videoTrack])
-  useEffect(() => {
-    let cancelled = false
-    async function refresh() {
-      if (!navigator.mediaDevices) { setDeviceError('Media devices are unavailable in this browser.'); return }
-      try {
-        const next = await navigator.mediaDevices.enumerateDevices()
-        if (!cancelled) { setDevices(next); setDeviceError('') }
-      } catch (caught) { if (!cancelled) setDeviceError(caught instanceof Error ? caught.message : 'Could not check devices.') }
-    }
-    void refresh()
-    navigator.mediaDevices?.addEventListener('devicechange', refresh)
-    return () => { cancelled = true; navigator.mediaDevices?.removeEventListener('devicechange', refresh) }
-  }, [videoTrack, audioTrack])
+  const { devices, error: deviceError } = useAvailableDevices(`${videoTrack?.mediaStreamTrack.id}:${audioTrack?.mediaStreamTrack.id}`)
   const cameras = devices.filter(device => device.kind === 'videoinput')
   const microphones = devices.filter(device => device.kind === 'audioinput')
   const permission = microphoneError ? 'Blocked or unavailable' : audioTrack ? 'Access allowed' : microphone ? 'Requesting access…' : 'Not checked'
@@ -102,13 +89,13 @@ export default function InterviewPreparation(props: Props) {
       {(cameraError || microphoneError || deviceError) && <p className="lobby-error" role="alert">{[cameraError, microphoneError, deviceError].filter(Boolean).join(' ')} Camera is optional. A working microphone is required to continue.</p>}
     </div>
     <div className="lobby-info-column">
-      <label className="lobby-candidate-picker">Saved candidate<select value={props.candidate.application_id} disabled={props.busy} onChange={event => props.onCandidate(event.target.value)}>{props.members.map(member => <option key={member.application_id} value={member.application_id}>{member.name} · Rank {member.rank} · Score {Number(member.score.aggregate).toFixed(0)}</option>)}</select></label>
+      <label className="lobby-candidate-picker">Saved candidate<select aria-label="Saved candidate" value={props.candidate.application_id} disabled={props.busy} onChange={event => props.onCandidate(event.target.value)}>{props.members.map(member => <option key={member.application_id} value={member.application_id}>{member.name} · Rank {member.rank} · Score {Number(member.score.aggregate).toFixed(0)}</option>)}</select></label>
       <div className="lobby-card"><div className="lobby-card-title"><strong>{props.candidate.name}</strong><span className={`lobby-badge${props.invitation?.link_status === 'active' ? '' : ' is-neutral'}`}>{props.invitation?.link_status === 'active' ? 'Active invitation' : props.invitation?.link_status ?? 'No invitation'}</span></div><p>{props.candidate.email}</p><p>Interview status: {props.status.replaceAll('_', ' ')}{props.invitation?.link_status === 'active' && ` · link valid until ${new Date(props.invitation.expires_at).toLocaleDateString()}`}</p></div>
       <div className="lobby-card device-status-card">
         <div><span>Camera</span><span className={`lobby-badge${cameraError ? ' is-warning' : cameras.length ? '' : ' is-neutral'}`}>{cameraError ? 'Unavailable' : cameras.length ? 'Found' : 'Not found'}</span></div>
-        {cameras.length > 1 && <label>Camera device<select value={cameraDevice} onChange={event => setCameraDevice(event.target.value)} disabled={checking || props.busy}>{cameras.map((device, index) => <option key={device.deviceId || index} value={device.deviceId || 'default'}>{device.label || `Camera ${index + 1}`}</option>)}</select></label>}
+        {cameras.length > 1 && <label>Camera device<select aria-label="Camera device" value={cameraDevice} onChange={event => setCameraDevice(event.target.value)} disabled={checking || props.busy}>{cameras.map((device, index) => <option key={device.deviceId || index} value={device.deviceId || 'default'}>{device.label || `Camera ${index + 1}`}</option>)}</select></label>}
         <div><span>Microphone</span><span className={`lobby-badge${microphoneError ? ' is-warning' : microphones.length ? '' : ' is-neutral'}`}>{microphoneError ? 'Unavailable' : microphones.length ? 'Found' : 'Not found'}</span></div>
-        {microphones.length > 1 && <label>Microphone device<select value={microphoneDevice} onChange={event => setMicrophoneDevice(event.target.value)} disabled={checking || props.busy}>{microphones.map((device, index) => <option key={device.deviceId || index} value={device.deviceId || 'default'}>{device.label || `Microphone ${index + 1}`}</option>)}</select></label>}
+        {microphones.length > 1 && <label>Microphone device<select aria-label="Microphone device" value={microphoneDevice} onChange={event => setMicrophoneDevice(event.target.value)} disabled={checking || props.busy}>{microphones.map((device, index) => <option key={device.deviceId || index} value={device.deviceId || 'default'}>{device.label || `Microphone ${index + 1}`}</option>)}</select></label>}
         <div className="microphone-level"><div><span>Microphone level</span><small>{audioTrack ? 'Say a few words' : 'Turn on your microphone to test'}</small></div><meter min={0} max={1} value={Math.min(1, volume * 3)} aria-label="Microphone level" /></div>
         <div><span>Microphone access</span><span className={`lobby-badge${audioTrack ? '' : ' is-neutral'}`}>{permission}</span></div>
       </div>

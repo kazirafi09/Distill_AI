@@ -74,10 +74,11 @@ async def document(run_id, recruiter_id, report_type="recruiter", include_eviden
         metadata = {"candidate": candidate, "job": {"id": str(job.id), "number": job.number, "title": job.title},
             "run": public_run(run), "generated_at": datetime.now(timezone.utc).isoformat(),
             "outdated": job.profile_version != run.inputs["profile_version"] or digest(job.screening_profile) != digest(run.inputs["profile_snapshot"])}
+        report_inputs = {**run.inputs, "references": f5.get("references", run.inputs.get("references", []))}
         if report_type == "recruiter":
             from app.services.interviews.recruiter_report import assemble as recruiter_document
-            return recruiter_document(metadata, run.inputs, f5, artifact if run.kind == "f6" else None, cv, include_evidence)
-        report = assemble(metadata, run.inputs, f5, artifact if run.kind == "f6" else None, cv, parent,
+            return recruiter_document(metadata, report_inputs, f5, artifact if run.kind == "f6" else None, cv, include_evidence)
+        report = assemble(metadata, report_inputs, f5, artifact if run.kind == "f6" else None, cv, parent,
             application=application, session=session, invitation=invitation, delivery=delivery)
         report["report_type"] = "technical"
         report["filename"] = f"distill-assessment-{run.id}-technical.pdf"
@@ -213,6 +214,10 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
         g = result["group"]
         add(b, f"{g['id']}: {g['topic']}", "heading")
         add(b, f"Answer state: {label(g['answer_state'])}. Requirements: " + "; ".join(criteria.get(cid, cid) for cid in g["criterion_ids"]))
+        if result.get("reference_retrieval"):
+            retrieval = result["reference_retrieval"]
+            add(b, f"Supporting-reference retrieval: {label(retrieval['status'])}. "
+                "Only cited passages support the accuracy judgment; other claims may use unverified model knowledge.", "note")
         membership = {}
         for field, role in roles:
             for tid in g[field]:
@@ -231,7 +236,7 @@ def assemble(meta, inputs, f5, f6, cv, parent, *, application=None, session=None
             quotes(b, e.get("evidence", []), g["criterion_ids"])
             for ref in e.get("reference_evidence", []):
                 add(b, ref["quote"], "quote")
-                add(b, f"Reference {ref['reference_id']} | {ref.get('version', 'Not recorded')} | {ref.get('url', 'No URL recorded')}", "note")
+                add(b, f"Reference {ref.get('filename', ref['reference_id'])} | {ref.get('location', '')} | {ref.get('version', 'Not recorded')} | {ref.get('url', 'No URL recorded')}", "note")
 
     b = section("7. Consolidated assessment and verification plan")
     if not f6:

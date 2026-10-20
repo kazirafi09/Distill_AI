@@ -1,4 +1,5 @@
 import { apiRequest } from '../../services/api'
+import { streamChat } from '../../services/chatStream'
 import type { JDAction, JDConversation } from './api'
 
 export type AssistantConversation = {
@@ -57,19 +58,18 @@ export function sendAssistantMessage(
   message: string,
   signal?: AbortSignal,
   interviewSessionId?: string,
+  onText?: (text: string) => void,
 ) {
-  return apiRequest<AssistantConversation>(
+  return streamChat<AssistantConversation>(
     `/assistant/conversations/${conversation.conversation_id}/messages`,
+    token,
     {
-      method: 'POST',
-      token,
-      signal,
-      body: {
-        message,
-        checkpoint_id: conversation.checkpoint_id,
-        ...(interviewSessionId ? { interview_session_id: interviewSessionId } : {}),
-      },
+      message,
+      checkpoint_id: conversation.checkpoint_id,
+      ...(interviewSessionId ? { interview_session_id: interviewSessionId } : {}),
     },
+    signal,
+    onText,
   )
 }
 
@@ -79,6 +79,7 @@ export function sendAssistantAction(
   action: JDAction,
   message?: string,
   signal?: AbortSignal,
+  onText?: (text: string) => void,
 ) {
   const jd = conversation.jd_conversation
 
@@ -95,20 +96,18 @@ export function sendAssistantAction(
     throw new Error('No JD action is pending.')
   }
 
-  return apiRequest<AssistantConversation>(
+  return streamChat<AssistantConversation>(
     `/assistant/conversations/${conversation.conversation_id}/jd-actions`,
+    token,
     {
-      method: 'POST',
-      token,
-      signal,
-      body: {
-        checkpoint_id: conversation.checkpoint_id,
-        jd_checkpoint_id: jd.checkpoint_id,
-        interrupt_id: jd.interrupt?.id ?? 'approval-recovery',
-        action,
-        ...(message !== undefined ? { message } : {}),
-      },
+      checkpoint_id: conversation.checkpoint_id,
+      jd_checkpoint_id: jd.checkpoint_id,
+      interrupt_id: jd.interrupt?.id ?? 'approval-recovery',
+      action,
+      ...(message !== undefined ? { message } : {}),
     },
+    signal,
+    onText,
   )
 }
 

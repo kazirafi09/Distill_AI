@@ -161,7 +161,7 @@ def public_run(run):
 
 def can_recover(run):
     return (run.kind == "f5" and run.status == "needs_review" and run.error_code == "ANALYSIS_OUTPUT_NEEDS_REVIEW"
-        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", PROMPT_VERSION}
+        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", PROMPT_VERSION}
         and run.inputs.get("rubric_version") == RUBRIC_VERSION)
 
 
@@ -245,6 +245,9 @@ async def start_run(job_id, recruiter_id, request):
             "rubric_version": RUBRIC_VERSION, "model_options": execution_options(),
             "job_id": str(job_id), "application_id": str(request.application_id) if request.application_id else None,
             "cv_assessment_id": str(cv.id) if cv else None}
+        if request.source != "synthetic_demo":
+            from app.services.interviews.accuracy_references import snapshot_sources
+            inputs["reference_sources"] = await snapshot_sources(db, recruiter_id)
         if cv:
             inputs["cv_snapshot"] = {"id": str(cv.id), "run_id": str(cv.run_id), "score": cv.score,
                 "matches": cv.matches, "file_version_ids": cv.file_version_ids, "parse_result_ids": cv.parse_result_ids,

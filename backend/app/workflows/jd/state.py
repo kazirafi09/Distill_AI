@@ -45,3 +45,4 @@ class JDState(TypedDict):
     assistant_context: NotRequired[list[dict]]
     requirement_overrides: NotRequired[dict[str, dict[str, str]]]
     targeted_edit: NotRequired[bool]
+    manual_edit_context: NotRequired[str]
