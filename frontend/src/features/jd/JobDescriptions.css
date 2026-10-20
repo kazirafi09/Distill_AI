@@ -1,0 +1,108 @@
+.workspace-main:has(.job-descriptions-page), .workspace-main:has(.cv-redesign) { padding: 16px; overflow: hidden; }
+.job-descriptions-page, .cv-redesign { display: flex; flex-direction: column; gap: 14px; height: 100%; min-height: 0; font-size: 13px; }
+.redesign-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-shrink: 0; }
+.redesign-header h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 750; }
+.redesign-header .workspace-eyebrow { margin: 0 0 2px; }
+.redesign-header .muted { margin-top: 4px; }
+.muted { color: #526075; font-size: 12px; line-height: 1.5; }
+.jd-redesign-workspace { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.jd-redesign-library, .jd-detail-panel { min-width: 0; min-height: 0; border: 1px solid #dfe3eb; border-radius: 14px; background: #fff; overflow: hidden; }
+.jd-redesign-library { display: flex; flex-direction: column; padding: 12px; gap: 10px; }
+.jd-redesign-library h2, .jd-context h3, .jd-criteria h3 { font-weight: 750; font-size: 14px; margin: 0; }
+.jd-library-filters { display: grid; grid-template-columns: minmax(0, 1fr) 100px; gap: 8px; }
+.job-descriptions-page label, .cv-redesign label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: #39465b; }
+.job-descriptions-page input:not([type=checkbox]), .job-descriptions-page select, .cv-redesign input:not([type=checkbox]), .cv-redesign select { width: 100%; min-width: 0; border: 1px solid #778399; border-radius: 9px; background: white; padding: 10px; font-weight: 400; font-size: 13px; color: #172033; }
+.jd-library-scroll { min-height: 0; overflow-y: auto; flex: 1; scrollbar-gutter: stable; }
+.jd-library-item { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; background: white; padding: 10px; border: 1px solid #dfe3eb; border-radius: 11px; color: #172033; }
+.jd-library-item + .jd-library-item { margin-top: 3px; }
+.jd-library-item strong { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.jd-library-item small { color: #526075; font-size: 11px; }
+.jd-library-item.is-selected { border: 2px solid #00855e; padding: 9px; background: #f1faf6; }
+.jd-library-item:hover:not(:disabled) { background: #f1faf6; }
+.ui-badge { display: inline-flex; align-items: center; border-radius: 20px; padding: 3px 9px; font-size: 11px; line-height: 1.5; font-weight: 700; background: #eceef1; color: #425067; white-space: nowrap; }
+.ui-badge.is-success { color: #006548; background: #e1f7ee; }
+.ui-badge.is-warning { color: #875000; background: #fff0c9; }
+.ui-badge.is-info { color: #2647a9; background: #e7edff; }
+.ui-badge.is-danger { color: #a52317; background: #fde8e5; }
+.jd-detail-panel { display: flex; flex-direction: column; }
+.jd-detail-header { display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; padding: 16px 18px 8px; gap: 12px; }
+.jd-detail-header h2 { font-size: 20px; font-weight: 750; line-height: 1.3; }
+.jd-detail-header p { margin-top: 3px; }
+.jd-detail-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.redesign-tabs { display: flex; flex-shrink: 0; gap: 4px; padding: 0 14px; border-bottom: 1px solid #dfe3eb; }
+.redesign-tabs button { padding: 13px 12px 11px; border-bottom: 3px solid transparent; font-size: 13px; font-weight: 550; color: #425067; white-space: nowrap; }
+.redesign-tabs button[aria-current=page] { border-color: #00855e; color: #006548; }
+.jd-document-layout { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 18px; padding: 12px 18px; flex: 1; min-height: 0; overflow-y: auto; }
+.jd-document-scroll { min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 10px; }
+.jd-document-scroll .markdown { font-size: 13px; }
+.jd-document-scroll .markdown h1 { font-size: 20px; }
+.jd-document-scroll .markdown > h1:first-child { display: none; }
+.jd-document-scroll .markdown li + li { margin-top: 3px; }
+.jd-context { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.jd-context-card { border: 1px solid #dfe3eb; border-radius: 11px; padding: 12px; background: #fafafa; }
+.jd-context-card p { margin: 6px 0 12px; }
+.jd-context-card.is-ready { border-color: #8ee4be; background: #f1faf6; }
+.text-link { color: #007955; text-decoration: underline; font-size: 12px; text-align: left; }
+.criteria-table-scroll { overflow-x: auto; }
+.criteria-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 12px; }
+.criteria-table th { text-align: left; color: #425067; font-size: 11px; border-bottom: 2px solid #d1d6df; }
+.criteria-table th, .criteria-table td { padding: 12px 8px; vertical-align: top; }
+.criteria-table td { border-bottom: 1px solid #dfe3eb; }
+.criteria-table small { display: block; margin-top: 5px; color: #526075; }
+.jd-weight { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 12px; align-items: center; margin: 12px 0; font-size: 12px; text-transform: capitalize; }
+.jd-weight progress { width: 100%; height: 8px; accent-color: #00855e; }
+.job-descriptions-page .jd-review-check { flex-direction: row; align-items: flex-start; gap: 8px; margin: 14px 0; font-weight: 400; }
+.jd-review-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: #00855e; }
+.ui-state { padding: 20px; color: #526075; }
+.ui-state h3 { color: #172033; font-weight: 700; margin-bottom: 6px; }
+.ui-state button { margin-top: 12px; }
+.ui-error { color: #af281a; font-size: 12px; }
+.jd-assistant-mount { flex: 1; min-height: 0; }
+.jd-assistant-mount[hidden] { display: none; }
+.jd-assistant-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); height: 100%; }
+.jd-assistant-layout > section { border: none; border-radius: 0; }
+.jd-conversations { display: flex; flex-direction: column; gap: 10px; background: #fafafa; padding: 10px; border-right: 1px solid #dfe3eb; min-height: 0; }
+.jd-conversation-list { flex: 1; min-height: 0; overflow-y: auto; }
+.panel-caption { color: #526075; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.panel-pagination { display: flex; gap: 8px; justify-content: space-between; }
+.panel-pagination button { padding: 7px 10px; font-size: 12px; }
+.job-descriptions-page.is-assistant .jd-redesign-workspace { grid-template-columns: minmax(0, 1fr); }
+.jd-job-picker { max-width: 440px; }
+.redesign-header .jd-job-picker { flex: 1; }
+.is-assistant .redesign-header .muted { display: none; }
+.jd-chat-draft-notice { background: #fffaf0; border: 1px solid #e9c065; border-radius: 10px; padding: 12px; font-size: 13px; }
+.jd-chat-draft-notice p { margin: 6px 0 10px; }
+.jd-assistant-layout footer form { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 0; border: 0; border-radius: 0; align-items: start; gap: 10px; }
+.jd-assistant-layout footer textarea { min-height: 44px; height: 44px; border: 1px solid #778399; }
+.jd-assistant-layout footer form > div { margin: 0; }
+.jd-assistant-layout footer form > div > span { display: none; }
+.jd-assistant-layout footer { background: white; padding: 12px 20px; }
+.jd-assistant-layout footer::after { content: 'Enter to send · Shift+Enter for a new line · The assistant can make mistakes.'; color: #526075; font-size: 11px; display: block; margin-top: 4px; }
+.jd-reference-dialog { width: min(760px, calc(100vw - 32px)); max-height: 85dvh; overflow-y: auto; padding: 20px; margin: auto; border: 1px solid #dfe3eb; border-radius: 14px; }
+.jd-reference-dialog::backdrop { background: #17203366; }
+.jd-reference-dialog > header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.job-descriptions-page .button-primary, .cv-redesign .button-primary { background: #087e5c; border-radius: 10px; padding: 11px 14px; text-decoration: none; text-align: center; font-size: 13px; }
+.job-descriptions-page .button-secondary, .cv-redesign .button-secondary { border: 1px solid #9aa5b9; border-radius: 10px; padding: 9px 12px; font-size: 12px; }
+@media (max-width: 1100px) {
+  .jd-redesign-workspace { grid-template-columns: 235px minmax(0, 1fr); }
+  .jd-document-layout { grid-template-columns: minmax(0, 1fr); }
+  .jd-context { flex-direction: row; flex-wrap: wrap; }
+  .jd-context-card { flex: 1; min-width: 180px; }
+  .jd-document-scroll { overflow: visible; padding-right: 0; }
+  .jd-detail-header { flex-wrap: wrap; }
+}
+@media (max-width: 700px) {
+  .workspace-main:has(.job-descriptions-page), .workspace-main:has(.cv-redesign) { padding: 14px; overflow-y: auto; }
+  .job-descriptions-page, .cv-redesign { height: auto; min-height: 100%; }
+  .redesign-header { align-items: flex-start; flex-wrap: wrap; }
+  .jd-redesign-workspace { display: flex; flex-direction: column; flex: none; }
+  .jd-library-scroll { max-height: 220px; flex: none; }
+  .jd-document-layout { overflow: visible; }
+  .jd-detail-panel { min-height: 400px; }
+  .jd-assistant-layout { display: flex; flex-direction: column; height: 680px; }
+  .jd-conversations { flex-shrink: 0; border-right: 0; border-bottom: 1px solid #dfe3eb; }
+  .jd-conversation-list { max-height: 110px; flex: none; }
+  .jd-assistant-layout > section { flex: 1; }
+  .redesign-tabs { padding-inline: 4px; }
+  .redesign-tabs button { padding-inline: 10px; font-size: 12px; }
+}

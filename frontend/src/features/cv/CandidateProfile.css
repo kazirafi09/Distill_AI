@@ -1,0 +1,48 @@
+.profile-document { min-width: 0; }
+.profile-document-header { margin-bottom: 12px; }
+.profile-document-header h3 { font-size: 15px; font-weight: 750; }
+.profile-document-header p { margin-top: 3px; font-size: 11px; color: #637086; overflow-wrap: anywhere; }
+.profile-document-header label { margin-top: 8px; max-width: 100%; }
+.profile-intro { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.profile-intro p { max-width: 440px; font-size: 12px; line-height: 1.5; color: #526075; }
+.profile-intro .ui-badge { flex-shrink: 0; }
+.profile-review-notice { padding: 7px 10px; border: 1px solid #ead3a3; border-radius: 9px; background: #fffbf2; font-size: 12px; margin-bottom: 8px; }
+.profile-review-notice summary { cursor: pointer; font-weight: 650; color: #80500a; }
+.profile-review-notice ul { margin: 8px 0 0; padding-left: 18px; list-style: disc; color: #526075; }
+.profile-review-notice li + li { margin-top: 6px; }
+.profile-section-nav { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 0 8px; background: white; border-bottom: 1px solid #e4e8ee; margin-bottom: 10px; }
+.profile-section-nav button { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #dfe3eb; border-radius: 7px; padding: 6px 9px; color: #425067; font-size: 11px; font-weight: 550; }
+.profile-section-nav button:hover { background: #f1faf6; border-color: #8bcfb5; color: #006548; }
+.profile-section-nav button span { font-size: 10px; color: #657289; }
+.candidate-profile > div[data-section] { scroll-margin-top: 100px; }
+.profile-section { padding: 14px; margin-bottom: 12px; border: 1px solid #e0e5ec; border-radius: 11px; }
+.profile-section > header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.profile-section h3 { font-size: 13px; font-weight: 750; color: #172033; }
+.profile-count { background: #f0f3f6; color: #526075; padding: 1px 6px; border-radius: 5px; font-size: 10px; }
+.profile-contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+.profile-contact-grid dt { font-size: 11px; color: #637086; margin-bottom: 3px; }
+.profile-contact-grid dd { font-size: 13px; overflow-wrap: anywhere; }
+.profile-contact-links { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 14px; font-size: 12px; overflow-wrap: anywhere; }
+.profile-contact-links a, .profile-evidence a { color: #007955; text-decoration: underline; }
+.profile-tags { display: flex; flex-wrap: wrap; gap: 7px; list-style: none; padding: 0; margin: 0; }
+.profile-tags li { padding: 5px 9px; border-radius: 6px; background: #eff7f3; border: 1px solid #dcebe3; color: #28624b; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; max-width: 100%; }
+.profile-empty { color: #637086; font-size: 12px; }
+.profile-entry + .profile-entry { border-top: 1px solid #e4e8ee; margin-top: 14px; padding-top: 14px; }
+.profile-entry > header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px; }
+.profile-entry h4 { font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.profile-entry header p { margin-top: 3px; font-size: 12px; color: #526075; }
+.profile-entry-meta { display: flex; flex-direction: column; gap: 3px; color: #637086; font-size: 11px; }
+.profile-responsibilities { margin-top: 10px; padding-left: 17px; list-style: disc; color: #39465b; font-size: 12px; line-height: 1.6; }
+.profile-responsibilities li + li { margin-top: 5px; }
+.profile-grade, .profile-project-description { margin-top: 10px; font-size: 12px; line-height: 1.6; color: #39465b; }
+.profile-entry .profile-tags { margin-top: 10px; }
+.profile-evidence { margin-top: 12px; border-top: 1px solid #edf0f3; padding-top: 9px; font-size: 11px; }
+.profile-evidence summary { color: #007955; cursor: pointer; width: fit-content; }
+.profile-evidence blockquote { margin-top: 9px; padding: 10px; border-radius: 8px; background: #f6f7f9; color: #39465b; font-size: 12px; overflow-wrap: anywhere; }
+.profile-evidence footer { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 7px; font-size: 11px; color: #637086; }
+@media (max-width: 700px) {
+  .profile-section-nav { top: 0; background: #f3f4f6; }
+  .profile-section { background: white; }
+  .profile-intro { flex-wrap: wrap; }
+  .profile-contact-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}

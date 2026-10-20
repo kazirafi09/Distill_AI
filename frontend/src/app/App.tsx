@@ -9,8 +9,7 @@ import {
 } from 'react-router-dom'
 
 import LoginForm from '../features/auth/LoginForm'
-import RecruiterChat from '../features/jd/RecruiterChat'
-import MyJobDescriptions from '../features/jd/MyJobDescriptions'
+import JobDescriptions from '../features/jd/JobDescriptions'
 import CVScreening from '../features/cv/CVScreening'
 import { useCVSourceChecks } from '../features/cv/useCVSourceChecks'
 import Interviews from '../features/interviews/Interviews'
@@ -54,8 +53,6 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [restoreAttempt, setRestoreAttempt] = useState(0)
   const [signingOut, setSigningOut] = useState(false)
-  const [jdRefreshKey, setJDRefreshKey] = useState(0)
-  const [jdChatKey, setJDChatKey] = useState(0)
   const [navigationOpen, setNavigationOpen] = useState(false)
   const cvChecks = useCVSourceChecks(isInterviewEntry ? undefined : session?.token)
 
@@ -170,7 +167,7 @@ export default function App() {
           to="/recruiter/job-descriptions"
           className="sidebar-brand"
           aria-label="Distill AI home"
-          onClick={() => { setNavigationOpen(false); setJDChatKey(value => value + 1) }}
+          onClick={() => setNavigationOpen(false)}
         >
           <span className="brand-mark" aria-hidden="true">D</span>
           <span>Distill AI</span>
@@ -185,7 +182,6 @@ export default function App() {
               key={item.path}
               onClick={() => {
                 setNavigationOpen(false)
-                if (item.path === '/recruiter/job-descriptions') setJDChatKey(value => value + 1)
               }}
               to={item.path}
               className={({ isActive }) =>
@@ -235,25 +231,7 @@ export default function App() {
           <Route
             path="/recruiter/job-descriptions"
             element={
-              <section className="jd-page">
-                <h1 className="sr-only">Job Descriptions</h1>
-
-                <div className="jd-workspace">
-                  <MyJobDescriptions
-                    key={session.user.id}
-                    token={session.token}
-                    refreshKey={jdRefreshKey}
-                  />
-
-                  <RecruiterChat
-                    key={`${session.user.id}:${jdChatKey}`}
-                    startFresh
-                    token={session.token}
-                    userId={session.user.id}
-                    onSaved={() => setJDRefreshKey((value) => value + 1)}
-                  />
-                </div>
-              </section>
+              <JobDescriptions key={session.user.id} token={session.token} userId={session.user.id} />
             }
           />
           <Route

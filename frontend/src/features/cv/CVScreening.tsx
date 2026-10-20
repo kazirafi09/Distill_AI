@@ -1,279 +1,80 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
-import { ApiError } from '../../services/api'
 import { useSearchParams } from 'react-router-dom'
-import { loadRecruitmentJobs } from '../interviews/useRecruitmentJob'
+import { useRecruitmentJob } from '../interviews/useRecruitmentJob'
 import ShortlistWorkspace from '../interviews/ShortlistWorkspace'
-import type { JobDescriptionSummary } from '../jd/api'
-import {
-  fetchSource, linkSheet, linkSource, listApplications, listSources,
-  parseFolder, parseSheet,
-} from './api'
+import { fetchSource, listApplications, listSources } from './api'
 import type { CandidateApplication, CVSource, CVSourceCheck, FetchResult } from './api'
+import { CVBatchParse } from './CVParsing'
+import ConnectionForm from './CVSourceSetup'
+import ScreeningWorkspace from './ScreeningWorkspace'
 import './CVScreening.css'
-import { CVParseControl } from './CVParsing'
-import CVResults from './CVResults'
-
-function errorMessage(error: unknown) {
-  if (error instanceof ApiError && error.status === 401) return 'Your session expired. Sign out and sign in again.'
-  return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
-}
-
-function FetchSummary({ result }: { result: FetchResult }) {
-  const errors = [
-    ...result.errors.map((error) => `${error.filename ?? 'CV file'}: ${error.error_code}`),
-    ...(result.sheet?.errors ?? []).map((error) => `Sheet row ${error.row_number ?? '?'}: ${error.error_code}`),
-  ]
-  return (
-    <div className="cv-fetch-summary" role="status">
-      <strong>Fetch completed</strong>
-      <p>{result.downloaded} downloaded · {result.skipped} skipped · {result.failed} failed</p>
-      {result.sheet && <p>{result.sheet.rows_imported} responses imported · {result.sheet.rows_skipped} skipped · {result.sheet.rows_failed} failed</p>}
-      {errors.length > 0 && <ul>{errors.map((error, index) => <li key={`${index}:${error}`}>{error}</li>)}</ul>}
-    </div>
-  )
-}
-
-function ConnectionForm({ token, job, source, onLinked }: {
-  token: string
-  job: JobDescriptionSummary
-  source?: CVSource
-  onLinked: (source: CVSource) => void
-}) {
-  const [folder, setFolder] = useState('')
-  const [sheet, setSheet] = useState('')
-  const [tab, setTab] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const submitting = useRef(false)
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (submitting.current) return
-    submitting.current = true
-    setSaving(true)
-    setError('')
-    try {
-      const mapping = parseSheet(sheet, tab)
-      let current = source
-      if (!current) {
-        current = await linkSource(token, job.id, parseFolder(folder))
-        onLinked(current) // Preserve the source even if linking the Sheet fails.
-      }
-      const linked = await linkSheet(token, current.id, mapping.spreadsheetId, mapping.tabId)
-      onLinked(linked)
-    } catch (caught) {
-      setError(errorMessage(caught))
-    } finally {
-      submitting.current = false
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form className="cv-connect" onSubmit={(event) => void handleSubmit(event)}>
-      <div>
-        <h3>Connect form responses</h3>
-        <p>Share the response Sheet and uploaded CV folder with your service account.</p>
-      </div>
-      {!source && <label>CV upload folder URL or ID
-        <input required value={folder} onChange={(event) => setFolder(event.target.value)} placeholder="https://drive.google.com/drive/folders/…" disabled={saving} />
-        <span className="cv-hint">Use the Form’s upload folder inside your configured CV parent folder.</span>
-      </label>}
-      {source && <p className="cv-hint">CV folder is linked. Complete the response Sheet connection below.</p>}
-      <div className="cv-connect-fields">
-        <label>Response Sheet URL or ID
-          <input required value={sheet} onChange={(event) => setSheet(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=…" disabled={saving} />
-        </label>
-        <label>Response tab ID (gid)
-          <input value={tab} onChange={(event) => setTab(event.target.value)} placeholder="Optional when URL has gid" inputMode="numeric" disabled={saving} />
-        </label>
-      </div>
-      <p className="cv-hint">The response tab needs Name, Email and CV File columns. Timestamp is optional.</p>
-      {error && <p className="cv-error" role="alert">{error}</p>}
-      <button className="button-primary" disabled={saving}>{saving ? 'Connecting…' : 'Connect responses'}</button>
-    </form>
-  )
-}
-
-function CandidateTable({ applications, token }: { applications: CandidateApplication[]; token: string }) {
-  const [page, setPage] = useState(0)
-  const safePage = Math.min(page, Math.max(0, Math.ceil(applications.length / 10) - 1))
-  const start = safePage * 10
-  const visible = applications.slice(start, start + 10)
-  if (applications.length === 0) return <p className="cv-empty">No candidates imported yet. Connect the response Sheet, then click Fetch CVs.</p>
-  return (
-    <>
-      <div className="cv-table-scroll">
-        <table className="cv-candidate-table">
-          <thead><tr><th scope="col">Candidate</th><th scope="col">CV file</th><th scope="col">Submitted</th><th scope="col">Download status</th><th scope="col">Parsing</th></tr></thead>
-          <tbody>{visible.map((application) => <tr key={application.id}>
-            <td><strong>{application.full_name}</strong><span className="cv-email">{application.email}</span></td>
-            <td>{application.cv_documents.length === 0 ? 'No linked CV' : application.cv_documents.map((cv) => (
-              <a className="cv-file" key={cv.id} href={`https://drive.google.com/file/d/${encodeURIComponent(cv.drive_file_id)}/view`} target="_blank" rel="noopener noreferrer">
-                <span className="cv-file-icon" aria-hidden="true">CV</span>{cv.original_filename ?? 'CV document'}<span className="cv-sr-only"> (opens in Google Drive)</span>
-              </a>
-            ))}</td>
-            <td className="cv-submitted">{application.submitted_at_text || 'Not provided'}</td>
-            <td>{application.cv_documents.length === 0 ? '—' : application.cv_documents.map((cv) => (
-              <span key={cv.id} className={`cv-status${cv.download_status === 'downloaded' ? ' cv-status-success' : cv.download_status === 'failed' ? ' cv-status-failed' : ''}`}>
-                {cv.download_status ?? 'Unknown'}
-              </span>
-            ))}</td>
-            <td>{application.cv_documents.map(cv => cv.file_version_id && <CVParseControl readOnly key={cv.file_version_id} token={token} versionId={cv.file_version_id} filename={cv.original_filename ?? 'CV document'} enabled={cv.download_status === 'downloaded'} />)}</td>
-          </tr>)}</tbody>
-        </table>
-      </div>
-      <div className="cv-candidate-pagination">
-        <span>Showing {start + 1}–{Math.min(start + 10, applications.length)} of {applications.length} candidates</span>
-        {applications.length > 10 && <label>Candidate page <select value={safePage} onChange={event => setPage(Number(event.target.value))}>
-          {Array.from({ length: Math.ceil(applications.length / 10) }, (_, i) => <option key={i} value={i}>{i + 1}</option>)}
-        </select></label>}
-      </div>
-    </>
-  )
-}
-
-type CandidatesState = { jobId: string; applications: CandidateApplication[]; loading: boolean; error: string }
+import '../jd/JobDescriptions.css'
+import './ScreeningWorkspace.css'
 
 export default function CVScreening({ token, sourceChecks, checksError, refreshChecks }: {
   token: string; sourceChecks: CVSourceCheck[]; checksError: string; refreshChecks: () => void
 }) {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [offset, setOffset] = useState(0)
-  const activeId = searchParams.get('job') ?? ''
-  const [page, setPage] = useState<{ key: string; jobs: JobDescriptionSummary[]; sources: CVSource[]; error: string } | null>(null)
-  const [candidates, setCandidates] = useState<CandidatesState | null>(null)
-  const [candidateRefresh, setCandidateRefresh] = useState(0)
+  const picker = useRecruitmentJob(token)
+  const [, setParams] = useSearchParams()
+  const [sources, setSources] = useState<CVSource[] | null>(null)
+  const [sourceError, setSourceError] = useState('')
+  const [revision, setRevision] = useState(0)
+  const [sourceRevision, setSourceRevision] = useState(0)
+  const [candidates, setCandidates] = useState<{ jobId: string; revision: number; applications: CandidateApplication[]; error: string } | null>(null)
   const [fetching, setFetching] = useState(false)
-  const [feedback, setFeedback] = useState<{ jobId: string; result?: FetchResult; error?: string; time?: string } | null>(null)
+  const [feedback, setFeedback] = useState<{ jobId: string; result?: FetchResult; error?: string } | null>(null)
+  const [sourceJob, setSourceJob] = useState<string | null>(null)
+  const sourceDialog = useRef<HTMLDialogElement>(null)
+  const shortlistDialog = useRef<HTMLDialogElement>(null)
+  const [shortlistOpen, setShortlistOpen] = useState(false)
   const fetchLock = useRef(false)
-  const key = `${offset}`
-  const ready = page?.key === key
-  const allJobs = ready ? page.jobs : []
-  const requestedIndex = allJobs.findIndex(job => job.id === activeId)
-  const effectiveOffset = requestedIndex >= 0 ? Math.floor(requestedIndex / 10) * 10 : offset
-  const jobs = allJobs.slice(effectiveOffset, effectiveOffset + 10)
-  const sources = ready ? page.sources : []
-  const activeJob = jobs.find((job) => job.id === activeId)
-  const jobId = activeJob?.id ?? ''
-  const activeSource = sources.find((source) => source.job_description_id === jobId)
-  const activeCheck = sourceChecks.find(item => item.job_description_id === jobId)
-  const otherNewChecks = sourceChecks.filter(item => item.job_description_id !== jobId && item.new_cv_count > 0)
-  const connected = activeSource?.spreadsheet_id != null && activeSource.sheet_tab_id != null
-  const applications = candidates?.jobId === jobId ? candidates.applications : []
-  const candidatesLoading = !!jobId && (candidates?.jobId !== jobId || candidates.loading)
+  const job = picker.job
+  const jobId = job?.id ?? ''
+  const source = sources?.find(item => item.job_description_id === jobId)
+  const connected = !!source && source.spreadsheet_id != null && source.sheet_tab_id != null
+  const check = sourceChecks.find(item => item.job_description_id === jobId)
+  const current = candidates?.jobId === jobId && candidates.revision === revision ? candidates : null
 
   useEffect(() => {
     const controller = new AbortController()
-    void Promise.all([loadRecruitmentJobs(token, controller.signal), listSources(token, controller.signal)])
-      .then(([descriptions, nextSources]) => {
-        if (!controller.signal.aborted) setPage({ key, jobs: descriptions, sources: nextSources, error: '' })
-      })
-      .catch((caught: unknown) => {
-        if (!controller.signal.aborted) setPage({ key, jobs: [], sources: [], error: errorMessage(caught) })
-      })
+    void listSources(token, controller.signal).then(items => {
+      if (!controller.signal.aborted) { setSources(items); setSourceError('') }
+    }).catch(error => { if (!controller.signal.aborted) setSourceError(error instanceof Error ? error.message : 'Could not load source connections.') })
     return () => controller.abort()
-  }, [token, offset, key])
+  }, [token, sourceRevision])
 
   useEffect(() => {
     if (!jobId) return
     const controller = new AbortController()
-    void (async () => {
-      setCandidates({ jobId, applications: [], loading: true, error: '' })
-      try {
-        const next = await listApplications(token, jobId, controller.signal)
-        if (!controller.signal.aborted) setCandidates({ jobId, applications: next, loading: false, error: '' })
-      } catch (caught) {
-        if (!controller.signal.aborted) setCandidates({ jobId, applications: [], loading: false, error: errorMessage(caught) })
-      }
-    })()
+    void listApplications(token, jobId, controller.signal).then(applications => {
+      if (!controller.signal.aborted) setCandidates({ jobId, revision, applications, error: '' })
+    }).catch(error => { if (!controller.signal.aborted) setCandidates({ jobId, revision, applications: [], error: error instanceof Error ? error.message : 'Could not load applications.' }) })
     return () => controller.abort()
-  }, [token, jobId, candidateRefresh, key])
+  }, [token, jobId, revision])
 
-  function handleLinked(source: CVSource) {
-    setPage((current) => current && ({ ...current, sources: [...current.sources.filter((item) => item.job_description_id !== source.job_description_id), source] }))
-    refreshChecks()
+  async function sync() {
+    if (!source || !connected || fetchLock.current) return
+    fetchLock.current = true; setFetching(true); setFeedback(null)
+    try { setFeedback({ jobId, result: await fetchSource(token, source.id) }) }
+    catch (error) { setFeedback({ jobId, error: error instanceof Error ? error.message : 'Application sync failed.' }) }
+    finally { setRevision(value => value + 1); refreshChecks(); fetchLock.current = false; setFetching(false) }
   }
+  function openSource() { setSourceJob(jobId); sourceDialog.current?.showModal() }
+  function linked(next: CVSource) { setSources(current => [...(current ?? []).filter(item => item.id !== next.id), next]); refreshChecks() }
 
-  async function handleFetch() {
-    if (!activeSource || !connected || fetchLock.current) return
-    fetchLock.current = true
-    setFetching(true)
-    setFeedback(null)
-    try {
-      const result = await fetchSource(token, activeSource.id)
-      setFeedback({ jobId, result, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
-    } catch (caught) {
-      setFeedback({ jobId, error: errorMessage(caught) })
-    } finally {
-      setCandidateRefresh((value) => value + 1)
-      refreshChecks()
-      fetchLock.current = false
-      setFetching(false)
-    }
-  }
-
-  return (
-    <section className="cv-page">
-      <header className="cv-page-header">
-        <div><p className="workspace-eyebrow">Recruitment workspace</p><h1>CV Screening</h1>
-          <p className="cv-description">Connect form responses and view candidates for each job.</p></div>
-        <div className="cv-fetch-action"><button className="button-primary" onClick={() => void handleFetch()} disabled={!ready || !connected || fetching}>
-          {fetching ? 'Fetching CVs…' : 'Fetch CVs'}</button>
-          <span>{activeJob ? `For: ${activeJob.title}` : 'Select a job to get started'}</span>
-          {feedback?.jobId === jobId && feedback.time && <span>Last fetched at {feedback.time}</span>}
-        </div>
-      </header>
-      {checksError && <p className="cv-check-warning" role="status">CV notifications could not be refreshed. {checksError}</p>}
-      {activeSource && <section className={`cv-source-notification${activeCheck?.error_code ? ' has-error' : ''}`} aria-label="CV source monitoring" aria-live="polite">
-        <div><strong>{activeCheck?.new_cv_count ? `${activeCheck.new_cv_count} new CV${activeCheck.new_cv_count === 1 ? '' : 's'} available` : activeCheck?.error_code ? 'The last source check failed' : 'Connected CV sources are checked every 5 minutes'}</strong>
-          <p>{activeCheck?.error_code ? 'Check the Drive folder, response Sheet and service-account access. We will retry automatically.' : activeCheck?.last_success_at ? `Last checked ${new Date(activeCheck.last_success_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })} · Checks continue while this page is closed.` : 'The first check is pending. Checks continue while this page is closed.'}</p>
-          {!!activeCheck?.new_cv_count && activeCheck.error_code && <p>The available count is from the last successful check.</p>}
-        </div>{!!activeCheck?.new_cv_count && <button className="button-primary" disabled={!connected || fetching} onClick={() => void handleFetch()}>{fetching ? 'Fetching CVs…' : 'Fetch new CVs'}</button>}
-      </section>}
-      {!!otherNewChecks.length && <div className="cv-other-notifications"><strong>New CVs for other jobs</strong>{otherNewChecks.map(check => <button key={check.source_id} disabled={fetching} onClick={() => setSearchParams({ job: check.job_description_id })}>{allJobs.find(item => item.id === check.job_description_id)?.title ?? 'View job'} · {check.new_cv_count} new</button>)}</div>}
-      <div className="cv-list-toolbar"><span>Job descriptions</span></div>
-      {!ready && <p className="cv-empty" role="status">Loading jobs…</p>}
-      {ready && page.error && <p className="cv-error" role="alert">{page.error}</p>}
-      {ready && !page.error && jobs.length === 0 && <p className="cv-empty">No saved job descriptions. Create a job description first.</p>}
-      <div className="cv-job-list">{jobs.map((job) => {
-        const expanded = job.id === jobId
-        const source = sources.find((item) => item.job_description_id === job.id)
-        const hasSheet = source?.spreadsheet_id != null && source.sheet_tab_id != null
-        return <article key={job.id} className={`cv-job-card${expanded ? ' is-expanded' : ''}`}>
-          <h2><a href={`#cv-job-${job.id}`} className="cv-job-toggle" aria-expanded={expanded} aria-controls={`cv-job-${job.id}`} onClick={event => {
-            event.preventDefault()
-            if (fetching) return
-            setSearchParams(current => {
-              const next = new URLSearchParams(current)
-              if (expanded) next.delete('job')
-              else next.set('job', job.id)
-              return next
-            })
-          }}>
-            <span className="cv-job-number">JD {job.number}</span><span className="cv-job-heading"><span>{job.title}</span>
-              {!!sourceChecks.find(item => item.job_description_id === job.id)?.new_cv_count && <span className="cv-new-badge">{sourceChecks.find(item => item.job_description_id === job.id)!.new_cv_count} new CVs</span>}
-              <small>{expanded && !candidatesLoading && !candidates?.error ? `${applications.length} candidates · ${applications.reduce((count, application) => count + application.cv_documents.length, 0)} CVs` : hasSheet ? 'Responses connected' : 'Connect responses to import candidates'}</small></span>
-            <span className="cv-chevron" aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
-          </a></h2>
-          {expanded && <div id={`cv-job-${job.id}`} className="cv-job-body">
-            {!hasSheet && <ConnectionForm key={`connection-${job.id}`} token={token} job={job} source={source} onLinked={handleLinked} />}
-            {feedback?.jobId === job.id && feedback.error && <p className="cv-error" role="alert">{feedback.error}</p>}
-            {feedback?.jobId === job.id && feedback.result && <FetchSummary result={feedback.result} />}
-            <CVResults key={`screening-${job.id}`} token={token} jobId={job.id} />
-            <section id="interview-shortlist" className="cv-shortlist" aria-label="Interview shortlist"><h3>Interview shortlist</h3><p>Review screened candidates and save the recipients you want to invite.</p><ShortlistWorkspace key={`shortlist-${job.id}-${candidateRefresh}`} token={token} job={job} /></section>
-            {candidatesLoading ? <p className="cv-empty" role="status">Loading candidates…</p> : candidates?.error ? <p className="cv-error" role="alert">{candidates.error}</p> : <CandidateTable key={`candidates-${job.id}-${candidateRefresh}`} token={token} applications={applications} />}
-            {source && <footer className="cv-job-footer"><a href={`https://drive.google.com/drive/folders/${encodeURIComponent(source.drive_folder_id)}`} target="_blank" rel="noopener noreferrer">Open Drive folder ↗</a>
-              {hasSheet && <a href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(source.spreadsheet_id!)}/edit#gid=${source.sheet_tab_id}`} target="_blank" rel="noopener noreferrer">Open response Sheet ↗</a>}</footer>}
-          </div>}
-        </article>
-      })}</div>
-      {ready && <nav className="cv-jobs-pagination" aria-label="Job pages">
-        {effectiveOffset > 0 && <a href="#previous-jobs" onClick={event => { event.preventDefault(); if (!fetching) { setSearchParams({}); setOffset(Math.max(0, effectiveOffset - 10)) } }}>Previous jobs</a>}
-        <span>Job page {Math.floor(effectiveOffset / 10) + 1}</span>
-        {effectiveOffset + 10 < allJobs.length && <a href="#next-jobs" onClick={event => { event.preventDefault(); if (!fetching) { setSearchParams({}); setOffset(effectiveOffset + 10) } }}>Next jobs</a>}
-      </nav>}
-    </section>
-  )
+  return <section className="cv-redesign">
+    <header className="redesign-header"><div><p className="workspace-eyebrow">Recruitment workspace</p><h1>CV Screening</h1><p className="muted">Review candidates against approved job criteria.</p></div><div className="screening-header-actions"><label>Job<select value={jobId} disabled={picker.loading || fetching} onChange={event => setParams({ job: event.target.value })}>{!job && <option value="">Select a job</option>}{picker.jobs.map(item => <option value={item.id} key={item.id}>{item.title} (JD {item.number})</option>)}</select></label></div></header>
+    {(picker.error || sourceError) && <div className="screening-notice is-danger" role="alert"><p>{picker.error || sourceError}</p><button className="button-secondary" onClick={() => { picker.retry(); setSourceRevision(value => value + 1) }}>Try again</button></div>}
+    {checksError && <p className="muted" role="status">Source notifications could not be refreshed. {checksError}</p>}
+    {picker.loading && <div className="ui-state" role="status">Loading jobs…</div>}
+    {!picker.loading && !picker.error && !job && <div className="ui-state"><h3>No approved jobs yet</h3><p>Create and approve a job description before screening candidates.</p></div>}
+    {job && <>
+      {(!connected || !!check?.new_cv_count || !!check?.error_code) && <div className="screening-sync-bar"><div><strong>{check?.new_cv_count ? `${check.new_cv_count} new source files available to sync` : connected ? 'Application source connected' : sources === null ? 'Checking application source…' : 'Connect an application source'}</strong><p className="muted">{check?.error_code ? 'The last source check failed. Review source setup and access permissions.' : check?.last_success_at ? `Last checked ${new Date(check.last_success_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })}` : connected ? 'Sync applications before screening newly submitted CVs.' : 'Connect the response Sheet and uploaded CV folder.'}</p></div></div>}
+      {feedback?.jobId === jobId && feedback.error && <div className="screening-notice is-danger" role="alert">{feedback.error}</div>}
+      {feedback?.jobId === jobId && feedback.result && <div className="screening-notice" role="status"><strong>Sync completed</strong><p>{feedback.result.downloaded} files downloaded · {feedback.result.skipped} skipped · {feedback.result.failed} failed{feedback.result.sheet ? ` · ${feedback.result.sheet.rows_imported} responses imported` : ''}</p>{feedback.result.errors.map((error, index) => <p key={index}>{error.filename ?? 'CV file'}: {error.error_code.replaceAll('_', ' ').toLowerCase()}</p>)}{feedback.result.sheet?.errors.map((error, index) => <p key={`sheet-${index}`}>Sheet row {error.row_number ?? '?'}: {error.error_code.replaceAll('_', ' ').toLowerCase()}</p>)}</div>}
+      <ScreeningWorkspace key={job.id} token={token} jobId={job.id} jobTitle={job.title} applications={current?.applications ?? []} applicationsLoading={!current} applicationsError={current?.error ?? ''} connected={connected} syncing={fetching} sourceReady={sources !== null} onShortlist={() => { setShortlistOpen(true); shortlistDialog.current?.showModal() }} onSync={() => void sync()} onSource={openSource} onReload={() => setRevision(value => value + 1)} />
+    </>}
+    <dialog className="screening-dialog" ref={sourceDialog} aria-label="Application source setup"><header><h2>Source setup</h2><button className="button-secondary" onClick={() => sourceDialog.current?.close()}>Close</button></header>{job && sourceJob === jobId && <>{!connected ? <ConnectionForm key={jobId} token={token} job={job} source={source} onLinked={linked} /> : <><p className="muted">The response Sheet and CV folder are connected for {job.title}.</p><div className="screening-source-links"><a className="text-link" href={`https://drive.google.com/drive/folders/${encodeURIComponent(source!.drive_folder_id)}`} target="_blank" rel="noopener noreferrer">Open CV folder ↗</a><a className="text-link" href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(source!.spreadsheet_id!)}/edit#gid=${source!.sheet_tab_id}`} target="_blank" rel="noopener noreferrer">Open response Sheet ↗</a></div><CVBatchParse key={jobId} token={token} jobId={jobId} onFinished={() => setRevision(value => value + 1)} /></>}</>}</dialog>
+    <dialog className="screening-dialog is-wide" ref={shortlistDialog} aria-label="Interview shortlist" onClose={() => setShortlistOpen(false)}><header><h2>Interview shortlist</h2><button className="button-secondary" onClick={() => shortlistDialog.current?.close()}>Close</button></header>{job && shortlistOpen && <ShortlistWorkspace key={job.id} token={token} job={job} />}</dialog>
+  </section>
 }
