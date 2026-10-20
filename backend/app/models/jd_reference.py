@@ -35,7 +35,7 @@ class JDReference(Base):
             name="ck_jd_references_index_status",
         ),
         CheckConstraint(
-            "document_type IN ('prior_jd', 'company_policy')",
+            "document_type IN ('prior_jd', 'company_policy', 'technical_reference')",
             name="ck_jd_references_document_type",
         ),
     )

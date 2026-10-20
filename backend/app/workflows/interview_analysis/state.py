@@ -1,6 +1,7 @@
 """Graph state; validated model output contracts live in services/interviews."""
 
 from typing import TypedDict
+from uuid import UUID
 
 
 class InterviewAnalysisState(TypedDict, total=False):
@@ -9,6 +10,10 @@ class InterviewAnalysisState(TypedDict, total=False):
     prepared: dict
     criteria: list[dict]
     references: list[dict]
+    answer_references: list[dict]
+    reference_retrieval: dict | None
+    inputs: dict
+    recruiter_id: UUID
     model_options: dict
     model_version: dict
     output_directory: str

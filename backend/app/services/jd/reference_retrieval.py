@@ -19,8 +19,12 @@ logger = logging.getLogger("distill_ai.jd_references")
 def retrieve_reference_context(
     recruiter_id: UUID,
     query: str,
+    *,
+    document_limits: dict[str, int] | None = None,
+    versions: dict[str, str] | None = None,
 ) -> tuple[str, list[ReferenceSource], str]:
     settings = get_settings()
+    document_limits = document_limits if document_limits is not None else {"prior_jd": 3, "company_policy": 2}
 
     connection_info = make_conninfo(
         host=settings.postgres_host,
@@ -37,28 +41,34 @@ def retrieve_reference_context(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, document_type
+                SELECT id, document_type, file_sha256, extracted_text
                 FROM jd_references
                 WHERE recruiter_id = %s
                   AND index_status = 'indexed'
+                  AND document_type = ANY(%s)
                 ORDER BY id
                 FOR SHARE
                 """,
-                (recruiter_id,),
+                (recruiter_id, list(document_limits)),
             )
 
             rows = cursor.fetchall()
 
-        if not rows:
+        if not rows and not versions:
             return "", [], "no_indexed_references"
 
-        eligible = {
-            "prior_jd": [],
-            "company_policy": [],
-        }
-
-        for reference_id, document_type in rows:
+        eligible = {document_type: [] for document_type in document_limits}
+        documents_by_id = {}
+        for reference_id, document_type, file_sha256, text in rows:
+            if versions is not None and versions.get(str(reference_id)) != file_sha256:
+                continue
             eligible[document_type].append(str(reference_id))
+            documents_by_id[str(reference_id)] = (file_sha256, text)
+
+        if versions is not None and len(documents_by_id) != len(versions):
+            raise ValueError("REFERENCE_SNAPSHOT_UNAVAILABLE")
+        if not documents_by_id:
+            return "", [], "no_indexed_references"
 
         collection = get_reference_collection()
 
@@ -69,10 +79,7 @@ def retrieve_reference_context(
         sources: list[ReferenceSource] = []
         excerpts: list[dict[str, object]] = []
 
-        for document_type, top_k in (
-            ("prior_jd", 3),
-            ("company_policy", 2),
-        ):
+        for document_type, top_k in document_limits.items():
             reference_ids = eligible[document_type]
 
             if not reference_ids:
@@ -133,6 +140,7 @@ def retrieve_reference_context(
                     metadata.get("recruiter_id") != str(recruiter_id)
                     or reference_id not in reference_ids
                     or metadata.get("document_type") != document_type
+                    or document not in documents_by_id[reference_id][1]
                 ):
                     raise RuntimeError(
                         "Unexpected reference ownership metadata."
@@ -149,6 +157,7 @@ def retrieve_reference_context(
                 excerpt = {
                     **source,
                     "text": document,
+                    "version": documents_by_id[reference_id][0],
                 }
 
                 # Limit reference context sent to the generation model.

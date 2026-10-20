@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from app.services.interviews import analysis
+from app.services.interviews.accuracy_references import prepare_references
 from app.services.interviews.rubric import DIMENSIONS, RUBRIC_VERSION, dimension_summaries
 from app.workflows.interview_analysis.state import InterviewAnalysisState
 
@@ -37,7 +38,11 @@ async def classify_requirements(state: InterviewAnalysisState):
 
 async def prepare_answer(state: InterviewAnalysisState):
     # Clear previous results before the next parallel superstep.
-    return {"relevance": None, "accuracy": None, "completeness": None, "articulation": None}
+    try:
+        references = await prepare_references(state)
+    except Exception as error:
+        return failed(error)
+    return {"relevance": None, "accuracy": None, "completeness": None, "articulation": None, **references}
 
 
 async def evaluation(state, dimension):
@@ -76,6 +81,8 @@ async def merge_evaluation(state: InterviewAnalysisState):
 async def save_answer(state: InterviewAnalysisState):
     group = state["groups"][state["group_index"]]
     result = {"group": group, "evaluations": state["merged_evaluation"]}
+    if state.get("reference_retrieval") is not None:
+        result["reference_retrieval"] = state["reference_retrieval"]
     if state.get("storage_run_id"):
         from app.services.interviews.assessment_store import save_answer as save_stored_answer
         await save_stored_answer(state, result)
@@ -112,6 +119,7 @@ async def persist_analysis(state: InterviewAnalysisState):
         "criteria_snapshot": state.get("criteria", []),
         "groups": state.get("groups", []), "excluded_turns": state.get("excluded_turns", []),
         "results": results, "coverage": state.get("coverage", []),
+        "references": state.get("references", []),
         "dimension_summaries": dimension_summaries(results),
         "evaluated_groups": len(results), "total_groups": len(state.get("groups", [])),
         "warnings": warnings,

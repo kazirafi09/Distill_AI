@@ -3,8 +3,6 @@
 from hashlib import sha256
 from functools import lru_cache
 
-import chromadb
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.core.config import get_settings
 from app.models.question_bank import QuestionBank
@@ -28,6 +26,8 @@ def current_index_version() -> str:
 
 @lru_cache
 def get_question_bank_collection():
+    import chromadb
+
     settings = get_settings()
     client = chromadb.HttpClient(
         host=settings.chroma_host,
@@ -41,6 +41,8 @@ def get_question_bank_collection():
 
 
 def build_chunks(bank: QuestionBank) -> list[dict]:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
     text = bank.extracted_text or ""
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=CHUNK_SIZE,
