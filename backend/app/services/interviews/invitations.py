@@ -103,7 +103,12 @@ async def validate_entry(token):
         ))
         if title is None:
             raise HTTPException(410, "This interview link is invalid or no longer active.")
-        return {"job_title": title, "instructions": INSTRUCTIONS,
+        candidate_name = await db.scalar(select(Candidate.full_name).join(
+            CandidateApplication, CandidateApplication.candidate_id == Candidate.id,
+        ).where(CandidateApplication.id == invitation.application_id))
+        if candidate_name is None:
+            raise HTTPException(410, "This interview link is invalid or no longer active.")
+        return {"job_title": title, "candidate_name": candidate_name, "instructions": INSTRUCTIONS,
                 "expires_at": invitation.expires_at.isoformat(), "interview_ready": False}
 
 

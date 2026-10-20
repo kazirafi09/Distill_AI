@@ -13,6 +13,7 @@ import type { RecruiterInterviewStatus, RoomCredentials } from './sessionApi'
 import RecruiterChat from '../jd/RecruiterChat'
 import InterviewStage from './InterviewStage'
 import InterviewTranscript from './InterviewTranscript'
+import InterviewCandidateProfile from './InterviewCandidateProfile'
 
 const ignoreSavedJD = () => {}
 
@@ -26,6 +27,7 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
   const [connected, setConnected] = useState(false)
   const [busy, setBusy] = useState(false)
   const [prepared, setPrepared] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [previewRevision, setPreviewRevision] = useState(0)
   const [error, setError] = useState('')
   const [pollError, setPollError] = useState('')
@@ -133,8 +135,11 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
     })
   }
   const lobby = <section className="interview-lobby" aria-labelledby="live-interview-heading">
-    <header className="lobby-heading"><div><h2 id="live-interview-heading">Live interview</h2><p>{prepared ? connected ? 'Your waiting room is open. Admit the candidate when you are ready.' : busy || credentials ? 'Connecting to your waiting room…' : 'Rejoin your waiting room or recheck your devices.' : 'Check your camera and microphone before you meet the candidate.'}</p></div><ol className="lobby-steps" aria-label="Interview steps">{['Preparation', 'Waiting room', 'Interview'].map((label, index) => <li key={label} className={(prepared ? index === 1 : index === 0) ? 'is-current' : ''} aria-current={(prepared ? index === 1 : index === 0) ? 'step' : undefined}><span>{prepared && index === 0 ? '✓' : index + 1}</span>{label}</li>)}</ol></header>
+    <header className="lobby-heading"><div><h2 id="live-interview-heading">Live interview</h2><p>{prepared ? connected ? 'Your waiting room is open. Admit the candidate when you are ready.' : busy || credentials ? 'Connecting to your waiting room…' : 'Rejoin your waiting room or recheck your devices.' : 'Check your camera and microphone before you meet the candidate.'}</p></div><ol className="lobby-steps" aria-label="Interview steps">{['Preparation', 'Waiting room', 'Interview'].map((label, index) => <li key={label} className={(prepared ? index === 1 : index === 0) ? 'is-current' : ''} aria-current={(prepared ? index === 1 : index === 0) ? 'step' : undefined}><span>{prepared && index === 0 ? <svg className="motion-check" aria-hidden="true" width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="m3 10 5 5 9-10" stroke="currentColor" strokeWidth="2" /></svg> : index + 1}</span>{label}</li>)}</ol></header>
     {(pollError || error || message || finished || status?.status === 'closing') && <div className="lobby-notices">{notices}</div>}
+    <details className="interview-profile-preview" onToggle={event => setProfileOpen(event.currentTarget.open)}><summary>Candidate profile and interview preparation</summary>
+      {profileOpen && <InterviewCandidateProfile token={token} jobId={jobId} candidate={candidate} />}
+    </details>
     {!prepared ? <InterviewPreparation key={previewRevision} candidate={candidate} members={members} invitation={invitation} status={status?.status ?? 'checking'} busy={busy}
       canContinue={!invitationLoading && invitation?.link_status === 'active' && !!status && ['not_started', 'ready', 'in_progress'].includes(status.status)}
       onCandidate={onCandidate} onContinue={value => void startOrJoin(value)} onRecheck={() => setPreviewRevision(value => value + 1)} />
@@ -170,7 +175,7 @@ export default function RecruiterInterviewPanel({ token, userId, jobId, members,
   }, [token, jobId, revision])
   const candidate = members.find(member => member.application_id === params.get('candidate')) ?? members[0]
   function chooseCandidate(id: string) { setParams(current => { current.set('job', jobId); current.set('candidate', id); return current }) }
-  if (!candidate) return <section className="interview-lobby lobby-empty"><h2>Live interview</h2><p>No saved candidates yet.</p><Link to={`/recruiter/cv-screening?job=${encodeURIComponent(jobId)}#interview-shortlist`}>Build your interview shortlist in CV Screening →</Link></section>
+  if (!candidate) return <section className="interview-lobby lobby-empty"><h2>Live interview</h2><p>No saved candidates yet.</p><Link to={`/recruiter/cv-screening?job=${encodeURIComponent(jobId)}&shortlist=1`}>Build your interview shortlist in CV Screening →</Link></section>
   return <>
     {invitationError && <div className="lobby-notices" role="alert">{invitationError}</div>}
     <RecruiterSession key={candidate.application_id} token={token} userId={userId} jobId={jobId} candidate={candidate} members={members} invitation={invitations.find(item => item.application_id === candidate.application_id)} invitationLoading={invitationLoading} jobTitle={jobTitle} jobNumber={jobNumber} onCandidate={chooseCandidate} />

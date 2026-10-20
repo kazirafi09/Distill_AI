@@ -245,6 +245,7 @@ async def list_candidate_applications(
     job_description_id: UUID | None = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    application_id: UUID | None = None,
 ):
     statement = (
         select(CandidateApplication, Candidate, JobDescription.title)
@@ -257,6 +258,8 @@ async def list_candidate_applications(
     )
     if job_description_id is not None:
         statement = statement.where(CandidateApplication.job_description_id == job_description_id)
+    if application_id is not None:
+        statement = statement.where(CandidateApplication.id == application_id)
     rows = (await db.execute(statement)).all()
     result = {}
     for application, candidate, title in rows:

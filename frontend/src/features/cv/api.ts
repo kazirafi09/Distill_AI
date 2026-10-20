@@ -103,6 +103,12 @@ export async function listApplications(token: string, jobId: string, signal?: Ab
   }
 }
 
+export async function getApplication(token: string, jobId: string, applicationId: string, signal?: AbortSignal) {
+  const query = new URLSearchParams({ job_description_id: jobId, application_id: applicationId, limit: '1' })
+  const items = await apiRequest<CandidateApplication[]>(`/cv/applications?${query}`, { token, signal })
+  return items.find(item => item.id === applicationId) ?? null
+}
+
 export function linkSource(token: string, jobId: string, folderId: string) {
   return apiRequest<CVSource>('/cv/sources', {
     method: 'POST', token,

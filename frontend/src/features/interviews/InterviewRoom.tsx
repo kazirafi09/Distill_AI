@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  ControlBar, GridLayout, LiveKitRoom, ParticipantTile, PreJoin,
+  ControlBar, GridLayout, LiveKitRoom, ParticipantTile,
   RoomAudioRenderer, StartAudio, useConnectionState, useTracks, useLocalParticipant, useRoomContext,
 } from '@livekit/components-react'
 import type { LocalUserChoices } from '@livekit/components-react'
 import { ConnectionState, Track } from 'livekit-client'
 import type { RoomCredentials } from './sessionApi'
+import { isInterviewParticipant } from './interviewParticipants'
 import '@livekit/components-styles'
 import './InterviewRoom.css'
 
 type StageOptions = {
+  participantRole?: 'recruiter' | 'candidate'
   stage?: boolean
   candidateName?: string
   onEnd?: () => void
@@ -30,18 +32,33 @@ export function CallIcon({ kind }: { kind: 'microphone' | 'camera' | 'leave' | '
   return <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind]}</svg>
 }
 
-export function StageRoom({ candidateName, onEnd, canEnd, onAdmit, waiting, onError }: StageOptions & { onError: (error: Error) => void }) {
+export function CallStageView({ main, self, mainName, selfName, onSwap, controls, notice, audioAction }: {
+  main: ReactNode; self: ReactNode; mainName: string; selfName: string; onSwap: () => void
+  controls: ReactNode; notice?: ReactNode; audioAction?: ReactNode
+}) {
+  return <div className="stage-call">
+    {audioAction}{notice}
+    <div className="stage-main-video">{main}</div>
+    <strong className="stage-speaker">{mainName}</strong>
+    <button className="stage-pip" onClick={onSwap} aria-label="Swap main and small video"><div>{self}</div><span>{selfName}</span></button>
+    <div className="stage-dock" aria-label="Call controls">{controls}</div>
+  </div>
+}
+
+export function StageRoom({ candidateName, onAdmit, waiting, onError, participantRole = 'recruiter' }: StageOptions & { onError: (error: Error) => void }) {
   const tracks = useTracks([{ source: Track.Source.Camera, withPlaceholder: true }])
   const room = useRoomContext()
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
   const [swapped, setSwapped] = useState(false)
   const [pending, setPending] = useState(false)
-  const remote = tracks.find(track => !track.participant.isLocal)
+  const remote = tracks.find(track => !track.participant.isLocal && isInterviewParticipant(track.participant))
   const local = tracks.find(track => track.participant.isLocal)
   const main = swapped ? local : remote
   const small = swapped ? remote : local
   const mainHasVideo = main?.publication && !main.publication.isMuted && main.publication.track
-  const mainName = swapped ? 'You' : candidateName ?? 'Candidate'
+  const remoteRole = participantRole === 'candidate' ? 'Interviewer' : 'Candidate'
+  const remoteName = candidateName ?? remoteRole
+  const mainName = swapped ? 'You' : remoteName
   const mainInitials = mainName.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase()
   async function toggle(source: 'microphone' | 'camera') {
     if (pending) return
@@ -52,34 +69,17 @@ export function StageRoom({ candidateName, onEnd, canEnd, onAdmit, waiting, onEr
     } catch (caught) { onError(caught instanceof Error ? caught : new Error('Could not change device state.')) }
     finally { setPending(false) }
   }
-  return <div className="stage-call">
-    <StartAudio label="Enable speaker audio" />
-    {!isMicrophoneEnabled && <p className="stage-microphone-warning" role="status">Your microphone is off. Your speech is not being transcribed. Select Unmute to speak.</p>}
-    <div className="stage-main-video">{main && mainHasVideo ? <ParticipantTile trackRef={main} /> : <div className="stage-camera-placeholder">{main ? <><span className="stage-camera-off">Camera off</span><span className="stage-video-initials">{mainInitials}</span></> : <><div className="stage-person" /><p>{waiting ? 'Waiting for candidate admission' : 'Waiting for candidate to join'}</p></>}</div>}</div>
-    <strong className="stage-speaker">{swapped ? 'You · Interviewer' : `${candidateName ?? 'Candidate'} · Candidate`}</strong>
-    <button className="stage-pip" onClick={() => setSwapped(!swapped)} aria-label="Swap main and small video"><div>{small ? <ParticipantTile trackRef={small} /> : <div className="stage-person" />}</div><span>{swapped ? candidateName ?? 'Candidate' : 'You'}</span></button>
-    <div className="stage-dock" aria-label="Call controls">
+  return <CallStageView audioAction={<StartAudio label="Enable speaker audio" />}
+    notice={!isMicrophoneEnabled && <p className="stage-microphone-warning" role="status">{participantRole === 'candidate' ? 'Your microphone is off. Select Unmute so your interviewer can hear you.' : 'Your microphone is off. Your speech is not being transcribed. Select Unmute to speak.'}</p>}
+    main={main && mainHasVideo ? <ParticipantTile trackRef={main} /> : <div className="stage-camera-placeholder">{main ? <><span className="stage-camera-off">Camera off</span><span className="stage-video-initials">{mainInitials}</span></> : <><div className="stage-person" /><p>{participantRole === 'candidate' ? 'Waiting for your interviewer' : waiting ? 'Waiting for candidate admission' : 'Waiting for candidate to join'}</p></>}</div>}
+    mainName={swapped ? `You · ${participantRole === 'candidate' ? 'Candidate' : 'Interviewer'}` : `${remoteName} · ${remoteRole}`}
+    self={small ? <ParticipantTile trackRef={small} /> : <div className="stage-person" />}
+    selfName={swapped ? remoteName : 'You'} onSwap={() => setSwapped(!swapped)} controls={<>
       <button className={isMicrophoneEnabled ? 'is-enabled' : ''} aria-pressed={isMicrophoneEnabled} disabled={pending} onClick={() => void toggle('microphone')}><CallIcon kind="microphone" />{isMicrophoneEnabled ? 'Mute' : 'Unmute'}</button>
       <button className={isCameraEnabled ? 'is-enabled' : ''} aria-pressed={isCameraEnabled} disabled={pending} onClick={() => void toggle('camera')}><CallIcon kind="camera" />{isCameraEnabled ? 'Video off' : 'Video on'}</button>
       {waiting && onAdmit && <button className="stage-admit" onClick={onAdmit}><CallIcon kind="admit" />Admit</button>}
       <button onClick={() => void room.disconnect()}><CallIcon kind="leave" />Leave</button>
-      <button className="stage-danger" disabled={!canEnd} title={!canEnd ? 'Only the recruiter can end the interview for everyone.' : 'End interview for everyone'} onClick={onEnd}><CallIcon kind="end" />End all</button>
-    </div>
-  </div>
-}
-
-export function DeviceCheck({ name, onReady }: {
-  name: string
-  onReady: (choices: LocalUserChoices) => void
-}) {
-  const [error, setError] = useState('')
-  const reportError = useCallback((caught: Error) => setError(caught.message), [])
-  return <div data-lk-theme="default" className="interview-device-check">
-    <p>Check your devices. Camera and microphone start switched off.</p>
-    {error && <p role="alert">{error} You can continue with the unavailable device switched off.</p>}
-    <PreJoin defaults={{ username: name, videoEnabled: false, audioEnabled: false }}
-      persistUserChoices={false} joinLabel="Continue" onSubmit={onReady} onError={reportError} />
-  </div>
+    </>} />
 }
 
 function RoomContents({ onConnectionChange, onError, children, ...options }: {
@@ -95,7 +95,7 @@ function RoomContents({ onConnectionChange, onError, children, ...options }: {
   return <>
     {children ?? (options.stage ? <StageRoom {...options} onError={onError} /> : <>
       <p role="status" className="interview-connection-status">Connection: {state}</p>
-      <GridLayout tracks={tracks} className="interview-video-grid"><ParticipantTile /></GridLayout>
+      <GridLayout tracks={tracks.filter(track => isInterviewParticipant(track.participant))} className="interview-video-grid"><ParticipantTile /></GridLayout>
     </>)}
     <RoomAudioRenderer />
     {!children && !options.stage && <StartAudio label="Enable speaker audio" />}
