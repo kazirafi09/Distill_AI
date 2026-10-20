@@ -20,6 +20,10 @@ export type ScreeningProfile = {
 }
 
 export type JDConversation = {
+  editable_content?: string
+  edit_version?: string | null
+  editing_locked?: boolean
+  posting_status?: string | null
   conversation_id: string
   created_at: string
   checkpoint_id: string | null
@@ -120,10 +124,41 @@ export type JobDescriptionSummary = {
 }
 
 export type SavedJobDescription = JobDescriptionSummary & {
+  editable_content?: string
+  edit_version?: string
+  editing_locked?: boolean
+  posting_status?: string | null
   content: string
   screening_profile: ScreeningProfile | null
   profile_version: number | null
   google_form_url: string | null
+}
+
+export type EditableProfile = Pick<ScreeningProfile,
+  'dimension_weights' | 'minimum_years_experience' | 'fresher_eligibility' | 'google_form_url'> & {
+  criteria: Pick<ScreeningProfile['criteria'][number], 'id' | 'text' | 'dimension' | 'priority'>[]
+}
+
+export type JobEdit = {
+  edit_version: string
+  content: string
+  screening_profile: EditableProfile
+  criteria_reviewed: boolean
+}
+
+export function suggestJobEdits(token: string, conversationId: string, edit: JobEdit,
+  changedSection: 'description' | 'criteria', signal?: AbortSignal) {
+  return apiRequest<{ content: string; screening_profile: EditableProfile }>(
+    `/jd/conversations/${conversationId}/edit-preview`, {
+      method: 'POST', token, signal, body: { ...edit, changed_section: changedSection },
+    },
+  )
+}
+
+export function saveJobEdits(token: string, conversationId: string, edit: JobEdit, signal?: AbortSignal) {
+  return apiRequest<JDConversation>(`/jd/conversations/${conversationId}/edits`, {
+    method: 'PUT', token, signal, body: edit,
+  })
 }
 
 export function listJobDescriptions(
@@ -152,7 +187,7 @@ export function getJobDescription(
   )
 }
 
-export type ReferenceDocumentType = 'prior_jd' | 'company_policy'
+export type ReferenceDocumentType = 'prior_jd' | 'company_policy' | 'technical_reference'
 
 export type JDReference = {
   id: string

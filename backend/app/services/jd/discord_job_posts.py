@@ -83,7 +83,7 @@ def post_job_to_discord(
                     JOIN users AS recruiter
                       ON recruiter.id = conversation.recruiter_id
                     WHERE
-                    """ + " AND ".join(conditions),
+                    """ + " AND ".join(conditions) + " FOR UPDATE OF jd",
                     parameters,
                 )
                 document = cursor.fetchone()

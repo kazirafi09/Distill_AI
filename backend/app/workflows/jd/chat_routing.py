@@ -45,9 +45,22 @@ def recruiter_context(messages: list) -> list:
 
 
 def unverified_jd_claim(content: str) -> bool:
-    return bool(re.search(
+    claims = re.finditer(
         r"\b(?:i(?:['’]ve| have)?\s+(?:(?:successfully|already)\s+)?"
         r"(?:saved|approved|marked\b[^\n.!?]{0,80}\bapproved)|"
         r"(?:jd|job description|draft)\s+(?:has been|is|was)\s+"
         r"(?:(?:successfully|now)\s+)?(?:saved|approved))\b", content, re.I,
-    ))
+    )
+    for claim in claims:
+        # "Once a JD is approved, I can post it" explains a prerequisite;
+        # it does not claim approval happened. Require the condition directly
+        # before the subject; a later "I saved it" still requires a receipt.
+        prefix = content[:claim.start()]
+        if re.search(
+            r"\b(?:if|when|once|after|before|until|unless)\s+"
+            r"(?:(?:a|an|the|this|that|your|our|current|new|existing|selected)\s+)*$",
+            prefix, re.I,
+        ):
+            continue
+        return True
+    return False

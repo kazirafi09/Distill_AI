@@ -8,11 +8,12 @@ from sqlalchemy import select
 from app.auth import DatabaseSession, require_recruiter
 from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
+from app.services.jd.edit_policy import description_details
+from app.services.jd.editing import EditPreview, ManualEdit, save_manual_edit, suggest_matching_edits
 
 from app.services.jd.conversations import (
     act_on_jd_conversation,
     create_jd_conversation,
-    description_summary,
     load_jd_conversation,
 )
 
@@ -129,6 +130,22 @@ async def list_descriptions(
     }
 
 
+@router.post("/conversations/{conversation_id}/edit-preview")
+async def preview_edit(
+    conversation_id: UUID, body: EditPreview, request: Request,
+    user: Recruiter, db: DatabaseSession,
+):
+    return await suggest_matching_edits(db, request.app.state.jd_graph, user.id, conversation_id, body)
+
+
+@router.put("/conversations/{conversation_id}/edits")
+async def edit_conversation(
+    conversation_id: UUID, body: ManualEdit, request: Request,
+    user: Recruiter, db: DatabaseSession,
+):
+    return await save_manual_edit(db, request.app.state.jd_graph, user.id, conversation_id, body)
+
+
 @router.get("/descriptions/{description_id}")
 async def get_description(
     description_id: UUID,
@@ -153,11 +170,4 @@ async def get_description(
             detail="Job description not found",
         )
 
-    return {
-        **description_summary(document),
-        "conversation_id": str(document.conversation_id),
-        "content": document.content,
-        "screening_profile": document.screening_profile,
-        "profile_version": document.profile_version,
-        "google_form_url": document.google_form_url,
-    }
+    return await description_details(db, document)

@@ -15,6 +15,7 @@ type RequestOptions = {
   signal?: AbortSignal
   cache?: RequestCache
   responseType?: 'json' | 'blob'
+  accept?: string
 }
 
 let accessToken: string | null = null
@@ -43,11 +44,12 @@ async function refreshAccessToken() {
   return refreshPromise
 }
 
-export async function apiRequest<T>(
+export async function apiResponse(
   path: string,
   options: RequestOptions = {},
-): Promise<T> {
+): Promise<Response> {
   const headers = new Headers()
+  if (options.accept) headers.set('Accept', options.accept)
   const isFormData = options.body instanceof FormData
 
   if (options.body !== undefined && !isFormData) {
@@ -88,10 +90,8 @@ export async function apiRequest<T>(
     }
   }
 
-  if (response.ok && options.responseType === 'blob') return await response.blob() as T
-  const data: unknown = await response.json().catch(() => null)
-
   if (!response.ok) {
+    const data: unknown = await response.json().catch(() => null)
     let message = `Request failed (${response.status})`
 
     if (
@@ -118,7 +118,16 @@ export async function apiRequest<T>(
     throw new ApiError(response.status, message)
   }
 
-  return data as T
+  return response
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  const response = await apiResponse(path, options)
+  if (options.responseType === 'blob') return await response.blob() as T
+  return await response.json().catch(() => null) as T
 }
 
 export type UserProfile = {

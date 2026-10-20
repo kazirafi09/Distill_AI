@@ -53,6 +53,7 @@ employer facts. Return response only for chat, empty for other actions."""
     result = _make_model(2000).with_structured_output(JDIntent, method="function_calling").invoke([
         SystemMessage(content=prompt),
         HumanMessage(content=json.dumps({"status": jd.get("status"),
+            "current_description": jd.get("draft_jd"),
             "conversation": jd.get("messages", []), "profile": jd.get("screening_profile"),
             "central_chat_context": jd.get("central_messages", []),
             "latest_message": message}, ensure_ascii=False, default=str)),

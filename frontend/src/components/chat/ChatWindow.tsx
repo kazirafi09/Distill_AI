@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
+import TypingIndicator from '../motion/TypingIndicator'
 
 type ChatWindowProps = {
   title: string
@@ -43,7 +44,7 @@ export default function ChatWindow({
         {children}
         {busy && (
           <p role="status" className="text-sm text-slate-500">
-            Distill AI is working...
+            Distill AI is working...<TypingIndicator />
           </p>
         )}
         <div ref={bottomRef} />

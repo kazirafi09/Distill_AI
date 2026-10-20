@@ -8,6 +8,7 @@ from langchain_groq import ChatGroq
 
 from app.core.config import get_settings
 from app.workflows.assistant.state import AssistantState
+from app.workflows.streaming import invoke_reply
 from app.integrations.assistant_mcp import call_assistant_tool, discover_assistant_tools
 from app.workflows.assistant.interview_intent import acknowledgement_reply, interpret_interview_message
 from app.workflows.jd.chat_routing import (
@@ -221,7 +222,10 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
             runnable = model.bind_tools(available, tool_choice="search_interview_questions")
         else:
             runnable = model.bind_tools(available) if available else model
-        response = runnable.invoke([*prompt, *messages])
+        response = invoke_reply(runnable, [*prompt, *messages], prefix=(
+            "AI-generated questions:\n\n"
+            if retrieval_status in {"no_relevant_matches", "no_ready_banks"} else ""
+        ))
     except Exception as exc:
         logger.error("Assistant model failed | error_type=%s", type(exc).__name__)
         if type(exc).__name__ == "RateLimitError":
