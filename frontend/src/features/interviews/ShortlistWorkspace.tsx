@@ -5,6 +5,7 @@ import { ApiError } from '../../services/api'
 import { listApplications } from '../cv/api'
 import type { CandidateApplication } from '../cv/api'
 import { AssessmentDetails } from '../cv/CVResults'
+import { candidateFileLabel } from '../cv/profileView'
 import { getJobDescription } from '../jd/api'
 import type { JobDescriptionSummary, SavedJobDescription } from '../jd/api'
 import { loadScreeningResults, loadShortlist, previewShortlist, saveShortlist } from './api'
@@ -266,7 +267,7 @@ export default function ShortlistWorkspace({ token, job }: { token: string; job:
             <td><strong>{application.full_name}</strong><span className="interview-email">{application.email}</span><span className={`interview-badge${proposedIds.has(application.id) ? ' is-proposed' : ''}`}>{proposedIds.has(application.id) ? 'Proposed' : eligible ? 'Eligible' : 'Needs review'}</span></td>
             <td>{assessment?.rank ?? '—'}</td><td>{Number.isFinite(score) && score >= 0 && score <= 100 ? `${score.toFixed(2)}%` : '—'}</td>
             <td><p className="interview-hint">{reason}</p>{assessment && <AssessmentDetails item={assessment} criteria={assessment.outdated ? null : description?.screening_profile ?? null} />}
-              {application.cv_documents.map(document => <a className="interview-cv-link" key={document.id} href={`https://drive.google.com/file/d/${encodeURIComponent(document.drive_file_id)}/view`} target="_blank" rel="noopener noreferrer">View {document.original_filename ?? 'CV'} ↗</a>)}
+              {application.cv_documents.map((document, index) => <a className="interview-cv-link" key={document.id} href={`https://drive.google.com/file/d/${encodeURIComponent(document.drive_file_id)}/view`} target="_blank" rel="noopener noreferrer">View {candidateFileLabel(application.full_name, document.original_filename, index, application.cv_documents.length)} ↗</a>)}
             </td>
           </tr>
         })}</tbody>

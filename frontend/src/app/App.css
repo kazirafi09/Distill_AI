@@ -5,6 +5,8 @@
 }
 
 .sidebar-menu { display: none; }
+.mobile-page-label { display: none; }
+.workspace-main:has(.assessments-page) { padding: 12px 16px; }
 .sidebar-link.has-notification { gap: 6px; padding-inline: 8px; }
 .sidebar-notification { display: inline-flex; justify-content: center; min-width: 18px; margin-left: auto; padding: 1px 4px; border-radius: 12px; background: #07815f; color: white; font-size: 10px; font-weight: 700; }
 
@@ -367,7 +369,7 @@
 
 }
 
-@media (max-width: 640px) {
+@media (max-width: 900px) {
   .workspace-shell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -375,25 +377,26 @@
 
   .workspace-sidebar {
     position: relative;
-    padding: 12px 16px;
+    padding: 14px 16px;
     border-right: 0;
     border-bottom: 1px solid #e2e8f0;
   }
 
-  .sidebar-menu { display: block; position: absolute; top: 6px; right: 16px; min-height: 44px; width: 44px; border: 1px solid #94a3b8; border-radius: 10px; background: white; }
+  .sidebar-menu { display: block; position: absolute; top: 8px; left: 14px; min-height: 44px; width: 44px; border: 1px solid #94a3b8; border-radius: 10px; background: white; cursor: pointer; }
   .workspace-sidebar:not(.is-open) .sidebar-caption,
   .workspace-sidebar:not(.is-open) .sidebar-navigation,
   .workspace-sidebar:not(.is-open) .sidebar-account { display: none; }
-  .workspace-sidebar .sidebar-brand { padding: 0; font-size: 18px; }
+  .workspace-sidebar .sidebar-brand { padding: 0; margin-left: 52px; font-size: 18px; width: fit-content; }
+  .mobile-page-label { display: block; position: absolute; top: 23px; right: 14px; color: #526075; font-size: 12px; }
+  .workspace-sidebar.is-open { max-height: 75dvh; overflow-y: auto; }
 
   .sidebar-caption {
     margin-top: 20px;
   }
 
   .sidebar-navigation {
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
+    display: grid;
+    overflow-y: auto;
     padding-bottom: 6px;
   }
 
@@ -420,3 +423,5 @@
     padding: 20px;
   }
 }
+
+@media (max-width: 380px) { .mobile-page-label { display: none; } }

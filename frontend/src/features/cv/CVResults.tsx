@@ -1,29 +1,20 @@
+import { errorLabels } from './screeningMessages'
 import { useEffect, useRef, useState } from 'react'
 import { apiRequest } from '../../services/api'
 
-type Run = { id: string; status: string; total: number; finished: number; completed: number; error_code: string | null; profile_version: number; rubric_version: string }
-type Evidence = { quote: string; source_id: string; file_version_id: string; ocr_derived: boolean }
+export type Run = { id: string; status: string; total: number; finished: number; completed: number; error_code: string | null; profile_version: number; rubric_version: string }
+export type Evidence = { quote: string; source_id: string; file_version_id: string; ocr_derived: boolean }
 type Match = { requirement_id: string; decision: string; justification: string; unsupported_requirement_parts?: string[]; evidence: Evidence[] }
 export type Score = { aggregate: string; evidence_coverage: string; must_have_review_flags: string[];
   dimensions: { dimension: string; score: string; approved_percentage: string; aggregate_contribution: string; justifications: { requirement_id: string; justification: string }[] }[];
   contributions: { requirement_id: string; priority: string; weight: string; credit: string; weighted_credit: string }[] }
 export type Assessment = { id: string; application_id: string; name: string; rank?: number; status: string; outdated: boolean; score: Score | null; matches: Match[]; warnings: string[]; error_code: string | null }
-type Results = { run: Run | null; profile: { criteria: { id: string; text: string; priority: string | null }[] } | null;
+export type Results = { run: Run | null; profile: { criteria: { id: string; text: string; priority: string | null }[] } | null;
   ranked: Assessment[]; incomplete: Assessment[]; history: Run[]; warnings: string[] }
 
 const label = (value: string) => value.replaceAll('_', ' ').toLowerCase()
 const assessmentWarnings = (warnings: string[]) => warnings.filter(w => !w.startsWith('CV_SHEET_') && w !== 'CV_CONTACT_FIELDS_UNKNOWN')
 const percent = (value: string) => `${Number(value).toFixed(2)}%`
-const errorLabels: Record<string, string> = {
-  PROFILE_CORRECTION_NEEDED: 'Correct the approved screening profile: confirm criteria priorities and weights totaling 100%, with criteria in every positive-weight dimension.',
-  CV_TEXT_NEEDS_REVIEW: 'CV text is incomplete or unreadable. Review the original and retry parsing before screening.',
-  NO_DOWNLOADED_CV: 'This application has no linked downloaded CV.',
-  INDEXING_FAILED: 'Evidence indexing failed. The parsed profile is retained; resume to retry.',
-  MATCH_INPUT_TOO_LARGE: 'Candidate evidence exceeds the configured model context. Review this application manually.',
-  SCREENING_INPUTS_CHANGED: 'Inputs changed during processing. Start a new screening run.',
-  MATCH_SCHEMA_OR_EVIDENCE_INVALID: 'The model output did not pass evidence validation. Resume to retry.',
-}
-
 export function AssessmentDetails({ item, criteria }: { item: Assessment; criteria: Results['profile'] }) {
   const aggregate = item.score?.aggregate == null ? NaN : Number(item.score.aggregate)
   const score = Number.isFinite(aggregate) && aggregate >= 0 && aggregate <= 100 ? item.score : null

@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import type { Ref } from 'react'
 
 import ChatInput from '../../components/chat/ChatInput'
 import ChatMessage from '../../components/chat/ChatMessage'
@@ -9,6 +10,8 @@ import {
   createAssistant,
   getAssistant,
   sendAssistantMessage,
+  openSavedJD,
+  sendAssistantAction,
 } from './assistantApi'
 import type { AssistantConversation } from './assistantApi'
 import {
@@ -22,6 +25,15 @@ type RecruiterChatProps = {
   interviewSessionId?: string
   interviewCandidateName?: string
   startFresh?: boolean
+  ref?: Ref<RecruiterChatHandle>
+  onStateChange?: (conversation: AssistantConversation | null, busy: boolean) => void
+  onReviewTab?: (tab: 'description' | 'criteria') => void
+}
+
+export type RecruiterChatHandle = {
+  openJob: (id: string) => void
+  startNew: () => void
+  approve: () => void
 }
 
 export default function RecruiterChat({
@@ -30,6 +42,9 @@ export default function RecruiterChat({
   onSaved,
   interviewSessionId,
   startFresh = false,
+  ref,
+  onStateChange,
+  onReviewTab,
 }: RecruiterChatProps) {
   const {
     conversation,
@@ -40,7 +55,20 @@ export default function RecruiterChat({
     retryRestore,
   } = usePersistentAssistantConversation(token, userId, interviewSessionId ? `interview:${interviewSessionId}` : undefined, !startFresh)
 
-  const [input, setInput] = useState('')
+  const draftStorageKey = `distill-ai:assistant-drafts:${userId}:${interviewSessionId ?? 'jobs'}`
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(sessionStorage.getItem(draftStorageKey) ?? '{}')
+      if (saved && typeof saved === 'object' && !Array.isArray(saved)) return Object.fromEntries(Object.entries(saved).filter(([, value]) => typeof value === 'string'))
+    } catch { /* Draft storage may be disabled. */ }
+    return {}
+  })
+  const draftKey = conversation?.conversation_id ?? 'new'
+  const input = drafts[draftKey] ?? ''
+  function setInput(value: string) { setDrafts(current => ({ ...current, [draftKey]: value })) }
+  useEffect(() => {
+    try { sessionStorage.setItem(draftStorageKey, JSON.stringify(drafts)) } catch { /* Continue composing without browser storage. */ }
+  }, [draftStorageKey, drafts])
   const [busy, setBusy] = useState(false)
   const [stopped, setStopped] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +76,16 @@ export default function RecruiterChat({
   const requestRef = useRef<AbortController | null>(null)
   const interviewLogRef = useRef<HTMLDivElement | null>(null)
   const isBusy = busy || restoring
+
+  useEffect(() => { onStateChange?.(conversation, isBusy) }, [conversation, isBusy, onStateChange])
+
+  useImperativeHandle(ref, () => ({
+    openJob: (id) => { void runRequest(signal => openSavedJD(token, id, signal)) },
+    startNew: startNewConversation,
+    approve: () => {
+      if (conversation) void runRequest(signal => sendAssistantAction(token, conversation, 'approve', undefined, signal))
+    },
+  }))
 
   useEffect(() => {
     return () => requestRef.current?.abort()
@@ -186,7 +224,7 @@ export default function RecruiterChat({
     if (requestRef.current || restoring) return
 
     resetConversation()
-    setInput('')
+    setDrafts(current => ({ ...current, new: '' }))
     setError(null)
     setStopped(false)
   }
@@ -241,7 +279,11 @@ export default function RecruiterChat({
   </div>
 
   return (
-    <div className="jd-chat">
+    <div className="jd-chat jd-assistant-layout">
+      <ConversationHistory token={token} activeId={conversation?.conversation_id}
+        refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
+        onNew={startNewConversation}
+        onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal)) }} />
       <ChatWindow
         title="Distill AI Assistant"
         busy={isBusy}
@@ -251,9 +293,6 @@ export default function RecruiterChat({
         }
         actions={
           <>
-            <ConversationHistory token={token} activeId={conversation?.conversation_id}
-              refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
-              onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal), true) }} />
             <div className="flex flex-wrap gap-2">
               {restoreError && (
                 <button
@@ -339,12 +378,12 @@ export default function RecruiterChat({
 
         {jdMessages.map((message, index) => (
           <Fragment key={message.id ?? `jd-message-${index}`}>
-          <ChatMessage
+          {onReviewTab && message.draft_revision !== undefined ? <div className="jd-chat-draft-notice"><strong>{jd?.status === 'approved' ? 'Job description saved' : 'Draft saved · not approved'}</strong><p>Review the description and screening criteria before using this job for screening.</p><button className="button-secondary" onClick={() => onReviewTab('description')}>Open Description</button> <button className="button-secondary" onClick={() => onReviewTab('criteria')}>Open Screening criteria</button></div> : <ChatMessage
             key={message.id ?? `jd-message-${index}`}
             role={message.role}
             content={message.content}
             name={message.draft_revision !== undefined ? (message.draft_revision === 0 ? 'Suggested JD — initial draft' : `Suggested JD — revision ${message.draft_revision}`) : undefined}
-          />
+          />}
           {messages.filter((entry) => entry.jd_after_message_id === message.id).map((entry, entryIndex) => (
             <ChatMessage key={entry.id ?? `context-${index}-${entryIndex}`} role={entry.role} content={entry.content} />
           ))}
@@ -375,7 +414,7 @@ export default function RecruiterChat({
           </div>
         )}
 
-        {document && !jdMessages.some((message) => message.draft_revision !== undefined && message.content === document) && (
+        {!onReviewTab && document && !jdMessages.some((message) => message.draft_revision !== undefined && message.content === document) && (
           <ChatMessage
             role="assistant"
             name={
@@ -390,7 +429,7 @@ export default function RecruiterChat({
         {canReply && <ChatMessage role="assistant" content="Reply with the job details, or say **cancel** to stop this workflow." />}
         {canRecoverSave && <ChatMessage role="assistant" content="Your JD was approved but its save needs to be recovered. Say **save** to retry." />}
 
-        {document && jd?.screening_profile && (
+        {document && jd?.screening_profile && !onReviewTab && (
           <div className="rounded-xl border border-slate-200 p-4 text-sm">
             <p className="font-semibold">Screening profile — version {jd.profile_version}</p>
             <p className="text-slate-500">Recruiter review only. Dimension weights are excluded from the public advertisement.</p>
@@ -415,6 +454,8 @@ export default function RecruiterChat({
             <p className="text-slate-500">URL format is validated; form accessibility and configuration are not checked.</p>
           </div>
         )}
+
+        {onReviewTab && document && !jdMessages.some(message => message.draft_revision !== undefined) && <div className="jd-chat-draft-notice"><strong>{jd?.status === 'approved' ? 'Approved job description' : 'Draft · not approved'}</strong><p>{jd?.status === 'approved' ? 'View the saved description and the criteria used for screening.' : 'Candidates cannot be screened against this draft until you approve it.'}</p><button className="button-secondary" onClick={() => onReviewTab('description')}>Open Description</button> <button className="button-secondary" onClick={() => onReviewTab('criteria')}>Open Screening criteria</button></div>}
 
         {jd?.status === 'awaiting_review' && (
           <ChatMessage

@@ -132,3 +132,30 @@ class InterviewTranscriptTurn(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(),
     )
+
+
+class InterviewAudioStream(Base):
+    """Measured backend-reception clock; never reconstructed from saved speech."""
+
+    __tablename__ = "interview_audio_streams"
+    __table_args__ = (
+        CheckConstraint("status IN ('capturing', 'drained', 'failed')", name="ck_audio_stream_status"),
+        CheckConstraint("sample_rate = 16000 AND samples_sent >= 0", name="ck_audio_stream_samples"),
+        CheckConstraint("origin_ms IS NULL OR origin_ms >= 0", name="ck_audio_stream_origin"),
+        CheckConstraint("speaker_role IN ('recruiter', 'candidate')", name="ck_audio_stream_role"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    transcript_id: Mapped[UUID] = mapped_column(
+        ForeignKey("interview_transcripts.id", ondelete="CASCADE"), index=True)
+    capture_id: Mapped[UUID] = mapped_column(Uuid)
+    speaker_role: Mapped[str] = mapped_column(String(20))
+    participant_identity: Mapped[str] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(20), default="capturing")
+    timing_basis: Mapped[str] = mapped_column(String(80), default="backend_pcm_reception_monotonic_v1")
+    origin_ms: Mapped[int | None] = mapped_column(Integer)
+    sample_rate: Mapped[int] = mapped_column(Integer, default=16000)
+    samples_sent: Mapped[int] = mapped_column(Integer, default=0)
+    max_skew_ms: Mapped[int] = mapped_column(Integer, default=0)
+    quality_flags: Mapped[list] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

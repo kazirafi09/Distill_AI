@@ -1,14 +1,20 @@
 import { apiRequest } from '../../services/api'
 
+export type InterimTurn = {
+  stream_id: string; speaker_role: 'recruiter' | 'candidate'; text: string
+  stream_start_ms: number; stream_end_ms: number
+}
+
 export type TranscriptSnapshot = {
   transcript: { id: string; version: number; status: string; quality_flags: string[]; error_code: string | null } | null
-  capture: { status: 'inactive' | 'connecting' | 'waiting_for_microphone' | 'listening' | 'stopping'; roles: ('recruiter' | 'candidate')[] }
+  capture: { status: 'inactive' | 'connecting' | 'waiting_for_microphone' | 'listening' | 'stopping' | 'reconnecting' | 'failed'; roles: ('recruiter' | 'candidate')[] }
   turns: {
     id: string; stream_id: string; speaker_role: 'recruiter' | 'candidate'; text: string
     stream_start_ms: number; stream_end_ms: number; created_at: string
     speech_final: boolean | null
   }[]
   has_earlier_turns: boolean
+  interim_turns?: InterimTurn[]
 }
 
 export function loadTranscript(token: string, jobId: string, applicationId: string, signal?: AbortSignal) {

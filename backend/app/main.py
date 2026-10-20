@@ -25,10 +25,11 @@ from app.cv_parsing_routes import router as cv_parsing_router
 from app.cv_screening_routes import router as cv_screening_router
 from app.interview_routes import router as interview_router
 from app.question_bank_routes import router as question_bank_router
+from app.assessment_routes import router as assessment_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
 from app.mcp_recruitment import mcp as recruitment_mcp, transport_app as recruitment_mcp_app
 from app.integrations.assistant_mcp import configure_mcp_loop
-from app.services.interviews.live_transcription import shutdown_transcriptions
+from app.services.interviews.live_transcription import shutdown_transcriptions, resume_active_transcriptions
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
         )
         async with cv_mcp.session_manager.run():
             async with recruitment_mcp.session_manager.run():
+                await resume_active_transcriptions()
                 yield
 
     finally:
@@ -82,6 +84,7 @@ app.include_router(cv_parsing_router)
 app.include_router(cv_screening_router)
 app.include_router(interview_router)
 app.include_router(question_bank_router)
+app.include_router(assessment_router)
 app.mount("/mcp/recruitment", recruitment_mcp_app)
 app.mount("/mcp", cv_mcp_app)
 

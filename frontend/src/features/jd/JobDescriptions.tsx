@@ -1,0 +1,125 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Markdown from 'react-markdown'
+import { Link } from 'react-router-dom'
+import { loadRecruitmentJobs } from '../interviews/useRecruitmentJob'
+import { getJobDescription } from './api'
+import type { JobDescriptionSummary, SavedJobDescription, ScreeningProfile } from './api'
+import type { AssistantConversation } from './assistantApi'
+import RecruiterChat from './RecruiterChat'
+import type { RecruiterChatHandle } from './RecruiterChat'
+import ReferenceDocuments from './ReferenceDocuments'
+import './JobDescriptions.css'
+
+type Tab = 'description' | 'criteria' | 'assistant'
+
+function Criteria({ profile }: { profile: ScreeningProfile | null }) {
+  if (!profile) return <div className="ui-state"><h3>Screening criteria are not set up</h3><p>Ask the assistant to define the requirements and weights for this job.</p></div>
+  const total = Object.values(profile.dimension_weights).reduce((sum, weight) => sum + weight, 0)
+  return <div className="jd-criteria">
+    <h3>Screening criteria</h3><p className="muted">Essential criteria are shown for recruiter review. Nobody is rejected automatically.</p>
+    <div className="criteria-table-scroll"><table className="criteria-table"><thead><tr><th>Criterion</th><th>Dimension</th><th>Priority</th></tr></thead>
+      <tbody>{profile.criteria.map(criterion => <tr key={criterion.id}><td><strong>{criterion.text}</strong>{criterion.source === 'suggested' && <small>AI suggested · review before approving</small>}</td><td>{criterion.dimension.replaceAll('_', ' ')}</td><td><span className={`ui-badge ${criterion.priority === 'Preferred' ? 'is-warning' : 'is-info'}`}>{criterion.priority === 'Must have' ? 'Essential' : criterion.priority ?? 'Unconfirmed'}</span></td></tr>)}</tbody></table></div>
+    <h3>Dimension weights <small className="muted">· must total 100%</small></h3>
+    {Object.entries(profile.dimension_weights).map(([dimension, weight]) => <div className="jd-weight" key={dimension}><span>{dimension.replaceAll('_', ' ')}</span><progress max="100" value={weight} aria-label={`${dimension.replaceAll('_', ' ')} weight`} /><strong>{weight}%</strong></div>)}
+    <p className={Math.abs(total - 100) < 0.001 ? 'muted' : 'ui-error'}>Total: {total}%{Math.abs(total - 100) >= 0.001 && '. Ask the assistant to adjust the weights before approving.'}</p>
+  </div>
+}
+
+function ApprovalReview({ disabled, errors, profile, onApprove }: { disabled: boolean; errors: string[]; profile: ScreeningProfile | null; onApprove: () => void }) {
+  const [checks, setChecks] = useState<boolean[]>([false, false, false])
+  const valid = !!profile && Math.abs(Object.values(profile.dimension_weights).reduce((sum, value) => sum + value, 0) - 100) < 0.001
+  return <aside className="jd-context-card"><h3>Before you can approve</h3>
+    {['Read the job description', 'Confirm the essential criteria are the real must-haves', 'Check each criterion and the dimension weights'].map((label, index) => <label className="jd-review-check" key={label}><input type="checkbox" checked={checks[index]} onChange={event => setChecks(current => current.map((value, i) => i === index ? event.target.checked : value))} />{label}</label>)}
+    {errors.length > 0 && <ul className="ui-error">{errors.map(error => <li key={error}>{error}</li>)}</ul>}
+    {!valid && <p className="ui-error">Screening criteria and weights totaling 100% are required.</p>}
+    <button className="button-primary" disabled={disabled || !checks.every(Boolean) || !valid || errors.length > 0} onClick={onApprove}>Approve and save</button>
+    <p className="muted">Approval saves the job description together with the displayed screening criteria.</p>
+  </aside>
+}
+
+export default function JobDescriptions({ token, userId }: { token: string; userId: string }) {
+  const chat = useRef<RecruiterChatHandle>(null)
+  const referenceDialog = useRef<HTMLDialogElement>(null)
+  const [tab, setTab] = useState<Tab>('description')
+  const [selected, setSelected] = useState('')
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState('all')
+  const [revision, setRevision] = useState(0)
+  const [library, setLibrary] = useState<{ jobs: JobDescriptionSummary[]; error: string; loading: boolean }>({ jobs: [], error: '', loading: true })
+  const [detail, setDetail] = useState<{ id: string; job?: SavedJobDescription; error?: string } | null>(null)
+  const [assistant, setAssistant] = useState<AssistantConversation | null>(null)
+  const [busy, setBusy] = useState(false)
+  const onStateChange = useCallback((conversation: AssistantConversation | null, working: boolean) => {
+    setAssistant(conversation); setBusy(working)
+    const savedId = conversation?.jd_conversation?.job_description?.id
+    if (savedId) setSelected(current => current === 'draft' ? savedId : current)
+  }, [])
+  const onSaved = useCallback(() => setRevision(value => value + 1), [])
+  const activeId = selected || library.jobs[0]?.id || ''
+  const jd = assistant?.jd_conversation
+  const draft = !!jd && !!jd.draft_jd && jd.status !== 'approved' && jd.status !== 'cancelled'
+  const showingDraft = activeId === 'draft'
+  const document = detail?.id === activeId ? detail.job : undefined
+  const profile = showingDraft ? jd?.screening_profile ?? null : document?.screening_profile ?? null
+  const content = showingDraft ? jd?.draft_jd : document?.content
+  const title = showingDraft ? (jd?.draft_jd?.match(/^#\s+(.+)$/m)?.[1] ?? 'Job description draft') : document?.title ?? library.jobs.find(job => job.id === activeId)?.title
+  const visibleJobs = library.jobs.filter(job => `${job.title} ${job.number}`.toLowerCase().includes(query.toLowerCase()) && status !== 'draft')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void loadRecruitmentJobs(token, controller.signal).then(jobs => {
+      if (!controller.signal.aborted) setLibrary({ jobs, error: '', loading: false })
+    }).catch(error => { if (!controller.signal.aborted) setLibrary({ jobs: [], error: error instanceof Error ? error.message : 'Could not load jobs.', loading: false }) })
+    return () => controller.abort()
+  }, [token, revision])
+
+  useEffect(() => {
+    if (!activeId || activeId === 'draft') return
+    const controller = new AbortController()
+    void getJobDescription(token, activeId, controller.signal).then(job => {
+      if (!controller.signal.aborted) setDetail({ id: activeId, job })
+    }).catch(error => { if (!controller.signal.aborted) setDetail({ id: activeId, error: error instanceof Error ? error.message : 'Could not load the job.' }) })
+    return () => controller.abort()
+  }, [token, activeId, revision])
+
+  function selectJob(id: string) {
+    setSelected(id)
+    if (tab === 'assistant' && id !== 'draft') chat.current?.openJob(id)
+  }
+  function changeTab(next: Tab) {
+    if (next === 'assistant' && activeId && activeId !== 'draft' && jd?.job_description?.id !== activeId) chat.current?.openJob(activeId)
+    if (next !== 'assistant' && tab === 'assistant') {
+      if (draft) setSelected('draft')
+      else if (jd?.job_description) setSelected(jd.job_description.id)
+    }
+    setTab(next)
+  }
+  function newJob() { chat.current?.startNew(); setSelected('draft'); setTab('assistant') }
+
+  return <section className={`job-descriptions-page${tab === 'assistant' ? ' is-assistant' : ''}`}>
+    <header className="redesign-header"><div><p className="workspace-eyebrow">Recruitment workspace</p><h1>Job Descriptions</h1><p className="muted">Find a job, review its criteria, or draft with the assistant.</p></div>{tab === 'assistant' && <label className="jd-job-picker">Job<select aria-label="Job for assistant" value={activeId} disabled={busy} onChange={event => selectJob(event.target.value)}><option value="draft">{draft ? 'Current draft · not approved' : 'New job description'}</option>{library.jobs.map(job => <option key={job.id} value={job.id}>{job.title} (JD {job.number})</option>)}</select></label>}<button className="button-primary" disabled={busy} onClick={newJob}>New job description</button></header>
+
+    <div className="jd-redesign-workspace">
+      {tab !== 'assistant' && <aside className="jd-redesign-library"><h2>Job library</h2><div className="jd-library-filters"><label>Search jobs<input type="search" placeholder="Title or JD number" value={query} onChange={event => setQuery(event.target.value)} /></label><label>Status<select value={status} onChange={event => setStatus(event.target.value)}><option value="all">All</option><option value="approved">Approved</option><option value="draft">Current draft</option></select></label></div>
+        <div className="jd-library-scroll">
+          {library.loading && <p role="status">Loading job library…</p>}
+          {library.error && <div role="alert"><p>{library.error}</p><button className="button-secondary" onClick={onSaved}>Try again</button></div>}
+          {draft && status !== 'approved' && (!query || (jd.draft_jd ?? '').toLowerCase().includes(query.toLowerCase())) && <button className={`jd-library-item${showingDraft ? ' is-selected' : ''}`} disabled={busy} onClick={() => selectJob('draft')}><strong>Current job draft</strong><span className="ui-badge is-warning">Draft · not approved</span></button>}
+          {visibleJobs.map(job => <button key={job.id} className={`jd-library-item${activeId === job.id ? ' is-selected' : ''}`} aria-pressed={activeId === job.id} disabled={busy} onClick={() => selectJob(job.id)}><strong>{job.title}</strong><small>JD {job.number}</small><span className="ui-badge is-success">✓ Approved</span></button>)}
+          {!library.loading && !library.error && !visibleJobs.length && !(draft && status !== 'approved') && <div className="ui-state"><h3>{query || status !== 'all' ? 'No jobs match these filters' : 'No approved jobs yet'}</h3><p>{query || status !== 'all' ? 'Change the search or status to see more jobs.' : 'Create a job description with the assistant to get started.'}</p></div>}
+        </div><button className="button-secondary" onClick={() => referenceDialog.current?.showModal()}>Reference documents ›</button>
+      </aside>}
+      <section className="jd-detail-panel">
+        {tab !== 'assistant' && <header className="jd-detail-header"><div><h2>{title ?? 'Select or create a job'}</h2>{title && <p className="muted">{showingDraft ? 'Review this draft before using it for screening.' : `JD ${document?.number ?? '…'} · Screening criteria ${document?.profile_version != null ? `v${document.profile_version}` : 'not set up'}`}</p>}</div><div className="jd-detail-actions">{title && <span className={`ui-badge ${showingDraft ? 'is-warning' : 'is-success'}`}>{showingDraft ? 'Draft · not approved' : '✓ Approved'}</span>}{!showingDraft && document && <Link className="button-primary" to={`/recruiter/cv-screening?job=${document.id}`}>Go to CV Screening</Link>}{showingDraft && <button className="button-secondary" onClick={() => changeTab('assistant')}>Ask the assistant to revise</button>}</div></header>}
+        <nav className="redesign-tabs" aria-label="Job description sections">{(['description', 'criteria', 'assistant'] as const).map(value => <button key={value} aria-current={tab === value ? 'page' : undefined} onClick={() => changeTab(value)} disabled={busy && value === 'assistant'}>{value === 'description' ? 'Description' : value === 'criteria' ? 'Screening criteria' : 'AI assistant'}</button>)}</nav>
+        <div className="jd-assistant-mount" hidden={tab !== 'assistant'}><RecruiterChat ref={chat} token={token} userId={userId} onSaved={onSaved} onStateChange={onStateChange} onReviewTab={changeTab} /></div>
+        {tab !== 'assistant' && <div className="jd-document-layout"><div className="jd-document-scroll">
+          {activeId && !showingDraft && detail?.id !== activeId && <div className="ui-state" role="status">Loading job description…</div>}
+          {detail?.id === activeId && detail.error && <div className="ui-state" role="alert"><p>{detail.error}</p><button className="button-secondary" onClick={onSaved}>Try again</button></div>}
+          {!activeId || (showingDraft && !content) ? <div className="ui-state"><h3>Start with a job description</h3><p>Tell the assistant about the role, seniority, and requirements.</p><button className="button-primary" onClick={() => changeTab('assistant')}>Open AI assistant</button></div> : content && (tab === 'description' ? <div className="markdown"><Markdown skipHtml>{content}</Markdown></div> : <Criteria profile={profile} />)}
+        </div>{content && <aside className="jd-context">{showingDraft ? <ApprovalReview key={`${assistant?.conversation_id}:${jd?.checkpoint_id}`} disabled={busy || !jd?.interrupt?.payload.allowed_actions.includes('approve')} errors={jd?.acceptance_errors ?? []} profile={profile} onApprove={() => { chat.current?.approve(); setTab('assistant') }} /> : <><div className="jd-context-card is-ready"><h3>{profile ? 'Ready for screening' : 'Criteria need setup'}</h3><p className="muted">{profile ? `${profile.criteria.filter(c => c.priority === 'Must have').length} essential and ${profile.criteria.filter(c => c.priority === 'Preferred').length} preferred criteria. Candidates are scored against this saved profile.` : 'This job needs a screening profile before candidates can be scored.'}</p><button className="text-link" onClick={() => setTab('criteria')}>View screening criteria</button></div><div className="jd-context-card"><h3>Work with the assistant</h3><p className="muted">Open this job in the assistant to discuss its requirements.</p><button className="text-link" onClick={() => changeTab('assistant')}>Open AI assistant</button></div></>}</aside>}</div>}
+      </section>
+    </div>
+    <dialog className="jd-reference-dialog" ref={referenceDialog} aria-label="Reference documents"><header><h2>Reference documents</h2><button className="button-secondary" onClick={() => referenceDialog.current?.close()}>Close</button></header><ReferenceDocuments token={token} /></dialog>
+  </section>
+}

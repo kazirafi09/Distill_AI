@@ -14,6 +14,7 @@ from app.models.model_rate_limit import ModelRateLimit
 
 # One conservative allowance for all Gemini traffic in this deployment.
 SCOPE = "gemini"
+MAX_REQUESTS_PER_MINUTE = 12
 
 
 async def _slot(interval, cooldown=0, scope=SCOPE):
@@ -37,7 +38,10 @@ async def _slot(interval, cooldown=0, scope=SCOPE):
 
 
 async def acquire_gemini_slot():
-    interval = 60 / get_settings().gemini_requests_per_minute + 0.01
+    # Shared DB row serializes permits across API processes, workers and F5
+    # branches. No burst allowance; even a legacy setting above 12 is capped.
+    limit = min(get_settings().gemini_requests_per_minute, MAX_REQUESTS_PER_MINUTE)
+    interval = 60 / limit + 0.1
     while True:
         delay = await _slot(interval)
         if delay <= 0:

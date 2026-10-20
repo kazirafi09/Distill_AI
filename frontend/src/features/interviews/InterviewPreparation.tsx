@@ -28,7 +28,14 @@ export default function InterviewPreparation(props: Props) {
   const [microphoneError, setMicrophoneError] = useState('')
   const [deviceError, setDeviceError] = useState('')
   const reportCamera = useCallback((error: Error) => { setCameraError(error.message); setCamera(false) }, [])
-  const reportMicrophone = useCallback((error: Error) => { setMicrophoneError(error.message); setMicrophone(false) }, [])
+  const reportMicrophone = useCallback((error: Error) => {
+    const message = error.name === 'NotAllowedError'
+      ? 'Microphone access is blocked. Allow microphone access for this site in your browser settings, then try again.'
+      : error.name === 'NotFoundError' ? 'No microphone was found. Connect a microphone and try again.'
+        : error.name === 'NotReadableError' ? 'The microphone is unavailable. Check system microphone access and whether another app is using it.'
+          : error.message
+    setMicrophoneError(message); setMicrophone(false)
+  }, [])
   const videoTracks = usePreviewTracks({ audio: false, video: camera ? { deviceId: cameraDevice } : false }, reportCamera)
   const audioTracks = usePreviewTracks({ video: false, audio: microphone ? { deviceId: microphoneDevice } : false }, reportMicrophone)
   const videoTrack = camera ? videoTracks?.find(track => track.kind === Track.Kind.Video && track.mediaStreamTrack.readyState === 'live') : undefined
@@ -57,8 +64,20 @@ export default function InterviewPreparation(props: Props) {
   }, [videoTrack, audioTrack])
   const cameras = devices.filter(device => device.kind === 'videoinput')
   const microphones = devices.filter(device => device.kind === 'audioinput')
-  const permission = cameraError || microphoneError ? 'Check permissions' : videoTrack || audioTrack ? 'Allowed for enabled devices' : 'Not requested'
+  const permission = microphoneError ? 'Blocked or unavailable' : audioTrack ? 'Access allowed' : microphone ? 'Requesting access…' : 'Not checked'
+  function enableMicrophoneOrContinue() {
+    if (!audioTrack) {
+      setMicrophoneError('')
+      setMicrophone(true)
+      return
+    }
+    continueToWaitingRoom()
+  }
   function continueToWaitingRoom() {
+    if (!audioTrack || audioTrack.mediaStreamTrack.readyState !== 'live') {
+      setMicrophoneError('Turn on your microphone and allow access before continuing.')
+      return
+    }
     const choices: LocalUserChoices = {
       username: 'Recruiter', videoEnabled: !!videoTrack, audioEnabled: !!audioTrack,
       videoDeviceId: videoTrack?.mediaStreamTrack.getSettings().deviceId ?? cameraDevice,
@@ -80,7 +99,7 @@ export default function InterviewPreparation(props: Props) {
         <button className={`device-toggle${microphone ? ' is-on' : ''}`} disabled={props.busy || checking} aria-pressed={microphone} onClick={() => { setMicrophoneError(''); setMicrophone(value => !value) }}><CallIcon kind="microphone" />Microphone {microphone ? 'on' : 'off'}</button>
         <button className="lobby-secondary" disabled={props.busy || checking} onClick={props.onRecheck}>Recheck devices</button>
       </div>
-      {(cameraError || microphoneError || deviceError) && <p className="lobby-error" role="alert">{[cameraError, microphoneError, deviceError].filter(Boolean).join(' ')} You can continue with the unavailable device switched off.</p>}
+      {(cameraError || microphoneError || deviceError) && <p className="lobby-error" role="alert">{[cameraError, microphoneError, deviceError].filter(Boolean).join(' ')} Camera is optional. A working microphone is required to continue.</p>}
     </div>
     <div className="lobby-info-column">
       <label className="lobby-candidate-picker">Saved candidate<select value={props.candidate.application_id} disabled={props.busy} onChange={event => props.onCandidate(event.target.value)}>{props.members.map(member => <option key={member.application_id} value={member.application_id}>{member.name} · Rank {member.rank} · Score {Number(member.score.aggregate).toFixed(0)}</option>)}</select></label>
@@ -91,9 +110,9 @@ export default function InterviewPreparation(props: Props) {
         <div><span>Microphone</span><span className={`lobby-badge${microphoneError ? ' is-warning' : microphones.length ? '' : ' is-neutral'}`}>{microphoneError ? 'Unavailable' : microphones.length ? 'Found' : 'Not found'}</span></div>
         {microphones.length > 1 && <label>Microphone device<select value={microphoneDevice} onChange={event => setMicrophoneDevice(event.target.value)} disabled={checking || props.busy}>{microphones.map((device, index) => <option key={device.deviceId || index} value={device.deviceId || 'default'}>{device.label || `Microphone ${index + 1}`}</option>)}</select></label>}
         <div className="microphone-level"><div><span>Microphone level</span><small>{audioTrack ? 'Say a few words' : 'Turn on your microphone to test'}</small></div><meter min={0} max={1} value={Math.min(1, volume * 3)} aria-label="Microphone level" /></div>
-        <div><span>Browser permission</span><span className="lobby-badge is-neutral">{permission}</span></div>
+        <div><span>Microphone access</span><span className={`lobby-badge${audioTrack ? '' : ' is-neutral'}`}>{permission}</span></div>
       </div>
-      <div className="lobby-primary-action"><button className="lobby-primary" disabled={!props.canContinue || props.busy || checking} onClick={continueToWaitingRoom}>{props.busy ? 'Opening waiting room…' : checking ? 'Checking devices…' : 'Continue to waiting room'}</button><p>{props.canContinue ? 'You can change devices later from the waiting room.' : 'An active invitation is required. Manage invitations in the Invitations tab.'}</p></div>
+      <div className="lobby-primary-action"><button className="lobby-primary" disabled={props.busy || checking || (!!audioTrack && !props.canContinue)} onClick={enableMicrophoneOrContinue}>{props.busy ? 'Opening waiting room…' : checking ? 'Checking devices…' : !audioTrack ? 'Enable microphone' : 'Continue to waiting room'}</button><p>{!audioTrack ? 'Select Enable microphone and allow browser access if prompted. Say a few words and check the level meter.' : !props.canContinue ? 'An active invitation is required. Manage invitations in the Invitations tab.' : 'Microphone access is ready. Camera is optional.'}</p></div>
     </div>
   </div>
 }

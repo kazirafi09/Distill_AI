@@ -74,10 +74,14 @@ async def get_transcript(job_id: UUID, application_id: UUID, recruiter_id: UUID)
             .order_by(InterviewTranscript.version.desc())
             .limit(1)
         )
-        response = {"transcript": None, "turns": [], "has_earlier_turns": False,
+        response = {"transcript": None, "turns": [], "interim_turns": [], "has_earlier_turns": False,
                     "capture": {"status": "inactive", "roles": []}}
         if transcript is None:
             return response
+        from app.services.interviews.live_transcription import capture_status, interim_snapshot
+        # Snapshot drafts before reading final rows. If a final commits during
+        # this request, the UI can replace its matching draft in the same render.
+        response["interim_turns"] = interim_snapshot(transcript.session_id, transcript.id)
         # Bound repeated polling responses. Fetch an extra row so older omitted
         # segments are explicitly disclosed instead of silently disappearing.
         turns = list(await db.scalars(
@@ -91,13 +95,17 @@ async def get_transcript(job_id: UUID, application_id: UUID, recruiter_id: UUID)
             "id": str(transcript.id), "version": transcript.version,
             "status": transcript.status, "quality_flags": transcript.quality_flags,
             "error_code": transcript.error_code,
+            "finalized_at": transcript.finalized_at.isoformat() if transcript.finalized_at else None,
+            "timing_provenance": "Backend-received PCM; monotonic continuity checked within 250 ms. Not microphone hardware timestamps."
+                if transcript.status == "completed" and transcript.provider == "deepgram" and "TEXT_ONLY_FINALIZED" not in transcript.quality_flags else None,
+            "can_retry_finalization": transcript.status == "finalizing",
         }
-        from app.services.interviews.live_transcription import capture_status
         response["capture"] = capture_status(transcript.session_id)
         response["turns"] = [{
             "id": str(turn.id), "stream_id": str(turn.stream_id),
             "speaker_role": turn.speaker_role, "text": turn.text,
             "stream_start_ms": turn.stream_start_ms, "stream_end_ms": turn.stream_end_ms,
+            "session_start_ms": turn.session_start_ms, "session_end_ms": turn.session_end_ms,
             "speech_final": True if "SPEECH_FINAL" in turn.quality_flags else (
                 False if "SPEECH_CONTINUES" in turn.quality_flags else None),
             "created_at": turn.created_at.isoformat(),
@@ -157,7 +165,7 @@ async def begin_transcript(
                 .limit(1)
             )
 
-            if current and current.status == "capturing":
+            if current and current.status in {"capturing", "needs_review"}:
                 if (
                     current.provider != "deepgram"
                     or current.model != settings.deepgram_model
@@ -168,6 +176,15 @@ async def begin_transcript(
                         "Active transcript configuration has changed.",
                     )
                 transcript = current
+                # A reconnect continues the same source. Starting a fresh version
+                # here would hide missing earlier audio and discard saved speech.
+                # Retain all interruption flags; resuming capture does not prove
+                # that the missing audio/timing was recovered.
+                transcript.status = "capturing"
+                if transcript.error_code:
+                    transcript.quality_flags = sorted(set(transcript.quality_flags) | {transcript.error_code})
+                transcript.error_code = None
+                transcript.quality_flags = sorted(set(transcript.quality_flags) - {"FINALIZATION_PENDING"})
             else:
                 if current and current.status == "finalizing":
                     raise HTTPException(

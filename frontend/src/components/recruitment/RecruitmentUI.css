@@ -1,0 +1,29 @@
+.recruitment-panel { min-width: 0; border: 1px solid #dce2eb; border-radius: 14px; background: #fff; }
+.recruitment-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px 13px; border: 1px solid #98a2b3; border-radius: 10px; background: #fff; color: #172033; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none; }
+.recruitment-button:hover:not(:disabled) { background: #f1f5f9; }
+.recruitment-button.variant-primary { border-color: #07815f; background: #07815f; color: #fff; font-weight: 650; }
+.recruitment-button.variant-primary:hover:not(:disabled) { background: #006747; }
+.recruitment-button:disabled { border-color: #c9cfd8; background: #e5e7eb; color: #475569; cursor: not-allowed; }
+.recruitment-badge { display: inline-flex; align-items: center; gap: 4px; width: fit-content; padding: 2px 9px; border-radius: 20px; font-size: 12px; font-weight: 650; line-height: 1.5; white-space: nowrap; }
+.recruitment-badge.tone-success { color: #006747; background: #e1f7ee; }
+.recruitment-badge.tone-warning { color: #865200; background: #fff0cb; }
+.recruitment-badge.tone-neutral { color: #3f4b5d; background: #ebedf1; }
+.recruitment-badge.tone-info { color: #2344c5; background: #e7eeff; }
+.recruitment-badge.tone-danger { color: #a9251c; background: #fee8e7; }
+.recruitment-badge.tone-missing { border: 1px dashed #7b879a; color: #475569; background: #fff; }
+.recruitment-demo { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px dashed #c65b00; border-radius: 12px; color: #794800; background: #fff9ed; font-size: 12px; }
+.recruitment-demo > strong { flex-shrink: 0; padding: 2px 7px; border-radius: 5px; background: #b45309; color: white; font-size: 11px; }
+.recruitment-notice { padding: 18px; border: 1px solid #dce2eb; border-radius: 12px; background: #f8fafc; }
+.recruitment-notice h3 { margin-bottom: 6px; font-size: 15px; font-weight: 700; }
+.recruitment-notice.tone-danger { border-color: #dc2626; background: #fff5f5; }
+.recruitment-notice.tone-warning { border-color: #b45309; background: #fff9ed; }
+.recruitment-notice.tone-info { border-color: #2947ca; background: #eef3ff; }
+.recruitment-notice-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.recruitment-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid #d5dbe4; }
+.recruitment-tabs button { flex-shrink: 0; padding: 12px; border-bottom: 3px solid transparent; color: #475569; cursor: pointer; }
+.recruitment-tabs button[aria-current] { border-color: #07815f; color: #006747; font-weight: 600; }
+.recruitment-citation { padding: 3px 7px; border: 1px solid; border-radius: 8px; font-size: 12px; background: white; cursor: pointer; }
+.recruitment-citation.source-interview { border-color: #2947ca; color: #2344c5; }
+.recruitment-citation.source-cv { border-color: #07815f; color: #006747; }
+.recruitment-citation.source-coverage { border-style: dashed; color: #475569; }
+@media (prefers-reduced-motion: reduce) { .recruitment-skeleton span { animation: none; } }

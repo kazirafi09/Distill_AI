@@ -145,6 +145,16 @@ services:
       backend:
         condition: service_healthy
 
+  assessment-worker:
+    <<: *backend_runtime
+    command: ["python", "-m", "app.scripts.assessment_worker"]
+    ports: []
+    healthcheck:
+      disable: true
+    depends_on:
+      backend:
+        condition: service_healthy
+
   cv-source-check-worker:
     <<: *backend_runtime
     command: ["python", "-m", "app.scripts.cv_source_check_worker"]

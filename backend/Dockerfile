@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /workspace/backend
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr tesseract-ocr-eng poppler-utils \
+    tesseract-ocr tesseract-ocr-eng poppler-utils fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 ENV OMP_THREAD_LIMIT=2
 

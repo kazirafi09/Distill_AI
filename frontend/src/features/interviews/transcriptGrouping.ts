@@ -1,6 +1,12 @@
-import type { TranscriptSnapshot } from './sessionApi'
+import type { InterimTurn, TranscriptSnapshot } from './sessionApi'
 
 type Segment = TranscriptSnapshot['turns'][number]
+
+export function visibleInterimTurns(turns: Segment[], drafts: InterimTurn[]): InterimTurn[] {
+  return drafts.filter(draft => draft.text.trim() && !turns.some(turn =>
+    turn.stream_id === draft.stream_id && (turn.stream_start_ms === draft.stream_start_ms
+      || (turn.stream_start_ms <= draft.stream_start_ms && turn.stream_end_ms >= draft.stream_end_ms))))
+}
 export type TranscriptUtterance = {
   id: string
   stream_id: string

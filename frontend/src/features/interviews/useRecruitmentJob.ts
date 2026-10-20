@@ -30,7 +30,7 @@ export function useRecruitmentJob(token: string) {
   const requested = params.get('job')
   const job = jobs.find(item => item.id === requested) ?? jobs[0]
   function selectJob(id: string) {
-    setParams(current => { current.set('job', id); current.delete('candidate'); return current })
+    setParams(current => { current.set('job', id); current.delete('candidate'); current.delete('run'); return current })
   }
   return { jobs, job, loading, error, selectJob, retry: () => { setLoading(true); setRevision(value => value + 1) } }
 }

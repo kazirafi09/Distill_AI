@@ -53,7 +53,8 @@ export function StageRoom({ candidateName, onEnd, canEnd, onAdmit, waiting, onEr
     finally { setPending(false) }
   }
   return <div className="stage-call">
-    <StartAudio label="Enable interview audio" />
+    <StartAudio label="Enable speaker audio" />
+    {!isMicrophoneEnabled && <p className="stage-microphone-warning" role="status">Your microphone is off. Your speech is not being transcribed. Select Unmute to speak.</p>}
     <div className="stage-main-video">{main && mainHasVideo ? <ParticipantTile trackRef={main} /> : <div className="stage-camera-placeholder">{main ? <><span className="stage-camera-off">Camera off</span><span className="stage-video-initials">{mainInitials}</span></> : <><div className="stage-person" /><p>{waiting ? 'Waiting for candidate admission' : 'Waiting for candidate to join'}</p></>}</div>}</div>
     <strong className="stage-speaker">{swapped ? 'You · Interviewer' : `${candidateName ?? 'Candidate'} · Candidate`}</strong>
     <button className="stage-pip" onClick={() => setSwapped(!swapped)} aria-label="Swap main and small video"><div>{small ? <ParticipantTile trackRef={small} /> : <div className="stage-person" />}</div><span>{swapped ? candidateName ?? 'Candidate' : 'You'}</span></button>
@@ -97,7 +98,7 @@ function RoomContents({ onConnectionChange, onError, children, ...options }: {
       <GridLayout tracks={tracks} className="interview-video-grid"><ParticipantTile /></GridLayout>
     </>)}
     <RoomAudioRenderer />
-    {!children && !options.stage && <StartAudio label="Enable interview audio" />}
+    {!children && !options.stage && <StartAudio label="Enable speaker audio" />}
     {!options.stage && !children && <ControlBar saveUserChoices={false}
       onDeviceError={({ error }) => onError(error)}
       controls={{ camera: true, microphone: true, screenShare: false, chat: false, leave: true }} />}

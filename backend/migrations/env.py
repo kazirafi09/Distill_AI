@@ -24,7 +24,8 @@ from app.models.interviews import (
     InterviewShortlist, InterviewShortlistMember, InterviewInvitation,
     InvitationBatch, InvitationEmailJob, InterviewSession,
 )
-from app.models.interview_transcripts import InterviewTranscript, InterviewTranscriptTurn
+from app.models.interview_transcripts import InterviewTranscript, InterviewTranscriptTurn, InterviewAudioStream
+from app.models.assessments import AssessmentRun, AssessmentStage, AssessmentAnswer, AssessmentResult
 
 config = context.config
 

@@ -70,3 +70,17 @@ test('sign-out revokes the cookie session before clearing memory', async () => {
   await logoutRecruiter()
   await apiRequest('/jobs', { token: 'other-token' })
 })
+
+test('PDF downloads renew authentication and preserve binary content and error messages', async () => {
+  globalThis.fetch = async (url, options) => {
+    if (url.endsWith('/refresh')) return json({ access_token: 'pdf-renewed' })
+    assert.equal(options.cache, 'no-store')
+    if (options.headers.get('Authorization') !== 'Bearer pdf-renewed') return json({ detail: 'Expired' }, 401)
+    return new Response('%PDF-1.4\nfixture', { headers: { 'Content-Type': 'application/pdf' } })
+  }
+  const pdf = await apiRequest('/assessments/runs/example/report.pdf', { token: 'expired', cache: 'no-store', responseType: 'blob' })
+  assert.ok(pdf instanceof Blob)
+  assert.equal(await pdf.text(), '%PDF-1.4\nfixture')
+  globalThis.fetch = async () => json({ detail: 'Assessment run not found.' }, 404)
+  await assert.rejects(apiRequest('/assessments/runs/foreign/report.pdf', { token: 'expired', responseType: 'blob' }), /Assessment run not found/)
+})
