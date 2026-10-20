@@ -6,7 +6,6 @@
 
 .sidebar-menu { display: none; }
 .mobile-page-label { display: none; }
-.workspace-main:has(.assessments-page) { padding: 12px 16px; }
 .sidebar-link.has-notification { gap: 6px; padding-inline: 8px; }
 .sidebar-notification { display: inline-flex; justify-content: center; min-width: 18px; margin-left: auto; padding: 1px 4px; border-radius: 12px; background: #07815f; color: white; font-size: 10px; font-weight: 700; }
 
@@ -167,11 +166,12 @@
 }
 
 .workspace-main {
+  background: var(--workspace-background);
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding: 28px 32px;
+  padding: var(--workspace-page-padding);
 }
 
 .jd-page {
@@ -251,7 +251,6 @@
   background: #f0fdf7;
 }
 
-.conversation-picker select:focus-visible,
 .conversation-pagination button:focus-visible {
   outline: 2px solid #059669;
   outline-offset: 2px;
@@ -339,10 +338,6 @@
     grid-template-columns: 187px minmax(0, 1fr);
   }
 
-  .workspace-main {
-    padding: 20px;
-  }
-
   .jd-workspace {
     grid-template-columns: 260px minmax(0, 1fr);
     gap: 14px;
@@ -413,10 +408,6 @@
 
   .sidebar-signout {
     grid-column: auto;
-  }
-
-  .workspace-main {
-    padding: 20px 14px;
   }
 
   .jd-detail-dialog {

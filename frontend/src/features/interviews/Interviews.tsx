@@ -26,7 +26,7 @@ function LiveWorkspace({ token, userId, job }: { token: string; userId: string; 
   if (error) return <div role="alert"><p>{error}</p><button className="button-secondary" onClick={() => { setLoading(true); setRevision(value => value + 1) }}>Try again</button></div>
   return <>
     <div className="recruitment-context"><span>Prepare and conduct interviews with your saved candidates.</span><Link to={`/recruiter/invitations?job=${encodeURIComponent(job.id)}`}>Manage invitations</Link></div>
-    {saved?.outdated && <p className="cv-error">Screening results have changed. <Link to={`/recruiter/cv-screening?job=${encodeURIComponent(job.id)}#interview-shortlist`}>Review the saved shortlist.</Link></p>}
+    {saved?.outdated && <p className="cv-error">Screening results have changed. <Link to={`/recruiter/cv-screening?job=${encodeURIComponent(job.id)}&shortlist=1`}>Review the saved shortlist.</Link></p>}
     <RecruiterInterviewPanel token={token} userId={userId} jobId={job.id} members={saved?.members ?? []} jobTitle={job.title} jobNumber={job.number} />
   </>
 }

@@ -16,6 +16,7 @@ export default function InterviewTranscript({ token, jobId, applicationId }: {
   const [error, setError] = useState('')
   const log = useRef<HTMLDivElement>(null)
   const follow = useRef(true)
+  const [following, setFollowing] = useState(true)
   const scope = `${jobId}:${applicationId}`
   const data = saved?.scope === scope ? saved.data : null
   const utterances = groupTranscriptTurns(data?.turns ?? [])
@@ -62,6 +63,7 @@ export default function InterviewTranscript({ token, jobId, applicationId }: {
     <div className="stage-transcript-turns" ref={log} onScroll={event => {
       const element = event.currentTarget
       follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48
+      setFollowing(follow.current)
     }}>
       {!data && !error && <p role="status">Loading transcript…</p>}
       {data && !data.turns.length && !interim.length && <div className="stage-empty"><strong>Waiting for speech</strong><p>Transcription starts when the candidate is admitted. Speak with a microphone enabled; live text will appear here.</p></div>}
@@ -80,5 +82,10 @@ export default function InterviewTranscript({ token, jobId, applicationId }: {
         <p>{turn.text}</p>
       </article>)}
     </div>
+    {!following && <button className="motion-jump-latest" onClick={() => {
+      follow.current = true
+      setFollowing(true)
+      if (log.current) log.current.scrollTop = log.current.scrollHeight
+    }}>Jump to latest</button>}
   </section>
 }

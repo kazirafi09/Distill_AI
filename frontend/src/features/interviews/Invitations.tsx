@@ -30,7 +30,7 @@ function InvitationWorkspace({ token, jobId }: { token: string; jobId: string })
       {shortlist?.outdated && <p className="cv-error">This shortlist needs updated screening results. Review and save it in CV Screening before sending.</p>}
       {!loading && !error && !shortlist?.members.length && <p>No saved recipients yet. Select candidates in CV Screening first.</p>}
       {!!shortlist?.members.length && <ul>{shortlist.members.map(member => <li key={member.application_id}><strong>{member.name}</strong><span>{member.email}</span><small>Saved rank #{member.rank} · Score {Number(member.score.aggregate).toFixed(2)} / 100</small></li>)}</ul>}
-      <div className="recruitment-links"><Link to={`/recruiter/cv-screening?job=${encodeURIComponent(jobId)}#interview-shortlist`}>Edit shortlist</Link><Link to={`/recruiter/interviews?job=${encodeURIComponent(jobId)}`}>Prepare interview →</Link></div>
+      <div className="recruitment-links"><Link to={`/recruiter/cv-screening?job=${encodeURIComponent(jobId)}&shortlist=1`}>Edit shortlist</Link><Link to={`/recruiter/interviews?job=${encodeURIComponent(jobId)}`}>Prepare interview →</Link></div>
     </section>
     <InvitationSending token={token} jobId={jobId} canSend={!loading && !error && !!shortlist?.members.length && !shortlist.outdated} />
   </>

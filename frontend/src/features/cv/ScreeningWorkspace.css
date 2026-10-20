@@ -1,4 +1,13 @@
 .cv-redesign { position: relative; }
+/* Short desktop windows need page scrolling instead of shrinking the two panes. */
+@media (min-width: 701px) and (max-height: 800px) {
+  .workspace-main:has(.cv-redesign) { overflow-y: auto; }
+  .workspace-main .cv-redesign { height: auto; min-height: 100%; }
+  .cv-redesign .screening-workspace { flex: none; }
+  .cv-redesign .screening-split { flex: none; align-items: start; }
+  .cv-redesign .screening-candidates, .cv-redesign .screening-candidate-detail { overflow: visible; }
+  .cv-redesign .screening-candidate-list, .cv-redesign .screening-detail-scroll { flex: none; overflow-y: visible; }
+}
 .screening-header-actions { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
 .screening-header-actions label { min-width: 200px; max-width: 300px; }
 .screening-header-actions > button { margin-bottom: 2px; }
@@ -6,6 +15,11 @@
 .screening-sync-bar p, .screening-run-bar p { margin-top: 3px; }
 .screening-sync-bar > button, .screening-run-bar > button { flex-shrink: 0; }
 .screening-workspace { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 10px; }
+.screening-progress { flex-shrink: 0; border: 1px solid #96cdb7; border-radius: 12px; padding: 10px 14px; background: #f2fbf7; font-size: 12px; overflow-wrap: anywhere; }
+.screening-progress.needs-attention { border-color: #d88e38; background: #fffaf0; }
+.screening-progress p { margin-top: 4px; }
+.screening-progress progress { display: block; width: 100%; height: 9px; margin: 8px 0; accent-color: #00855e; }
+.screening-progress small { display: block; margin-top: 5px; color: #526075; }
 .screening-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; flex-shrink: 0; }
 .screening-workflow-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 10px 14px; border: 1px solid #dfe3eb; border-radius: 12px; background: white; flex-shrink: 0; }
 .screening-action-group { display: flex; align-items: center; gap: 12px; }

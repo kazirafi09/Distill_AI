@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { apiRequest } from '../../services/api'
 import { CandidateFiles, ScoreDetails } from './CandidateSource'
 import CandidateProfile from './CandidateProfile'
+import ScreeningProgress from './ScreeningProgress'
 import { errorLabels } from './screeningMessages'
 import type { Assessment, Results, Run } from './CVResults'
 import type { CandidateApplication } from './api'
@@ -76,7 +77,9 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [lastChecked, setLastChecked] = useState('')
   const lock = useRef(false)
+  const requestVersion = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
   const returnFocus = useRef<HTMLButtonElement | null>(null)
   const query = params.get('search') ?? ''
@@ -91,11 +94,18 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout>
     async function poll() {
+      const version = requestVersion.current
       try {
         const next = await apiRequest<Results>(`/cv/screening/jobs/${jobId}/results`, { token, signal: controller.signal })
-        if (!controller.signal.aborted) { setResults(next); setError(''); timer = setTimeout(() => void poll(), next.run && ['queued', 'running'].includes(next.run.status) ? 3000 : 10000) }
+        if (!controller.signal.aborted) {
+          if (version === requestVersion.current) { setResults(next); setLastChecked(new Date().toISOString()); setError('') }
+          timer = setTimeout(() => void poll(), next.run && ['queued', 'running'].includes(next.run.status) ? 3000 : 10000)
+        }
       } catch (caught) {
-        if (!controller.signal.aborted) { setError(caught instanceof Error ? caught.message : 'Could not load screening results.'); timer = setTimeout(() => void poll(), 10000) }
+        if (!controller.signal.aborted) {
+          if (version === requestVersion.current) setError(caught instanceof Error ? caught.message : 'Could not load screening results.')
+          timer = setTimeout(() => void poll(), 10000)
+        }
       }
     }
     void poll()
@@ -104,9 +114,11 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
 
   async function screen(resume = false) {
     if (lock.current || active) return
+    requestVersion.current += 1
     lock.current = true; setBusy(true); setError('')
     try {
-      await apiRequest<Run>(resume && run ? `/cv/screening/runs/${run.id}/resume` : `/cv/screening/jobs/${jobId}/start`, { token, method: 'POST' })
+      const started = await apiRequest<Run>(resume && run ? `/cv/screening/runs/${run.id}/resume` : `/cv/screening/jobs/${jobId}/start`, { token, method: 'POST' })
+      setResults(current => current ? { ...current, run: started } : current)
       setRevision(value => value + 1)
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Screening could not start.') }
     finally { lock.current = false; setBusy(false) }
@@ -139,25 +151,26 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
 
   return <div className={`screening-workspace${requestedId && selected?.application.id === requestedId ? ' has-mobile-selection' : ''}`}>
     <div className="screening-workflow-toolbar" aria-label="Screening actions">
-      <div className="screening-action-group"><span>Application source</span><div><button className="button-secondary" disabled={!connected || syncing} onClick={onSync}>{syncing ? 'Syncing…' : 'Sync applications'}</button><button className="button-secondary" disabled={!sourceReady || syncing} onClick={onSource}>Source setup</button></div></div>
-      <div className="screening-action-group"><span>{active ? `Screening · ${run?.completed} of ${run?.total} scored` : run?.status === 'outdated' ? 'Older results · screen again' : 'Candidate screening'}</span><div><button className="button-secondary" disabled={applicationsLoading || !!applicationsError || !applications.length} onClick={onShortlist}>Interview shortlist</button><button className="button-primary" disabled={!results || !connected || syncing || busy || active || !applications.length} onClick={() => void screen(resume)}>{busy ? 'Starting…' : active ? 'Screening…' : resume ? 'Resume screening' : 'Screen applications'}</button></div></div>
+      <div className="screening-action-group"><span>Application source</span><div><button className="button-secondary" data-motion-processing={syncing} disabled={!connected || syncing} onClick={onSync}>{syncing ? 'Syncing…' : 'Sync applications'}</button><button className="button-secondary" disabled={!sourceReady || syncing} onClick={onSource}>Source setup</button></div></div>
+      <div className="screening-action-group"><span>Candidate screening</span><div><button className="button-secondary" disabled={applicationsLoading || !!applicationsError || !applications.length} onClick={onShortlist}>Interview shortlist</button><button className="button-primary" data-motion-processing={active || busy} disabled={!results || !connected || syncing || busy || active || !applications.length} onClick={() => void screen(resume)}>{busy ? 'Starting…' : active ? 'Screening…' : resume ? 'Resume screening' : 'Screen applications'}</button></div></div>
     </div>
+    <ScreeningProgress run={run} starting={busy} syncing={syncing} lastChecked={lastChecked} refreshError={!!error} />
     <div className="screening-summary" aria-label="Screening summary">
       <div><strong>{applicationsLoading ? '—' : applications.length}</strong><span>Applications</span></div><div><strong>{loading ? '—' : scored}</strong><span>Scored</span></div>
       <div className={issues > 0 ? 'has-issues' : ''}><strong>{loading ? '—' : issues}</strong><span>Processing issues</span>{!loading && issues > 0 && <button onClick={() => showGroup('issue')}>View candidates</button>}</div>
       <div className={needsReview > 0 ? 'has-review' : ''}><strong>{loading ? '—' : needsReview}</strong><span>Need your judgment</span>{!loading && needsReview > 0 && <button onClick={() => showGroup('review')}>View candidates</button>}</div>
     </div>
-    {!connected && <p className="muted">Screening is disabled: connect the application source first. <button className="text-link" onClick={onSource}>Source setup</button></p>}
-    {(error || applicationsError) && <div className="screening-notice is-danger" role="alert"><strong>Some results could not be loaded</strong><p>{error || applicationsError}</p><button className="button-secondary" onClick={() => { setRevision(value => value + 1); onReload() }}>Try again</button></div>}
+    {!connected && <p className="muted">{sourceReady ? 'Screening is disabled: use Source setup above to connect the application source.' : 'Checking the application source before enabling screening…'}</p>}
+    {(error || applicationsError) && <div className="screening-notice is-danger" role="alert"><strong>Some results could not be loaded</strong><p>{error || applicationsError}</p>{results && <p>Showing the last confirmed results. A refresh error does not confirm that processing has stopped.</p>}<button className="button-secondary" onClick={() => { setRevision(value => value + 1); onReload() }}>Try again</button></div>}
     {run?.error_code && <div className="screening-notice is-warning" role="status">{errorLabels[run.error_code] ?? run.error_code.replaceAll('_', ' ').toLowerCase()}</div>}
     {!!results?.warnings.length && <div className="screening-notice is-warning">{results.warnings.map(warning => <p key={warning}>{warning.replaceAll('_', ' ').toLowerCase()}</p>)}</div>}
     <div className="screening-split">
       <section className="screening-candidates" aria-label="Candidates"><header><h2>Candidates <small>· showing {visible.length} of {applications.length}</small></h2></header>
-        <div className="screening-filters"><label>Search candidates<input type="search" placeholder="Name or email" value={query} onChange={event => filter('search', event.target.value)} /></label><label>Show<select value={show} onChange={event => filter('show', event.target.value)}><option value="all">All</option><option value="screened">Screened</option><option value="waiting">Waiting</option><option value="issue">Processing issues</option><option value="outdated">Older results</option></select></label><label>Sort by<select value={sort} onChange={event => filter('sort', event.target.value)}><option value="score">Score</option><option value="name">Name</option><option value="newest">Newest</option></select></label></div>
+        <div className="screening-filters"><label>Search candidates<input type="search" placeholder="Name or email" value={query} onChange={event => filter('search', event.target.value)} /></label><label>Show<select aria-label="Show" value={show} onChange={event => filter('show', event.target.value)}><option value="all">All</option><option value="screened">Screened</option><option value="waiting">Waiting</option><option value="issue">Processing issues</option><option value="outdated">Older results</option></select></label><label>Sort by<select aria-label="Sort by" value={sort} onChange={event => filter('sort', event.target.value)}><option value="score">Score</option><option value="name">Name</option><option value="newest">Newest</option></select></label></div>
         <label className="screening-review-filter"><input type="checkbox" checked={onlyReview} onChange={event => filter('review', event.target.checked ? '1' : '')} />Only those with essential criteria to review</label>
         <div className="screening-list-head"><span>Candidate</span><span>Match score</span><span>Essential criteria</span></div>
         <div className="screening-candidate-list" ref={listRef}>
-          {loading ? <div className="ui-state" role="status"><h3>Loading candidates</h3><p>Fetching the latest screening results.</p><div className="screening-skeleton" /><div className="screening-skeleton" /><div className="screening-skeleton" /></div> : applicationsError || (!results && error) ? <div className="ui-state">Use Try again above to reload the candidate results.</div> : !applications.length ? <div className="ui-state"><h3>No applications yet</h3><p>Sync the connected source to import applications.</p><button className="button-primary" disabled={!connected} onClick={onSync}>Sync applications</button> <button className="button-secondary" onClick={onSource}>Source setup</button></div> : !visible.length ? <div className="ui-state"><h3>No candidates match these filters</h3><p>Change the search or filters to see more candidates.</p><button className="button-primary" onClick={() => setParams(current => { const next = new URLSearchParams(current); ['search', 'show', 'review', 'candidate'].forEach(key => next.delete(key)); return next }, { replace: true })}>Clear filters</button></div> : visible.map(({ application, item, status }) => {
+          {loading ? <div className="ui-state" role="status"><h3>Loading candidates</h3><p>Fetching the latest screening results.</p><div className="screening-skeleton" /><div className="screening-skeleton" /><div className="screening-skeleton" /></div> : applicationsError || (!results && error) ? <div className="ui-state">Use Try again above to reload the candidate results.</div> : !applications.length ? <div className="ui-state"><h3>No applications yet</h3><p>{connected ? "Use Sync applications above to import applications." : "Use Source setup above to connect your applications."}</p></div> : !visible.length ? <div className="ui-state"><h3>No candidates match these filters</h3><p>Change the search or filters to see more candidates.</p><button className="button-primary" onClick={() => setParams(current => { const next = new URLSearchParams(current); ['search', 'show', 'review', 'candidate'].forEach(key => next.delete(key)); return next }, { replace: true })}>Clear filters</button></div> : visible.map(({ application, item, status }) => {
             const score = validScore(item), review = reviewCount(item)
             return <button key={application.id} className={`screening-candidate-row${selected?.application.id === application.id ? ' is-selected' : ''}`} aria-pressed={selected?.application.id === application.id} onClick={event => { returnFocus.current = event.currentTarget; setParams(current => { const next = new URLSearchParams(current); next.set('candidate', application.id); return next }) }}>
               <span><strong>{application.full_name}</strong><small>Applied {new Date(application.created_at).toLocaleDateString('en-GB', { timeZone: 'Asia/Dhaka', day: 'numeric', month: 'short' })}</small></span>

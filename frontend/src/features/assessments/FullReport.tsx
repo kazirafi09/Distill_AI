@@ -53,16 +53,16 @@ export default function FullReport({ token, runId, completed }: { token: string;
   return <section className="assessment-report-tools" aria-label="Full assessment report">
     <div><h3>Candidate report</h3><p>Scores, key findings, and requirement coverage. The full technical export retains detailed analysis and the transcript.</p></div>
     <div className="assessment-report-options">
-      <label>Report type<select value={reportType} disabled={!!busy} onChange={event => { setReportType(event.target.value as ReportType); setReport(null); setOpen(false); setError('') }}><option value="recruiter">Recruiter report</option><option value="technical">Full technical report</option></select></label>
+      <label>Report type<select aria-label="Report type" value={reportType} disabled={!!busy} onChange={event => { setReportType(event.target.value as ReportType); setReport(null); setOpen(false); setError('') }}><option value="recruiter">Recruiter report</option><option value="technical">Full technical report</option></select></label>
       <label><input type="checkbox" checked={includeEvidence} disabled={!!busy || reportType === 'technical'} onChange={event => { setIncludeEvidence(event.target.checked); setReport(null); setOpen(false); setError('') }} />Include evidence appendix</label>
     </div>
     <div className="assessment-report-actions">
       <button className="button-secondary" disabled={!completed || !!busy} onClick={() => open ? setOpen(false) : void act('view')}>{busy === 'view' ? 'Loading report…' : open ? 'Close report' : 'Preview report'}</button>
-      <button className="button-primary" disabled={!completed || !!busy} onClick={() => void act('print')}>{busy === 'print' ? 'Preparing print…' : 'Print / Save as PDF'}</button>
-      <button className="button-secondary" disabled={!completed || !!busy} onClick={() => void act('download')}>{busy === 'download' ? 'Preparing PDF…' : 'Download report (PDF)'}</button>
+      <button className="button-primary" disabled={!completed || !!busy} onClick={() => void act('print')}>{busy === 'print' ? 'Preparing print…' : 'Print'}</button>
+      <button className="button-secondary" disabled={!completed || !!busy} onClick={() => void act('download')}>{busy === 'download' ? 'Preparing PDF…' : 'Download PDF'}</button>
     </div>
     {!completed && <p className="assessment-muted">The report becomes available when this assessment completes.</p>}
-    {completed && <p className="assessment-muted">{reportType === 'recruiter' ? 'The recruiter report is a short overview. Evidence is optional; the full transcript and technical details are available in the full technical report.' : 'The full technical report includes all saved Q&A, the complete transcript, source details, and evidence appendix.'} Print / Save as PDF opens your browser’s print dialog.</p>}
+    {completed && <p className="assessment-muted">{reportType === 'recruiter' ? 'The recruiter report is a short overview. Evidence is optional; the full transcript and technical details are available in the full technical report.' : 'The full technical report includes all saved Q&A, the complete transcript, source details, and evidence appendix.'} Print opens your browser’s print dialog.</p>}
     {error && <p className="assessment-error" role="alert">{error}</p>}
     {open && report && <div className="assessment-full-report" aria-label="Full report preview"><ReportDocument report={report} prefix={`preview-${runId}`} /></div>}
     {report && createPortal(<div className="assessment-print-root"><ReportDocument report={report} prefix={`print-${runId}`} /></div>, document.body)}

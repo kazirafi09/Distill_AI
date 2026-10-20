@@ -209,7 +209,7 @@ export default function ShortlistWorkspace({ token, job }: { token: string; job:
       <form className="interview-filter-panel" onSubmit={event => void generatePreview(event)}>
         <div><h3>Propose interviewees</h3><p>Use screening scores to start a shortlist, then make the final selection.</p></div>
         <div className="interview-filter-fields">
-          <label>Filter method<select value={mode} disabled={!!busy} onChange={event => {
+          <label>Filter method<select aria-label="Filter method" value={mode} disabled={!!busy} onChange={event => {
             setMode(event.target.value as ShortlistFilters['mode']); filtersChanged()
           }}><option value="top_k">Top K</option><option value="minimum_score">Minimum score</option><option value="both">Top K and minimum score</option></select></label>
           {mode !== 'minimum_score' && <label>Number of candidates<input type="number" min="1" step="1" required value={k} disabled={!!busy} onChange={event => { setK(event.target.value); filtersChanged() }} /></label>}
@@ -277,4 +277,3 @@ export default function ShortlistWorkspace({ token, job }: { token: string; job:
     </>}
   </div>
 }
-

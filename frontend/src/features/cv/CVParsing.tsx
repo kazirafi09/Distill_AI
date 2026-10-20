@@ -84,7 +84,7 @@ export function CVBatchParse({ token, jobId, onFinished }: { token: string; jobI
     } catch (caught) { setMessage(caught instanceof Error ? caught.message : 'Batch failed.') }
     finally { lock.current = false; setBusy(false); onFinished() }
   }
-  return <div className="cv-parsing cv-batch-parsing"><button className="button-secondary" disabled={busy} onClick={() => void run()}>{busy ? 'Parsing downloaded CVs…' : 'Parse downloaded CVs for this JD'}</button>
+  return <div className="cv-parsing cv-batch-parsing"><button className="button-secondary" data-motion-processing={busy} disabled={busy} onClick={() => void run()}>{busy ? 'Parsing downloaded CVs…' : 'Parse downloaded CVs for this JD'}</button>
     {busy && <button className="button-secondary" onClick={() => { stop.current = true }}>Stop after current CV</button>}
     <p role="status">{message}</p></div>
 }
