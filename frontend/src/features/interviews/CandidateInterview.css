@@ -83,7 +83,7 @@
 .is-in-call .candidate-info { min-height: 0; overflow-y: auto; align-content: start; }
 .is-in-call .candidate-page-footer { display: none; }
 .is-in-call .candidate-alert, .is-in-call .candidate-notice { flex-shrink: 0; max-height: 64px; overflow-y: auto; }
-.candidate-interview-page .stage-pip { width: 180px; height: 126px; }
+.candidate-interview-page .stage-pip { width: min(26%, 180px); height: auto; aspect-ratio: 4 / 3; max-height: 126px; }
 .candidate-interview-page .stage-dock button { min-width: 74px; }
 .candidate-heading, .candidate-card, .candidate-terminal { animation: motion-rise var(--motion-panel) var(--motion-enter); }
 @media (max-width: 1000px) {
@@ -103,8 +103,76 @@
   .candidate-steps button { width: 100%; justify-content: center; padding: 7px 5px; gap: 5px; }
   .candidate-steps li span { width: 18px; height: 18px; }
   .is-in-call .candidate-info { display: none; }
-  .candidate-interview-page .stage-pip { width: 116px; height: 88px; }
+  .candidate-interview-page .stage-pip { width: min(26%, 116px); height: auto; }
   .candidate-page-footer { padding: 18px 14px; }
+}
+
+/* Keep call controls in the layout rather than outside a clipped video tile. */
+@media (max-width: 900px) and (orientation: portrait) {
+  .is-in-call .candidate-layout { grid-template-columns: minmax(0, 1fr); }
+  .is-in-call .candidate-info { display: none; }
+}
+@media (max-width: 1100px) {
+  .candidate-interview-page .stage-call { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 0; height: 100%; }
+  .candidate-interview-page .stage-main-video { height: 100%; min-height: 0; aspect-ratio: auto; border-radius: 0; }
+  .candidate-interview-page .stage-dock { position: static; transform: none; height: auto; min-height: 60px; padding: 6px 8px max(6px, env(safe-area-inset-bottom)); gap: 8px; background: #101728; justify-content: center; }
+  .candidate-interview-page .stage-dock button { flex: 1; min-width: 44px; max-width: 160px; min-height: 44px; height: 48px; padding: 4px 8px; background: #293544; color: white; border: 1px solid #475569; }
+  .candidate-interview-page .stage-speaker { top: auto; bottom: calc(76px + env(safe-area-inset-bottom)); left: 12px; max-width: 65%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .candidate-interview-page .stage-pip { top: 8px; right: 8px; max-height: min(24dvh, 126px); }
+  .candidate-interview-page .stage-pip .stage-camera-placeholder { gap: 4px; }
+  .candidate-interview-page .stage-pip .stage-camera-placeholder p { display: none; }
+  .candidate-interview-page .stage-pip .stage-person { width: 32px; height: 32px; margin: 0; }
+  .candidate-interview-page .stage-pip .stage-camera-placeholder > .stage-person { width: 32px; height: 32px; }
+  .candidate-interview-page .stage-camera-placeholder > .stage-person { width: clamp(48px, 12dvh, 96px); height: clamp(48px, 12dvh, 96px); }
+  .candidate-interview-page .stage-microphone-warning { max-width: 65%; max-height: 30%; overflow-y: auto; padding: 6px 8px; font-size: 11px; }
+  .candidate-interview-page .stage-call > .lk-start-audio-button { top: auto; bottom: 76px; left: 12px; max-width: calc(100% - 24px); }
+}
+@media (max-width: 760px) {
+  .candidate-header { gap: 8px; }
+  .candidate-brand strong { font-size: 17px; }
+  .candidate-status { max-width: 45%; overflow-wrap: anywhere; }
+  .candidate-heading h1 { font-size: 21px; }
+  .candidate-heading > div > p:last-child { font-size: 13px; overflow-wrap: anywhere; }
+  .candidate-card { padding: 16px; }
+  .candidate-waiting-video { min-height: 0; }
+  .candidate-waiting-content { padding: 16px; gap: 12px; }
+  .candidate-preview-controls { padding: 16px; }
+  .candidate-interview-page .interview-device-check { padding: 14px; }
+  .candidate-device-options { gap: 12px; }
+  .candidate-device-options .lk-button, .candidate-device-options .button-secondary { white-space: normal; min-width: 0; padding: 8px; }
+  .is-in-call .candidate-page-content { padding: 8px; }
+  .is-in-call .candidate-heading { margin-bottom: 8px; }
+  .is-in-call .candidate-heading h1 { font-size: 16px; }
+  .is-in-call .candidate-heading > div > p:last-child { margin-top: 2px; font-size: 12px; }
+  .is-in-call .candidate-video-panel { border-radius: 12px; }
+  .candidate-steps li { min-width: 0; }
+  .candidate-steps button { min-height: 44px; }
+}
+@media (max-width: 380px) {
+  .candidate-device-options { grid-template-columns: minmax(0, 1fr); }
+  .candidate-device-options > div { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: end; gap: 8px; }
+  .candidate-device-options label { font-size: 11px; }
+}
+@media (max-width: 1100px) and (orientation: landscape) and (max-height: 600px) {
+  .is-in-call .candidate-header { padding: 6px 12px; }
+  .is-in-call .candidate-header .brand-mark { width: 30px; height: 30px; }
+  .is-in-call .candidate-brand strong { font-size: 16px; }
+  .is-in-call .candidate-brand > span:last-child { display: none; }
+  .is-in-call .candidate-page-content { padding: 6px 10px; }
+  .is-in-call .candidate-heading { margin-bottom: 6px; }
+  .is-in-call .candidate-heading > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .is-in-call .candidate-heading h1 { flex-shrink: 0; font-size: 14px; }
+  .is-in-call .candidate-heading > div > p:last-child { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .is-in-call .candidate-layout { grid-template-columns: minmax(0, 1fr); }
+  .is-in-call .candidate-info { display: none; }
+  .candidate-interview-page .stage-dock { min-height: 52px; padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
+  .candidate-interview-page .stage-dock button { height: 44px; flex-direction: row; gap: 8px; }
+  .candidate-interview-page .stage-speaker { bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .candidate-interview-page .stage-pip { max-width: 110px; max-height: 80px; }
+  .candidate-preview-shell:has(.is-in-call) > .candidate-preview-banner { max-height: 44px; overflow-y: auto; padding: 4px 10px; flex-wrap: nowrap; font-size: 10px; }
+  .candidate-preview-shell:has(.is-in-call) .candidate-preview-banner > span { display: none; }
+  .candidate-preview-shell:has(.is-in-call) .candidate-preview-banner nav { flex-wrap: nowrap; }
+  .candidate-preview-shell:has(.is-in-call) .candidate-preview-banner button { white-space: nowrap; font-size: 10px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .candidate-heading, .candidate-card, .candidate-terminal { animation: none; }

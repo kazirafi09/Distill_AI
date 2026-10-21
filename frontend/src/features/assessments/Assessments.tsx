@@ -5,6 +5,8 @@ import { useRecruitmentJob } from '../interviews/useRecruitmentJob'
 import { dimensions, loadResult, loadWorkspace, retryF5, recoverF5, startF5, startF6 } from './api'
 import ConsolidatedAssessment from './ConsolidatedAssessment'
 import FullReport from './FullReport'
+import InterviewScoringSettings from './InterviewScoringSettings'
+import PostInterviewAssessment from './PostInterviewAssessment'
 import CandidateWorkspace from './CandidateWorkspace'
 import { ActionButton, DemoBanner } from '../../components/recruitment/RecruitmentUI'
 import type { Answer, Result, Run, Turn, Workspace } from './api'
@@ -91,7 +93,7 @@ function RunDetails({ token, jobId, runId, onRetry, onRecover, onConsolidate, on
     {error && <p role="alert" className="assessment-error">{error}</p>}
     <header className="assessment-detail-heading"><div><p className="assessment-kicker">{run.kind === 'f6' ? 'F6 · Consolidated assessment' : 'F5 · Interview analysis'}</p><h2>{run.label}</h2><p className="assessment-muted">{new Date(run.created_at).toLocaleString()} · Criteria version {run.profile_version}</p></div>
       <span className={`assessment-status is-${run.status}`}>{stageLabel(run.stage)}</span></header>
-    <FullReport key={run.id} token={token} runId={run.id} completed={run.status === 'completed'} />
+    <FullReport key={run.id} token={token} runId={run.id} parentId={run.kind === 'f6' ? run.parent_run_id! : run.id} completed={run.status === 'completed'} />
     {run.recovered_from && <p className="assessment-warning">This recovery reuses validated answers from the previous run and retries the failed evaluation. Earlier scores have not been recalculated. <button className="button-secondary" onClick={() => onSelect(run.recovered_from!)}>View original run</button></p>}
     <p className="assessment-warning">{run.synthetic ? 'Synthetic sample — this is not a real candidate assessment. ' : ''}AI scores and conclusions are provisional and need review. CV and interview scores remain separate.</p>
     {run.kind === 'f5' && run.status === 'completed' && <section className="f6-start"><h3>Consolidated assessment</h3>
@@ -105,6 +107,7 @@ function RunDetails({ token, jobId, runId, onRetry, onRecover, onConsolidate, on
       {run.stage === 'retry_wait' && <p>Automatic retry scheduled for {new Date(run.next_attempt_at).toLocaleTimeString()}.</p>}</div>}
     {run.error_code && <div className="assessment-error" role="alert"><p>{errorLabel(run.error_code, data.result?.validation_error)}</p>{run.can_retry && <button className="button-secondary" onClick={onRetry}>Retry from saved work</button>}{run.can_recover && <button className="button-secondary" disabled={busy} onClick={onRecover}>{busy ? 'Saving…' : 'Recover failed evaluation'}</button>}</div>}
     {run.kind === 'f6' && data.result?.findings && data.result.source_registry && <ConsolidatedAssessment data={data} onEvidence={showEvidence} onParent={onSelect} />}
+    {run.status === 'completed' && <PostInterviewAssessment key={run.parent_run_id ?? run.id} token={token} parentId={run.kind === 'f6' ? run.parent_run_id! : run.id} onEvidence={showEvidence} />}
     {run.kind === 'f6' && <h2 className="f6-interview-heading">Saved interview scores</h2>}
     <div className="assessment-score-grid">{dimensions.map(dimension => {
       const summary = data.dimension_summaries[dimension]
@@ -171,6 +174,7 @@ function AssessmentWorkspace({ token, jobId }: { token: string; jobId: string })
     finally { lock.current = false; if (mounted.current) setBusy(false) }
   }
   return <>
+    <InterviewScoringSettings token={token} jobId={jobId} />
     <CandidateWorkspace hidden={!!runId} data={data} error={error} jobId={jobId} busy={busy} onRetry={() => setRevision(value => value + 1)} onOpen={selectRun} onStart={id => void act(false, false, id)} onPage={next => { setData(null); setOffset(next) }} />
     {runId && <><div className="assessment-back"><ActionButton onClick={() => setParams(current => { current.delete('run'); return current })}>← All assessments</ActionButton><Link to={`/recruiter/interviews?job=${jobId}`}>Open interviews</Link></div>
       {error && <p className="assessment-error" role="alert">{error}</p>}

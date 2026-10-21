@@ -6,4 +6,13 @@ export const errorLabels: Record<string, string> = {
   MATCH_INPUT_TOO_LARGE: 'Candidate evidence exceeds the configured model context. Review this application manually.',
   SCREENING_INPUTS_CHANGED: 'Inputs changed during processing. Start a new screening run.',
   MATCH_SCHEMA_OR_EVIDENCE_INVALID: 'The model output did not pass evidence validation. Resume to retry.',
+  MATCH_QUOTE_INVALID: 'A model quotation could not be verified against the original CV text.',
+  MATCH_SOURCE_INVALID: 'A model quotation referenced an invalid CV source.',
+  MATCH_SCHEMA_INVALID: 'The model response did not match the required result format.',
+  MATCH_ID_INVALID: 'The model response referenced a different screening requirement.',
+  MATCH_SUPPORT_REQUIRED: 'The model decision did not include supporting CV evidence.',
+  UNSUPPORTED_REQUIREMENT_PART_REQUIRED: 'The model did not identify the unsupported requirement components.',
+  UNREQUESTED_REQUIREMENT_ADDED: 'The model introduced wording outside the approved requirement.',
+  PARTIAL_COMPONENT_REQUIRED: 'The model did not separate supported and unsupported requirement components.',
+  MET_HAS_UNSUPPORTED_COMPONENT: 'The model marked a requirement met while reporting unsupported components.',
 }

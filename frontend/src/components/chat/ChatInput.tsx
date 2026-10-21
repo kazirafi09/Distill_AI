@@ -1,3 +1,5 @@
+import AutoGrowingTextarea from './AutoGrowingTextarea'
+
 type ChatInputProps = {
   value: string
   onChange: (value: string) => void
@@ -27,11 +29,10 @@ export default function ChatInput({
         send()
       }}
     >
-      <textarea
+      <AutoGrowingTextarea
         aria-label="Chat message"
         className="w-full resize-none rounded-xl px-2 py-2 text-sm
           text-slate-800 placeholder:text-slate-400 disabled:opacity-60"
-        rows={3}
         maxLength={6000}
         value={value}
         disabled={disabled}

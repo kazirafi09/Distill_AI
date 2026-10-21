@@ -68,8 +68,12 @@ export type FullReport = { title: string; filename: string; report_type?: Report
   run: Run; candidate: { name: string }; job?: { id: string; number: number; title: string }; generated_at?: string; outdated?: boolean
   source_versions?: { criteria: number; transcript?: number | null; interview_rubric?: string | null; interview_prompt?: string | null; assessment_report?: string | null }
 }; sections: { id?: string; title: string; page_break_before?: boolean; blocks: ReportBlock[]; table?: { caption?: string; columns: string[]; rows: string[][]; widths?: number[] } }[] }
-const reportQuery = (reportType: ReportType, includeEvidence: boolean) => new URLSearchParams({report_type:reportType, include_evidence:String(includeEvidence)}).toString()
-export const loadFullReport = (token: string, id: string, signal?: AbortSignal, reportType: ReportType = 'recruiter', includeEvidence = false) =>
-  apiRequest<FullReport>(`/assessments/runs/${id}/report?${reportQuery(reportType, includeEvidence)}`, { token, signal, cache: 'no-store' })
-export const downloadFullReport = (token: string, id: string, signal?: AbortSignal, reportType: ReportType = 'recruiter', includeEvidence = false) =>
-  apiRequest<Blob>(`/assessments/runs/${id}/report.pdf?${reportQuery(reportType, includeEvidence)}`, { token, signal, cache: 'no-store', responseType: 'blob' })
+const reportQuery = (reportType: ReportType, includeEvidence: boolean, runIds: string[]) => {
+  const params = new URLSearchParams({report_type:reportType, include_evidence:String(includeEvidence)})
+  runIds.forEach(id => params.append('post_interview_run_ids', id))
+  return params.toString()
+}
+export const loadFullReport = (token: string, id: string, signal?: AbortSignal, reportType: ReportType = 'recruiter', includeEvidence = false, runIds: string[] = []) =>
+  apiRequest<FullReport>(`/assessments/runs/${id}/report?${reportQuery(reportType, includeEvidence, runIds)}`, { token, signal, cache: 'no-store' })
+export const downloadFullReport = (token: string, id: string, signal?: AbortSignal, reportType: ReportType = 'recruiter', includeEvidence = false, runIds: string[] = []) =>
+  apiRequest<Blob>(`/assessments/runs/${id}/report.pdf?${reportQuery(reportType, includeEvidence, runIds)}`, { token, signal, cache: 'no-store', responseType: 'blob' })

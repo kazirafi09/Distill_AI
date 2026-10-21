@@ -51,8 +51,9 @@
 .dashboard-dock { flex-shrink: 0; display: flex; align-items: center; gap: 12px; padding: 12px var(--workspace-page-padding); background: white; border-top: 1px solid #dfe4ec; }
 .dashboard-dock header { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .dashboard-dock header strong { color: #065f46; font-size: 14px; }
-.dashboard-dock form { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; padding: 5px; border: 1px solid #778399; border-radius: 13px; }
-.dashboard-dock input { flex: 1; min-width: 0; border: 0; padding: 8px; font-size: 13px; background: transparent; }
+.dashboard-dock form { display: flex; flex: 1; align-items: flex-end; gap: 10px; min-width: 0; padding: 5px; border: 1px solid #778399; border-radius: 13px; }
+.dashboard-dock form > textarea { flex: 1; min-width: 0; border: 0; padding: 8px; font-size: 13px; line-height: 20px; background: transparent; }
+.dashboard-dock form > kbd { align-self: flex-end; padding-bottom: 10px; }
 .dashboard-page button, .dashboard-page a.button-secondary { transition: transform 120ms ease, background-color 150ms ease, box-shadow 150ms ease; }
 .dashboard-page button:not(:disabled):active, .dashboard-page a.button-secondary:active { transform: scale(.97); }
 .dashboard-dock kbd { font-size: 10px; white-space: nowrap; color: #526075; }

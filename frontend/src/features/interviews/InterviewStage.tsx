@@ -48,11 +48,11 @@ export default function InterviewStage(props: Props) {
     }
   }, [])
   const [now, setNow] = useState(() => Date.now())
-  const [compact, setCompact] = useState(() => window.matchMedia('(max-height: 679px), (max-width: 700px)').matches)
-  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 700px)').matches)
+  const [compact, setCompact] = useState(() => window.matchMedia('(max-height: 679px), (max-width: 900px) and (orientation: portrait)').matches)
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 900px) and (orientation: portrait)').matches)
   useEffect(() => {
-    const query = window.matchMedia('(max-height: 679px), (max-width: 700px)')
-    const phoneQuery = window.matchMedia('(max-width: 700px)')
+    const query = window.matchMedia('(max-height: 679px), (max-width: 900px) and (orientation: portrait)')
+    const phoneQuery = window.matchMedia('(max-width: 900px) and (orientation: portrait)')
     const update = () => { setCompact(query.matches); setPhone(phoneQuery.matches) }
     query.addEventListener('change', update)
     phoneQuery.addEventListener('change', update)
