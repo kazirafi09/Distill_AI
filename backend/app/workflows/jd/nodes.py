@@ -5,7 +5,7 @@ import re
 from langchain_core.messages import (
     AIMessage, AnyMessage, HumanMessage, RemoveMessage, SystemMessage, ToolMessage,
 )
-from langchain_groq import ChatGroq
+from app.integrations.chat_model import make_chat_model, is_rate_limited
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.types import interrupt
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
@@ -279,25 +279,8 @@ def _provider_error_code(error: BaseException) -> str | None:
     return detail.get("code") if isinstance(detail, dict) else None
 
 
-def _make_model(max_tokens: int = 4096) -> ChatGroq:
-    settings = get_settings()
-
-    model_options = {}
-    if settings.groq_model in {
-        "openai/gpt-oss-20b",
-        "openai/gpt-oss-120b",
-    }:
-        model_options["reasoning_effort"] = "low"
-
-    return ChatGroq(
-        model=settings.groq_model,
-        api_key=settings.groq_api_key,
-        temperature=0,
-        max_tokens=max_tokens,
-        timeout=30,
-        max_retries=2,
-        **model_options,
-    )
+def _make_model(max_tokens: int = 4096):
+    return make_chat_model(max_tokens)
 
 
 def invoke_jd_tool_model(
@@ -310,10 +293,10 @@ def invoke_jd_tool_model(
     """Run one LLM turn. Tool execution happens in the graph."""
     settings = get_settings()
     if (
-        settings.groq_api_key is None
-        or not settings.groq_api_key.get_secret_value().strip()
+        settings.gemini_api_key is None
+        or not settings.gemini_api_key.get_secret_value().strip()
     ):
-        return None, _failed("GROQ_NOT_CONFIGURED")
+        return None, _failed("GEMINI_NOT_CONFIGURED")
 
     previous_messages = state.get("tool_messages", [])
     continuing = (
@@ -360,7 +343,7 @@ def invoke_jd_tool_model(
             "JD tool model failed | node=%s | error_type=%s",
             node_name, type(exc).__name__,
         )
-        if type(exc).__name__ == "RateLimitError" or _provider_error_code(exc) == "rate_limit_exceeded":
+        if is_rate_limited(exc):
             return None, _failed("JD_MODEL_RATE_LIMITED")
         return None, _failed("JD_MODEL_REQUEST_FAILED")
 
@@ -663,7 +646,7 @@ def gather_requirements(state: JDState) -> dict[str, object]:
                 "JD_MODEL_REQUEST_FAILED", attempt + 1, type(exc).__name__,
                 _provider_error_code(exc),
             )
-            if _provider_error_code(exc) == "rate_limit_exceeded":
+            if is_rate_limited(exc):
                 return {**updates, **_failed("JD_MODEL_RATE_LIMITED")}
             if attempt == 0 or (attempt < 2 and _provider_error_code(exc) == "tool_use_failed" and not json_fallback):
                 json_fallback = _provider_error_code(exc) == "tool_use_failed"

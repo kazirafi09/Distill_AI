@@ -1,4 +1,4 @@
-"""Bounded CV model transport, independent of JD Groq and local embeddings."""
+"""Bounded CV model transport, sharing Gemini pacing with chat and assessments."""
 import asyncio
 from dataclasses import dataclass
 from typing import Literal

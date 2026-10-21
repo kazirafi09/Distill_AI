@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langchain_groq import ChatGroq
+from app.integrations.chat_model import make_chat_model, is_rate_limited
 
 from app.core.config import get_settings
 from app.workflows.assistant.state import AssistantState
@@ -115,12 +115,7 @@ Make at most one tool call per response. Answer concisely.
 
 
 def make_assistant_model(settings):
-    model_options = {"reasoning_effort": "low"} if settings.groq_model in {
-        "openai/gpt-oss-20b", "openai/gpt-oss-120b",
-    } else {}
-    return ChatGroq(model=settings.groq_model, api_key=settings.groq_api_key,
-                    temperature=0, max_tokens=1500, timeout=30, max_retries=2,
-                    **model_options)
+    return make_chat_model(1500, settings=settings)
 
 
 def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, object]:
@@ -148,8 +143,8 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
                 "I could not check whether matching questions exist."
             ))], "error_code": None}
     settings = get_settings()
-    if settings.groq_api_key is None or not settings.groq_api_key.get_secret_value().strip():
-        return {"error_code": "GROQ_NOT_CONFIGURED"}
+    if settings.gemini_api_key is None or not settings.gemini_api_key.get_secret_value().strip():
+        return {"error_code": "GEMINI_NOT_CONFIGURED"}
 
     model = None
     if question_request:
@@ -163,7 +158,7 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
                 return {"messages": [AIMessage(content=intent.response)], "error_code": None}
         except Exception as exc:
             logger.error("Interview intent failed | error_type=%s", type(exc).__name__)
-            if type(exc).__name__ == "RateLimitError":
+            if is_rate_limited(exc):
                 return {"error_code": "ASSISTANT_MODEL_RATE_LIMITED"}
             return {"error_code": "ASSISTANT_MODEL_REQUEST_FAILED"}
 
@@ -228,7 +223,7 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
         ))
     except Exception as exc:
         logger.error("Assistant model failed | error_type=%s", type(exc).__name__)
-        if type(exc).__name__ == "RateLimitError":
+        if is_rate_limited(exc):
             return {"error_code": "ASSISTANT_MODEL_RATE_LIMITED"}
         return {"error_code": "ASSISTANT_MODEL_REQUEST_FAILED"}
     if not isinstance(response, AIMessage):

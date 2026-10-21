@@ -26,9 +26,16 @@ logger = logging.getLogger("distill_ai.assessment_worker")
 async def process(claim):
     inputs = claim["inputs"]
     from app.services.interviews import consolidation
+    from app.services.interviews import post_interview_analysis
+    is_post_interview = claim.get("kind") in post_interview_analysis.KINDS
+    if claim.get("kind") not in {"f5", "f6", *post_interview_analysis.KINDS}:
+        await store.fail(claim, "ASSESSMENT_KIND_UNSUPPORTED")
+        return
     is_f6 = claim.get("kind") == "f6"
     prompt = consolidation.PROMPT_VERSION if is_f6 else analysis.PROMPT_VERSION
     rubric = consolidation.REPORT_VERSION if is_f6 else RUBRIC_VERSION
+    if is_post_interview:
+        prompt, rubric = post_interview_analysis.PROMPT_VERSION, post_interview_analysis.VERSIONS[claim["kind"]]
     if inputs["prompt_version"] != prompt or inputs["rubric_version"] != rubric:
         await store.fail(claim, "ASSESSMENT_VERSION_CHANGED")
         return
@@ -38,6 +45,11 @@ async def process(claim):
             await store.fail(claim, "RECRUITER_ACCESS_REVOKED")
             return
         await owned_job(db, claim["job_id"], claim["recruiter_id"])
+        if is_post_interview:
+            from app.services.interviews.post_interview_runs import validate_parent
+            if not await validate_parent(db, claim):
+                await store.fail(claim, "POST_INTERVIEW_SOURCE_CHANGED")
+                return
         if is_f6:
             parent = await db.get(AssessmentRun, claim["parent_run_id"])
             saved = await db.get(AssessmentResult, claim["parent_run_id"])
@@ -80,6 +92,9 @@ async def process(claim):
     if version is None:
         version = await model_version(execution=ModelExecution(**inputs["model_options"]))
         await store.write_stage(claim, "model-version", version)
+    if is_post_interview:
+        await post_interview_analysis.execute(claim, version)
+        return
     if is_f6:
         from app.workflows.assessment_consolidation.graph import build_consolidation_graph
         await build_consolidation_graph().ainvoke({**claim, "model_version": version}, {"recursion_limit": 100})

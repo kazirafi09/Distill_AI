@@ -142,6 +142,9 @@ async def owned_run(db, run_id, recruiter_id, *, lock=False):
 def public_run(run):
     from app.services.interviews.consolidation import PROMPT_VERSION as F6_PROMPT_VERSION
     current_prompt = F6_PROMPT_VERSION if run.kind == "f6" else PROMPT_VERSION
+    if run.kind in {"cv_claim_review", "interview_performance", "interview_quality"}:
+        from app.services.interviews.post_interview_analysis import PROMPT_VERSION as POST_INTERVIEW_PROMPT
+        current_prompt = POST_INTERVIEW_PROMPT
     return {"id": str(run.id), "job_id": str(run.job_id),
         "parent_run_id": str(run.parent_run_id) if run.parent_run_id else None,
         "application_id": str(run.application_id) if run.application_id else None,
@@ -151,7 +154,7 @@ def public_run(run):
         "completed_groups": run.completed_groups, "total_groups": run.total_groups,
         "error_code": run.error_code, "can_retry": run.status == "failed" and run.attempt < MAX_ATTEMPTS
             and run.inputs.get("prompt_version") == current_prompt
-            and run.error_code not in {"ASSESSMENT_SOURCE_CHANGED", "F6_SOURCE_CHANGED", "RECRUITER_ACCESS_REVOKED"},
+            and run.error_code not in {"ASSESSMENT_SOURCE_CHANGED", "F6_SOURCE_CHANGED", "POST_INTERVIEW_SOURCE_CHANGED", "RECRUITER_ACCESS_REVOKED"},
         "profile_version": run.inputs.get("profile_version"), "prompt_version": run.inputs.get("prompt_version"),
         "rubric_version": run.inputs.get("rubric_version"),
         "heartbeat_at": run.heartbeat_at.isoformat() if run.heartbeat_at else None,
@@ -362,7 +365,7 @@ async def workspace(job_id, recruiter_id, offset=0):
                     f5 and f5.status == "completed" and not f6 and not f5.synthetic and not f5.cv_assessment_id) else None,
                 "blocker": transcript_blocker(transcript), "ready": transcript_blocker(transcript) is None})
         runs = list(await db.scalars(select(AssessmentRun).where(AssessmentRun.job_id == job_id,
-            AssessmentRun.recruiter_id == recruiter_id).order_by(AssessmentRun.created_at.desc(), AssessmentRun.id.desc()).limit(51)))
+            AssessmentRun.recruiter_id == recruiter_id, AssessmentRun.kind.in_(["f5", "f6"])).order_by(AssessmentRun.created_at.desc(), AssessmentRun.id.desc()).limit(51)))
         return {"candidates": candidates, "synthetic_demo_available": synthetic_demo_available(),
             "has_more_candidates": len(rows) > page_size, "offset": offset, "page_size": page_size,
             "runs": [public_run(run) for run in runs[:50]], "has_more_runs": len(runs) > 50,
