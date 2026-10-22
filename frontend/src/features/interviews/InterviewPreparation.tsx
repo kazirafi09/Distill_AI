@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePreviewTracks, useTrackVolume } from '@livekit/components-react'
 import type { LocalUserChoices } from '@livekit/components-react'
+import type { ReactNode } from 'react'
 import { Track } from 'livekit-client'
 import type { LocalAudioTrack } from 'livekit-client'
 import { CallIcon } from './InterviewRoom'
@@ -14,6 +15,7 @@ type Props = {
   status: string
   busy: boolean
   canContinue: boolean
+  verification?: ReactNode
   onCandidate: (id: string) => void
   onContinue: (choices: LocalUserChoices) => void
   onRecheck: () => void
@@ -87,6 +89,7 @@ export default function InterviewPreparation(props: Props) {
         <button className="lobby-secondary" disabled={props.busy || checking} onClick={props.onRecheck}>Recheck devices</button>
       </div>
       {(cameraError || microphoneError || deviceError) && <p className="lobby-error" role="alert">{[cameraError, microphoneError, deviceError].filter(Boolean).join(' ')} Camera is optional. A working microphone is required to continue.</p>}
+      {props.verification}
     </div>
     <div className="lobby-info-column">
       <label className="lobby-candidate-picker">Saved candidate<select aria-label="Saved candidate" value={props.candidate.application_id} disabled={props.busy} onChange={event => props.onCandidate(event.target.value)}>{props.members.map(member => <option key={member.application_id} value={member.application_id}>{member.name} · Rank {member.rank} · Score {Number(member.score.aggregate).toFixed(0)}</option>)}</select></label>
