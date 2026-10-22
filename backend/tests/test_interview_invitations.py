@@ -24,14 +24,14 @@ class InvitationTests(unittest.IsolatedAsyncioTestCase):
         second, _, _ = invitations.new_link()
         self.assertNotEqual(first, second)
         self.assertEqual(len(first), 43)
-        self.assertEqual(link, f"https://naturals-sought-ottawa-despite.trycloudflare.com/interview#{first}")
+        self.assertEqual(link, f"{self.settings.public_app_url}/interview#{first}")
         self.assertAlmostEqual((expiry - datetime.now(timezone.utc)).total_seconds(), 7 * 86400, delta=2)
         self.assertEqual(len(invitations.token_hash(first)), 64)
 
     async def create(self, existing=None, candidate=True, replace=False, recipient="candidate@example.com"):
         db = AsyncMock()
         db.add = MagicMock()
-        db.scalar.side_effect = [SimpleNamespace(email="candidate@example.com") if candidate else None, existing]
+        db.scalar.side_effect = [SimpleNamespace(email="candidate@example.com") if candidate else None, existing, None, None]
         with patch.object(invitations, "lock_screening_job", new_callable=AsyncMock), \
              patch.object(invitations, "owned_job", new_callable=AsyncMock):
             return await invitations.create_invitation(db, self.job_id, self.owner,
@@ -68,7 +68,7 @@ class InvitationTests(unittest.IsolatedAsyncioTestCase):
         context = AsyncMock()
         context.__aenter__.return_value = db
         with patch.object(invitations, "SessionFactory", return_value=context):
-            db.scalar.side_effect = [record, "Synthetic role"]
+            db.scalar.side_effect = [record, "Synthetic role", "Synthetic candidate"]
             entry = await invitations.validate_entry(token)
             self.assertEqual(entry["job_title"], "Synthetic role")
             self.assertFalse(entry["interview_ready"])

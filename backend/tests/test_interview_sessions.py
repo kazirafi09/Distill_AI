@@ -31,6 +31,7 @@ from app.models.jd import JDConversation, JobDescription
 from app.models.user import User
 from app.services.interviews import sessions
 from app.services.interviews.invitations import create_invitation, token_hash
+from app.services.interviews.identification import recruiter_identity
 
 
 class SessionRouteTests(unittest.IsolatedAsyncioTestCase):
@@ -100,6 +101,9 @@ class SessionRouteTests(unittest.IsolatedAsyncioTestCase):
 @unittest.skipUnless(os.environ.get("RUN_INTERVIEW_DB_TESTS") == "1", "Set RUN_INTERVIEW_DB_TESTS=1")
 class SessionDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        transcription = patch("app.services.interviews.live_transcription.start_transcription")
+        transcription.start()
+        self.addCleanup(transcription.stop)
         self.owner, self.other = uuid4(), uuid4()
         self.addAsyncCleanup(self.cleanup_records)
         self.token = secrets.token_urlsafe(32)
@@ -175,6 +179,8 @@ class SessionDatabaseTests(unittest.IsolatedAsyncioTestCase):
         return await sessions.start_interview(self.job_id, self.application_id, self.owner)
 
     async def admit(self):
+        await recruiter_identity(self.job_id, self.application_id, self.owner,
+                                 review_note="Synthetic manual review for session lifecycle tests")
         return await sessions.admit_candidate(self.job_id, self.application_id, self.owner)
 
     async def end(self):
