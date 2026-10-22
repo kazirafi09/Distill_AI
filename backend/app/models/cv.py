@@ -41,6 +41,8 @@ class CVSource(Base):
     )
     spreadsheet_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sheet_tab_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Retained for database compatibility only; imports use fixed response headers.
+    field_mapping: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

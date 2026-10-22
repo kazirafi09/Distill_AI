@@ -16,6 +16,7 @@ from app.models.interviews import (
 from app.services.cv.screening import lock_screening_job, owned_application
 from app.services.interviews.invitations import valid_invitation
 from app.services.interviews.livekit import create_join_token, close_room
+from app.services.interviews.identification import identity_row, admission_ready, is_admitted
 
 
 def session_details(session):
@@ -106,12 +107,12 @@ async def recruiter_status(job_id, application_id, recruiter_id):
             InterviewInvitation.job_description_id == job_id,
             InterviewInvitation.recruiter_id == recruiter_id,
         ))
+        identity = await identity_row(db, application_id)
         admitted = bool(
-            session.status == "in_progress" and invitation
+            invitation
             and invitation.revoked_at is None
             and invitation.expires_at > datetime.now(timezone.utc)
-            and session.candidate_admitted_at
-            and session.admitted_invitation_hash == invitation.token_hash
+            and is_admitted(session, invitation, identity)
         )
         return {**session_details(session), "candidate_admitted": admitted}
 
@@ -121,7 +122,10 @@ async def admit_candidate(job_id, application_id, recruiter_id):
         session = await owned_session(db, job_id, application_id, recruiter_id)
         require_active(session)
         invitation = await active_invitation(db, job_id, application_id, recruiter_id)
-        if session.admitted_invitation_hash != invitation.token_hash:
+        identity = await identity_row(db, application_id)
+        if not admission_ready(identity):
+            raise HTTPException(409, "Wait for photo verification or record a manual review before admitting the candidate.")
+        if not is_admitted(session, invitation, identity):
             session.candidate_admitted_at = datetime.now(timezone.utc)
             if session.started_at is None:
                 session.started_at = session.candidate_admitted_at
@@ -150,11 +154,8 @@ async def candidate_status(token):
         invitation, session = await candidate_session(db, token)
         if session is None or session.status == "ready":
             return {"status": "waiting_for_recruiter", "can_join": False}
-        admitted = bool(
-            session.status == "in_progress"
-            and session.candidate_admitted_at
-            and session.admitted_invitation_hash == invitation.token_hash
-        )
+        identity = await identity_row(db, invitation.application_id)
+        admitted = is_admitted(session, invitation, identity)
         return {
             "status": session.status,
             "can_join": admitted,
@@ -166,10 +167,8 @@ async def candidate_join(token):
     async with SessionFactory() as db:
         invitation, session = await candidate_session(db, token)
         require_active(session)
-        if (
-            session.candidate_admitted_at is None
-            or session.admitted_invitation_hash != invitation.token_hash
-        ):
+        identity = await identity_row(db, invitation.application_id)
+        if not is_admitted(session, invitation, identity):
             raise HTTPException(403, "Wait for the recruiter to admit you.")
         credentials = create_join_token(session.room_name, f"candidate-{invitation.application_id}")
         session_id = session.id

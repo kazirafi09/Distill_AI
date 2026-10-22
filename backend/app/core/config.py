@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     email_mcp_secret: SecretStr | None = None
     public_app_url: str = "http://localhost:5173"
     interview_link_days: int = Field(default=7, ge=1, le=365)
+    face_model_path: Path = PROJECT_ROOT / "storage" / "face_models"
+    # Explicitly configure a calibrated threshold before automatic match verdicts.
+    face_match_threshold: float | None = Field(default=None, gt=0, lt=1)
+    identity_retention_days: int = Field(default=30, ge=1, le=365)
 
     # Backend API address and browser connection address.
     livekit_api_url: str = "http://127.0.0.1:7880"

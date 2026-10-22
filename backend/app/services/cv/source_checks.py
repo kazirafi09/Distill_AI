@@ -76,6 +76,8 @@ async def check_source(source_id):
 
 
 async def run_due_checks():
+    from app.services.interviews.identification import purge_expired
+    await purge_expired()
     async with engine.connect() as connection:
         acquired = await connection.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key": WORKER_LOCK})
         await connection.commit()

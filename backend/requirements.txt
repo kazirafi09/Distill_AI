@@ -37,4 +37,5 @@ livekit==1.1.20
 
 # Local CV OCR and authenticated MCP transport (no external OCR API).
 Pillow==11.3.0
+opencv-python-headless==4.13.0.92
 mcp==1.26.0

@@ -24,6 +24,7 @@ from app.cv_routes import router as cv_router
 from app.cv_parsing_routes import router as cv_parsing_router
 from app.cv_screening_routes import router as cv_screening_router
 from app.interview_routes import router as interview_router
+from app.identification_routes import router as identification_router
 from app.question_bank_routes import router as question_bank_router
 from app.assessment_routes import router as assessment_router
 from app.dashboard import router as dashboard_router
@@ -84,6 +85,7 @@ app.include_router(cv_router)
 app.include_router(cv_parsing_router)
 app.include_router(cv_screening_router)
 app.include_router(interview_router)
+app.include_router(identification_router)
 app.include_router(question_bank_router)
 app.include_router(assessment_router)
 app.include_router(dashboard_router)

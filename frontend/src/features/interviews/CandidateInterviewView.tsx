@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode, Ref } from 'react'
 import { CallIcon } from './InterviewRoom'
 import './InterviewStage.css'
 import './CandidateInterview.css'
@@ -14,6 +14,8 @@ type Props = {
   notice?: string
   busy?: boolean
   deviceCheck?: ReactNode
+  verification?: ReactNode
+  waitingVideoRef?: Ref<HTMLDivElement>
   call?: ReactNode
   onJoin?: () => void
   onRecheck?: () => void
@@ -21,7 +23,7 @@ type Props = {
   canReturnToWaiting?: boolean
 }
 
-export default function CandidateInterviewView(props: Props) {
+export default function CandidateInterviewView({ waitingVideoRef, ...props }: Props) {
   const { phase } = props
   const inCall = phase === 'call'
   const terminal = phase === 'finished' || phase === 'ending' || phase === 'unavailable'
@@ -58,9 +60,11 @@ export default function CandidateInterviewView(props: Props) {
               <p>{phase === 'checking' ? 'Your interview details will appear shortly.' : phase === 'ready' ? 'Your interviewer has admitted you. Join when you’re ready.' : 'Your interviewer will let you in when the session is ready.'}</p>
             </div>
             <div className="candidate-preview-controls" aria-hidden="true"><span><CallIcon kind="camera" />Camera</span><span><CallIcon kind="microphone" />Microphone</span></div>
+            <div className="candidate-verification-preview" ref={waitingVideoRef} />
           </div>}
         </section>
         <aside className="candidate-info">
+          {props.verification}
           <section className="candidate-card"><p className="candidate-card-kicker">{inCall ? 'In this interview' : 'Before you join'}</p>
             <h2>{props.jobTitle ?? 'Your upcoming conversation'}</h2>
             <p>{inCall ? 'Use the controls below the video to manage your microphone, camera, or leave the call.' : 'Check your camera and microphone, then wait for your interviewer to admit you.'}</p>
