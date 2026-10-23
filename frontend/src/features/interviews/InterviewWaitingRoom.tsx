@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import { ParticipantTile, StartAudio, useLocalParticipant, useTracks } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { SavedInterviewee } from './api'
@@ -10,6 +11,8 @@ type Props = {
   jobNumber: number
   connected: boolean
   busy: boolean
+  identityReady: boolean
+  verification?: ReactNode
   startedAt?: string | null
   onAdmit: () => void
   onRecheck: () => void
@@ -41,11 +44,12 @@ export default function InterviewWaitingRoom(props: Props) {
       <div className="lobby-device-controls"><button className={`device-toggle${isCameraEnabled ? ' is-on' : ''}`} aria-pressed={isCameraEnabled} disabled={deviceBusy || props.busy} onClick={() => void toggle('camera')}><CallIcon kind="camera" />Camera {isCameraEnabled ? 'on' : 'off'}</button><button className={`device-toggle${isMicrophoneEnabled ? ' is-on' : ''}`} aria-pressed={isMicrophoneEnabled} disabled={deviceBusy || props.busy} onClick={() => void toggle('microphone')}><CallIcon kind="microphone" />Microphone {isMicrophoneEnabled ? 'on' : 'off'}</button><button className="lobby-secondary" disabled={props.busy} onClick={props.onRecheck}>Recheck devices</button></div>
       <StartAudio label="Enable speaker audio" />
       {!isMicrophoneEnabled && <p className="lobby-error" role="status">Your microphone is off. Turn it on before admitting the candidate so your questions can be transcribed.</p>}
+      {props.verification}
     </div>
     <div className="lobby-info-column">
       <div className="lobby-card"><div className="lobby-card-title"><strong>{props.candidate.name}</strong><span className="lobby-badge is-warning">Awaiting admission</span></div><p>{props.candidate.email}</p><p>{props.jobTitle} · JD {props.jobNumber}</p></div>
       <div className="lobby-card device-status-card"><div><span>Your camera and microphone</span><span className="lobby-badge">{isCameraEnabled || isMicrophoneEnabled ? 'Ready' : 'Switched off'}</span></div><div><span>Candidate</span><span className="lobby-badge is-neutral">Not admitted</span></div><div><span>Connection</span><span className={`lobby-badge${props.connected ? '' : ' is-neutral'}`}>{props.connected ? 'Connected' : 'Connecting…'}</span></div><div><span>Interview timer</span><span className="lobby-badge is-neutral">{props.startedAt ? 'Already started' : 'Not started'}</span></div><p className="lobby-presence-note">Confirm the candidate is ready before admitting them.</p></div>
-      <div className="lobby-primary-action"><button className="lobby-primary" disabled={!props.connected || props.busy || deviceBusy || !isMicrophoneEnabled} onClick={props.onAdmit}>{props.busy ? 'Admitting…' : 'Admit candidate'}</button><p>{!isMicrophoneEnabled ? 'Enable your microphone before admitting the candidate.' : props.startedAt ? 'Admitting lets the candidate rejoin this interview.' : 'Admitting starts the interview timer and lets the candidate join.'}</p><button className="lobby-secondary" disabled={props.busy} onClick={props.onLeave}>Leave waiting room</button></div>
+      <div className="lobby-primary-action"><button className="lobby-primary" disabled={!props.connected || props.busy || deviceBusy || !isMicrophoneEnabled || !props.identityReady} onClick={props.onAdmit}>{props.busy ? 'Admitting…' : 'Admit candidate'}</button><p>{!props.identityReady ? 'Wait for photo verification, or record a manual review above.' : !isMicrophoneEnabled ? 'Enable your microphone before admitting the candidate.' : props.startedAt ? 'Admitting lets the candidate rejoin this interview.' : 'Admitting starts the interview timer and lets the candidate join.'}</p><button className="lobby-secondary" disabled={props.busy} onClick={props.onLeave}>Leave waiting room</button></div>
     </div>
   </div>
 }

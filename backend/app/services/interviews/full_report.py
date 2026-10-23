@@ -40,11 +40,13 @@ def clock(ms):
     return f"{seconds // 60}:{seconds % 60:02d}"
 
 
-async def document(run_id, recruiter_id, report_type="recruiter", include_evidence=False):
+async def document(run_id, recruiter_id, report_type="recruiter", include_evidence=False, post_interview_run_ids=()):
     if report_type not in {"recruiter", "technical"}:
         raise HTTPException(422, "Choose a recruiter or technical report.")
     async with SessionFactory() as db:
         run = await owned_run(db, run_id, recruiter_id)
+        if run.kind not in {"f5", "f6"}:
+            raise HTTPException(409, "Select the parent F5 or F6 report, then include the saved post-interview results.")
         if run.status != "completed":
             raise HTTPException(409, "A full report is available after this assessment completes.")
         saved = await db.get(AssessmentResult, run.id)
@@ -77,11 +79,15 @@ async def document(run_id, recruiter_id, report_type="recruiter", include_eviden
         report_inputs = {**run.inputs, "references": f5.get("references", run.inputs.get("references", []))}
         if report_type == "recruiter":
             from app.services.interviews.recruiter_report import assemble as recruiter_document
-            return recruiter_document(metadata, report_inputs, f5, artifact if run.kind == "f6" else None, cv, include_evidence)
-        report = assemble(metadata, report_inputs, f5, artifact if run.kind == "f6" else None, cv, parent,
-            application=application, session=session, invitation=invitation, delivery=delivery)
-        report["report_type"] = "technical"
-        report["filename"] = f"distill-assessment-{run.id}-technical.pdf"
+            report = recruiter_document(metadata, report_inputs, f5, artifact if run.kind == "f6" else None, cv, include_evidence)
+        else:
+            report = assemble(metadata, report_inputs, f5, artifact if run.kind == "f6" else None, cv, parent,
+                application=application, session=session, invitation=invitation, delivery=delivery)
+            report["report_type"] = "technical"
+            report["filename"] = f"distill-assessment-{run.id}-technical.pdf"
+        if post_interview_run_ids:
+            from app.services.interviews.post_interview_report import append
+            await append(db, report, parent.id, recruiter_id, post_interview_run_ids, include_evidence or report_type == "technical")
         return report
 
 

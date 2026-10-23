@@ -37,7 +37,7 @@ export function AssessmentDetails({ item, criteria }: { item: Assessment; criter
         {match.evidence.map((e, i) => <blockquote key={i}><p>{e.quote}</p><small>{label(e.source_id)} · file version {e.file_version_id}{e.ocr_derived ? ' · OCR-derived' : ''}</small></blockquote>)}
       </article>
     })}
-    {!!assessmentWarnings(item.warnings).length && <ul>{assessmentWarnings(item.warnings).map(w => <li key={w}>{label(w)}</li>)}</ul>}
+    {!!assessmentWarnings(item.warnings).length && <ul>{assessmentWarnings(item.warnings).map(w => <li key={w}>{errorLabels[w] ?? label(w)}</li>)}</ul>}
   </details>
 }
 

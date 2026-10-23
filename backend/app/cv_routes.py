@@ -215,9 +215,8 @@ async def link_response_sheet(
     # Re-read after acquiring the lock: another mapping request might have committed.
     await db.refresh(source)
     if source.spreadsheet_id is not None:
-        if (source.spreadsheet_id, source.sheet_tab_id) == (payload.spreadsheet_id, payload.sheet_tab_id):
-            return source
-        raise HTTPException(status_code=409, detail="This source already has a different response sheet.")
+        if (source.spreadsheet_id, source.sheet_tab_id) != (payload.spreadsheet_id, payload.sheet_tab_id):
+            raise HTTPException(status_code=409, detail="This source already has a different response sheet.")
     try:
         sheet = await run_in_threadpool(read_response_sheet, payload.spreadsheet_id, payload.sheet_tab_id)
         response_columns(sheet["headers"])

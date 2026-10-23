@@ -70,6 +70,9 @@ async def create_invitation(db, job_id, recruiter_id, application_id, recipient_
     invitation.token_hash = token_hash(token)
     invitation.expires_at = expires_at
     invitation.revoked_at = None
+    if replace:
+        from app.services.interviews.identification import reset_for_invitation
+        await reset_for_invitation(db, application_id)
     await db.flush()
     return invitation, link
 

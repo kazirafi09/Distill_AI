@@ -1,6 +1,406 @@
 # Distill AI — Project Progress Tracker
 
-## Current checkpoint — 13 October 2026
+## Latest checkpoint — 22 October 2026
+
+This is the current feature and verification baseline. It supersedes the dated
+planning statements in the historical record below, including descriptions of
+Dashboard, email invitations, interview execution and assessments as placeholders.
+Implemented means present in the current source; it does not by itself establish
+production deployment, manual acceptance, a Git commit/push, or Redmine submission.
+Dates and user-facing operational times use Asia/Dhaka.
+
+### F7 candidate identification — 22 October 2026
+
+F7 is implemented and enabled in the running development app. The final flow is:
+required Form uploads -> device check -> consent pop-up -> automatic capture of
+one camera frame -> recruiter comparison result/score -> recruiter admission.
+
+- Required response columns are `Name`, `Email`, `CV File`, and `Image`. Each
+  response needs a CV and exactly one Image Drive link. `Timestamp` is optional;
+  extra fields are ignored. Missing/invalid/multiple image links reject the row.
+  Field-mapping controls and the preview API were removed at the user's request.
+- The post-device-check modal explains capture, use, retention and alternatives.
+  Consent v2 is saved before the verification camera opens. Agreement captures
+  one frame automatically when video is ready; retakes remain explicit. Previous
+  consent requires the updated explanation before another comparison.
+- Recruiter-only endpoints expose similarity and the configured threshold. The UI
+  displays cosine similarity scaled by 100, explicitly distinguished from identity
+  confidence. Without `FACE_MATCH_THRESHOLD`, a numerical comparison is still
+  available for recruiter judgment; no automatic match verdict is asserted.
+- UI and backend prevent admission while consent/comparison is pending. A
+  completed attempt, declined/withdrawn consent, or recorded manual review allows
+  the recruiter to decide. Low similarity never automatically rejects a candidate.
+  Reissued invitations reset previous consent/results/manual review.
+- Existing candidate profiles are reused. Source photos remain in protected Drive;
+  frames and embeddings stay in memory. Application-scoped results, consent,
+  retention/deletion and reimport-prevention tombstones remain implemented.
+- Migration `f4b830d927ae` is applied locally. The development backend was rebuilt
+  and reloaded with OpenCV and both checksum-verified YuNet/SFace models mounted.
+  Runtime checks confirmed comparison availability and consent v2. The existing
+  Cloudflare tunnel stayed running; public frontend/API returned HTTP 200 and
+  database health returned `connected` after reload.
+
+Verification: 22 F7 checks and 13 interview-session checks passed, including real
+PostgreSQL persistence, admission controls, reissued links and mocked media
+services. Seven invitation checks and 25 frontend unit checks also passed during
+today's work. Offline browser acceptance covered the consent modal, no capture
+before consent, exactly one automatic capture, retakes, mobile layout, withdrawal,
+fixed Form columns, recruiter score and manual review. TypeScript, lint and build
+passed; the existing bundle-size warning remains. These are separate focused
+checks, not a claim that the whole application regression suite was run.
+
+Real Form/Drive and real-device walkthrough acceptance, representative face-pair
+calibration, and production acceptance remain open. See the
+[F7 setup, storage and verification guide](F7_CANDIDATE_IDENTIFICATION.md).
+
+### Assessment updates — 22 October 2026
+
+**F6 comparison modal:** Assessments now supports selecting two candidates with
+completed F6 results and opening **Compare selected**. Selection survives list
+pagination and filtering. The modal reuses saved assessments and the exact
+interview-performance result referenced by each combined score; opening it starts
+no model calls or processing jobs. It shows component/combined scores, performance
+dimensions, competency evidence/coverage, findings, verification recommendations
+and original transcript evidence. Changed criteria remain separate rows; historical
+criteria, differing scoring policies and unavailable performance details are
+disclosed. Sample candidates can be compared together, separately from real
+candidates. Desktop uses a wide modal; mobile uses a full-screen dialog with
+horizontal table scrolling. Existing dialog focus trapping, Escape and focus
+restoration are reused.
+
+Verification: 25 frontend unit tests passed, including four new comparison tests;
+TypeScript compilation, ESLint and the production build passed. The new offline
+comparison browser check passed for cross-page selection, sample separation,
+version/policy warnings, zero versus missing scores, evidence navigation, retries,
+wrong-job responses, unavailable performance details and mobile/keyboard behavior.
+The existing assessment-redesign browser regression also passed. Browser checks
+used fixture APIs, not a live database or model. The existing large-bundle warning
+remains. Final acceptance with actual saved interview assessments remains open.
+
+Implementation: [comparison modal](../frontend/src/features/assessments/CandidateComparison.tsx),
+[comparison rules](../frontend/src/features/assessments/comparison.ts),
+[candidate selection](../frontend/src/features/assessments/CandidateWorkspace.tsx),
+[unit checks](../frontend/tests/assessment-comparison.test.mjs),
+[browser checks](../frontend/tests/assessment-comparison.smoke.mjs).
+No backend routes, database migrations, N19 deletion, Git delivery or F10
+cross-candidate process analysis were added by this change.
+
+The candidate assessment now uses five sections: **Summary**, **CV findings**,
+**Interview Q&A**, **Criteria coverage** and **Verify next**. Findings and answers
+expand to show explanations and saved evidence; source links open the transcript.
+CV support and interview coverage remain separate, and missing/unassessed scores
+are distinct from an assessed zero. Scores display at most two decimal places.
+
+- **Final score:** Summary displays the provisional combined score using
+  `30% × saved CV score + 70% × saved interview performance score`, with component
+  scores and contribution breakdown. This uses F9 performance rather than a second
+  average of the F5 Q&A marks. Both components must exist; interview evidence must
+  cover at least 80% of scoring weight, four dimensions and essential dimensions,
+  including technical competency. Insufficient evidence leaves the final score
+  incomplete. Source artifacts remain unchanged; the projection validates source
+  hashes and uses the latest matching interview-performance run. The result is for
+  recruiter review, not an automatic hiring decision.
+- **Post-interview evidence:** revised analysis guidance handles ambiguous claims
+  and transcript limitations more explicitly, with source warnings and diagnostics.
+  The combined **Run all post-interview insights** action requests CV claim review,
+  interview performance and interview quality together. Individual reruns remain
+  available. This does not establish that every assessment stage runs automatically
+  from the initial F5 action or that poor transcript evidence has been repaired.
+- **Reports and secondary details:** **Report & export** opens a centered modal
+  with report type, evidence options, preview, print and PDF download. Transcript,
+  run history, saved rationale and post-interview insights are available through
+  **More details**, replacing the bottom accordion clutter.
+- **Interaction polish:** assessment tabs reuse the Job Description tab indicator
+  and content animation; modals animate on opening and respect reduced motion.
+  The redundant header review button is removed. Review confirmation remains
+  beside analysis/consolidation actions where the backend requires it. Dialogs
+  support Escape, contained keyboard focus and focus restoration.
+- **Saved-analysis selector:** widened the control, removed clipping and matched
+  the shared border, focus, picker and green selection styles. The full selected
+  text and chevron fit on desktop and mobile. Shared animation duration parsing
+  now handles both milliseconds and seconds after production CSS optimization.
+
+Implementation: [candidate assessment UI](../frontend/src/features/assessments/CandidateAssessment.tsx),
+[styles](../frontend/src/features/assessments/CandidateAssessment.css),
+[final-score policy](../backend/app/services/interviews/final_score.py),
+[analysis](../backend/app/services/interviews/post_interview_analysis.py),
+[shared motion](../frontend/src/components/motion/useWorkspaceMotion.ts).
+
+| Check | Recorded result | Practical limit |
+| --- | --- | --- |
+| Final-score and post-interview analysis checks | Six final-score tests and ten post-interview analysis tests passed during this work | Focused policy/evidence checks; not a complete backend regression suite or proof of model judgment. |
+| Frontend unit checks | `npm test`: 21 passed | Covers score semantics, findings/history/coverage helpers and existing frontend regressions. |
+| Production build and lint | `npm run build` and `npm run lint` passed after the final UI changes | Existing large-bundle warning remains. |
+| Assessment browser checks | `node tests/assessment-redesign.smoke.mjs` passed with no browser errors at desktop and mobile sizes | Local fixture APIs; five tabs, evidence/source navigation, history, combined-analysis request, review gates, modal preview/download/print, tab/modal motion, reduced motion and responsive layout checked. Not a live model or real-data report acceptance test. |
+
+Browser screenshots are saved under `output/assessment-redesign/`. Real-interview
+semantic calibration, transcript recognition/speaker-order quality and complete
+report acceptance remain open. These local changes do not imply a commit, push,
+deployment or Redmine update. Earlier dated verification below remains historical.
+
+### Current product position
+
+The application now supports the recruiter journey from account creation and JD
+authoring through CV ingestion, evidence-based screening, saved shortlists,
+invitation delivery, live interviews, transcription, F5 interview analysis, F6
+consolidation and assessment reports. Dashboard provides an owned-data overview
+and entry points into those workspaces. Recruiters host their own interviews;
+calendar scheduling and a separately assigned interviewer workspace are not part
+of the current flow. Candidate profiles reuse saved CV/screening data and do not
+constitute biometric identification.
+
+### Current feature inventory
+
+#### F8–F10 update — 21 October 2026
+
+The first post-interview implementation is now present locally. Existing F5/F6
+workflows and CV scores remain separate. Recruiters can open a completed F5 (or its
+F6 assessment) and use **Post-interview insights**:
+
+- **F8 CV claim review:** bounded atomic CV claims, exact CV spans/candidate quotes,
+  five evidence states, context checks for potential contradictions, neutral
+  follow-up prompts and a separate append-only recruiter review trail.
+- **F9 interview performance:** six dimensions with exact evidence, deterministic
+  scoring, null handling, assessed-weight disclosure and provisional partial
+  coverage. Approved default weights are 25/15/10/20/20/10; the default gate is
+  four assessed weighted dimensions including technical competency.
+- **Job scoring settings:** editable per-job weights, minimum coverage and required
+  dimensions; whole percentages must total 100. Revisions retain author/time and
+  reject stale concurrent edits. New runs pin the saved revision; old results are
+  unchanged. The UI reuses recruitment buttons, badges, notices and card styling.
+- **F10 interview quality:** saved F5 competency coverage, evidence-backed process
+  observations/improvements and measured speech intervals only when common timing
+  is validated. Text-only or unaligned transcripts show time as unavailable.
+- **Runtime/reports:** independent child runs with source checks, durable stage
+  replay, retry budgets and per-feature failures. Optional report results pin exact
+  child IDs and use the same data in preview/PDF without starting model calls.
+
+Implementation: [analysis](../backend/app/services/interviews/post_interview_analysis.py),
+[run service](../backend/app/services/interviews/post_interview_runs.py),
+[scoring policy](../backend/app/services/interviews/performance_rubric.py),
+[settings](../backend/app/services/interviews/scoring_settings.py),
+[results UI](../frontend/src/features/assessments/PostInterviewAssessment.tsx),
+[settings UI](../frontend/src/features/assessments/InterviewScoringSettings.tsx).
+Additive migrations `c9a810b4d237` and `ca9174e803b2` were applied locally.
+The naming migration `cb0472a19e36` was subsequently applied: runtime API, worker,
+frontend and result identifiers now use `cv_claim_review`, `interview_performance`
+and `interview_quality`. Legacy saved metadata is migrated with integrity hashes
+and reviewer references kept consistent. After direct source review, 18 assessment/
+migration tests, 11 scoring-policy tests, frontend build and lint passed.
+
+Verification: 11 scoring-policy tests and 17 post-interview evidence/database/
+worker/replay/PDF checks passed; settings ownership/history/conflict checks passed
+with all verification writes rolled back; three real Gemini synthetic-content
+smokes passed schema/citation validation. Settings and result tabs were checked
+at 320, 390, 768 and 1440 pixels, including notes, transcript links and report
+selection. Frontend build and lint passed with the existing bundle-size warning.
+
+These checks establish the tested software behavior, not perfect model judgment.
+Recruiter-reviewed real-interview calibration, broader claim ambiguity fixtures,
+large-input/latency acceptance and manual complete-report review remain open.
+The first release reuses pinned F5 RAG passages; it does not run extra retrieval.
+F7 face identification/consent is implemented locally; setup and acceptance limits are in [the F7 guide](F7_CANDIDATE_IDENTIFICATION.md). Cross-candidate process comparison is not implemented.
+No Git commands, commits, pushes or invitation emails were performed for this work.
+
+| Area | Present in the project | Evidence and remaining limits |
+| --- | --- | --- |
+| Application and runtime | React/TypeScript/Vite frontend, FastAPI, PostgreSQL, Alembic, Chroma, local Ollama embeddings, health endpoints and persistent storage | [API lifecycle](../backend/app/main.py), [Compose](../compose.yaml). Local services have run and health checks passed; clean-machine reproducibility is still pending. |
+| Authentication | Recruiter signup/login, password hashing, short-lived JWT access, persistent revocable cookie sessions, refresh/logout, origin checks, active-user and role restrictions | [Authentication](../backend/app/auth.py), [login/signup UI](../frontend/src/features/auth/LoginForm.tsx). Shared responsive authentication layout and password visibility controls are present. |
+| Dashboard | Owned job/application counts, latest screening states and review flags, interview/assessment attention, active sessions, hiring by job and recent activity; minute refresh with loading/error/empty states | [Dashboard API](../backend/app/dashboard.py), [Dashboard UI](../frontend/src/features/dashboard/Dashboard.tsx). Invitation counts mean provider-accepted messages, not confirmed delivery; synthetic assessment results are excluded from the dashboard projection. |
+| Shared recruiter UI | Mint workspace styling, Roboto, shared focus/dropdown styles, responsive sidebar, reduced-motion support and accessible navigation | [Application shell](../frontend/src/app/App.tsx), [shared styles](../frontend/src/styles/index.css), [motion](../frontend/src/components/motion/motion.css). Device/browser acceptance remains distinct from fixture checks. |
+| Persistent assistant | Saved conversations, history, JD workflow handoff, tool-mediated Discord posting and invitation preview/confirmation/status; contextual interview question assistance | [Assistant graph](../backend/app/workflows/assistant/graph.py), [conversation service](../backend/app/services/assistant/conversations.py), [chat UI](../frontend/src/features/jd/RecruiterChat.tsx). Available tools remain scoped; general CV management is not automatically exposed to central chat. |
+| Streaming and composer | User-facing text streaming, tool/structured-output exclusion, stop/reload handling, Dashboard assistant dock and retained drafts; inputs grow to eight visible lines and then scroll | [Streaming](../backend/app/workflows/streaming.py), [composer](../frontend/src/components/chat/AutoGrowingTextarea.tsx), [Dashboard dock](../frontend/src/features/dashboard/Dashboard.tsx). Enter sends, Shift+Enter adds a line, and IME composition is respected. |
+| Chat model | Gemini 3.5 Flash-Lite replaces Groq for JD gathering/drafting/revision, edit suggestions and central/interview assistant calls | [Chat adapter](../backend/app/integrations/chat_model.py), [settings](../backend/app/core/config.py), [requirements](../backend/requirements.txt). Uses the existing Gemini key and `GEMINI_CHAT_MODEL`; shared pacing, bounded retries, tool calls, structured output and real streaming are implemented. |
+| JD lifecycle | Conversational requirement gathering, reference retrieval, drafting/revision, review, approval/save, cancellation and failed-save recovery; stable JD numbers and saved-description pagination | [JD graph](../backend/app/workflows/jd/graph.py), [JD conversations](../backend/app/services/jd/conversations.py), [saved descriptions](../frontend/src/features/jd/MyJobDescriptions.tsx). Explicit approval/save remains separate from publishing. |
+| Reviewed manual JD editing | Edit description/criteria for eligible unposted jobs, preview matching changes, review/save, stale-version protection and posting locks; reviewed baseline informs later chat | [Editing service](../backend/app/services/jd/editing.py), [editor](../frontend/src/features/jd/JobEditor.tsx). AI proposals are not silently adopted. |
+| Screening profiles | Versioned atomic criteria across technical skills, work experience, qualifications and additional criteria, Must-have/Preferred priorities, confirmed weights and application-form URL | [Profile contracts](../backend/app/services/jd/screening_profiles.py). The benchmark exposed an extra fresher-eligibility criterion and an earlier false Form URL update confirmation; these remain follow-ups, not assumed fixed by changing model provider. |
+| Reference documents and question banks | PDF/DOCX prior JDs, company policies and technical/answer references; extraction, embedding, indexing status/retry and scoped retrieval; separate question-bank upload/index/archive | [Reference routes](../backend/app/jd_reference_routes.py), [question banks](../backend/app/question_bank_routes.py). A question-only source does not prove answer correctness. |
+| Discord posting | Explicitly requested posting of saved approved JDs through a tool, persisted posting state/receipt and duplicate/uncertain-outcome handling | [Posting service](../backend/app/services/jd/discord_job_posts.py). Approval of a JD alone does not authorize posting. |
+| Google Forms/Drive/Sheets intake | JD-scoped upload-folder/response-tab configuration, source checks for new files, explicit sync/import, candidate/application mapping and versioned CV download/integrity checks | [CV routes](../backend/app/cv_routes.py), [ingestion](../backend/app/services/cv/ingestion.py), [source setup](../frontend/src/features/cv/CVSourceSetup.tsx). Source connectivity and import outcomes must be checked rather than inferred. |
+| CV parsing and profiles | PDF/DOCX extraction, local OCR where needed, Gemini/Ollama model selection, structured profiles, source-checked claims, versioned reuse/retry and source inspection | [Parsing](../backend/app/services/cv/parsing.py), [model transport](../backend/app/integrations/cv_model.py), [profile UI](../frontend/src/features/cv/CandidateProfile.tsx). Missing or unreadable evidence is not proof of inability. |
+| CV evidence and screening | Authenticated MCP evidence search, indexing, durable runs/checkpoints, sequential per-criterion semantic matching, exact evidence validation, deterministic scoring/ranking, outdated-input detection and resumable partial results | [Screening graph](../backend/app/workflows/cv_screening.py), [matching](../backend/app/services/cv/matching.py), [scoring](../backend/app/services/cv/scoring.py). Matching batches/concurrency optimization is not implemented. |
+| Screening review UI | Candidate search/filter/sort, progress, ranked/incomplete results, score dimensions, criterion decisions, original excerpts, must-have flags, source files and earlier-run information | [Screening workspace](../frontend/src/features/cv/ScreeningWorkspace.tsx), [results](../frontend/src/features/cv/CVResults.tsx). Must-have gaps produce review flags, not an automatic rejection gate. |
+| Validation repair and diagnostics | Invalid match responses receive bounded repair with the specific safe validation code and rejected response as untrusted context; final failure retains a safe diagnostic for review | [Matching repair](../backend/app/services/cv/matching.py), [diagnostic labels](../frontend/src/features/cv/screeningMessages.ts). Quote/source/criterion validation remains strict; up to three validation attempts, without logging candidate text or raw model responses. |
+| Saved shortlists | Top K/minimum-score/combined preview, explicit manual selection, persisted shortlist members, score/rank snapshots and stale-preview controls | [Selection service](../backend/app/services/interviews/selections.py), [shortlisting](../backend/app/services/interviews/shortlisting.py), [workspace](../frontend/src/features/interviews/ShortlistWorkspace.tsx). Complete live acceptance remains separate. |
+| Invitations and email | Shared preview/confirmation/queue services for UI and assistant, expiring candidate links, retry/reissue/status behavior, invitation worker and custom email MCP delivery | [Invitations](../backend/app/services/interviews/invitations.py), [delivery](../backend/app/services/interviews/delivery.py), [email MCP](../backend/app/mcp_email.py), [sending UI](../frontend/src/features/interviews/InvitationSending.tsx). Current transport uses configured Gmail SMTP credentials; older Gmail OAuth/API plans are historical. Provider acceptance is not confirmed inbox delivery. |
+| Interview sessions and media | Recruiter-owned unscheduled Start/Status/Admit/Join/End flow, persisted admission, room-scoped LiveKit credentials, closure retry, candidate entry and device selection/preview | [Sessions](../backend/app/services/interviews/sessions.py), [LiveKit adapter](../backend/app/services/interviews/livekit.py), [candidate entry](../frontend/src/features/interviews/InterviewEntry.tsx), [room controls](../frontend/src/features/interviews/InterviewRoom.tsx). Two-device media, permissions and device hot-plug still require manual acceptance. |
+| Recruiter interview workspace | Preparation, waiting room, admission, live video, transcript, assistant, temporary notes and detailed candidate profile reused from CV Screening | [Recruiter panel](../frontend/src/features/interviews/RecruiterInterviewPanel.tsx), [stage](../frontend/src/features/interviews/InterviewStage.tsx), [candidate profile](../frontend/src/features/interviews/InterviewCandidateProfile.tsx). Notes stay on screen and are not saved. F7 verification is now shown alongside the profile; see [F7 setup](F7_CANDIDATE_IDENTIFICATION.md). |
+| Mobile interview UI | Responsive recruiter/candidate preparation, waiting and live-call layouts; portrait preview ratios, landscape split tools, in-layout controls, smaller picture-in-picture tiles, wrapping device actions and retained notes on rotation | [Stage styles](../frontend/src/features/interviews/InterviewStage.css), [lobby styles](../frontend/src/features/interviews/InterviewLobby.css), [candidate styles](../frontend/src/features/interviews/CandidateInterview.css). Verified with browser fixtures; actual device/browser/media acceptance remains open. |
+| Live transcription | Deepgram streaming from role-mapped LiveKit microphone sources, persisted final segments, separate interim display, audio-stream timing, bounded reconnect/rearm and startup/shutdown recovery | [Live capture](../backend/app/services/interviews/live_transcription.py), [transcription](../backend/app/services/interviews/transcription.py), [live transcript UI](../frontend/src/features/interviews/InterviewTranscript.tsx). Recognition quality, overlap/accent behavior and live recovery still need acceptance. |
+| Transcript finalization | End-of-interview finalization, source/evidence references, retry/reconciliation and readiness validation; unavailable common timing is disclosed as text-only limitations | [Finalization](../backend/app/services/interviews/transcript_finalization.py), [transcript preparation](../backend/app/services/interviews/transcript_preparation.py). Empty or unusable/single-speaker inputs must not be treated as assessment-ready. |
+| F5 interview assessment | Durable worker-dispatched analysis runs, question/answer grouping and criterion mapping, evidence-checked dimension evaluation, saved stages/results and retry/recover controls | [Assessment operations](../backend/app/services/interviews/assessment_runs.py), [analysis](../backend/app/services/interviews/analysis.py), [assessment routes](../backend/app/assessment_routes.py). Implementation is present; semantic calibration with reviewed real interviews remains open. |
+| Q&A accuracy references | Per-question retrieval from pinned technical references, policies and ready question banks; saved source/version registries and exact supporting excerpts for replay | [Accuracy references](../backend/app/services/interviews/accuracy_references.py). Reference passages support accuracy evaluation; unsupported model-knowledge judgments retain limitations. |
+| F6 consolidation | Synthesis of saved CV/interview evidence into strengths, weaknesses, gaps and recommended areas; deterministic traceability/eligibility validation and persisted results | [Consolidation](../backend/app/services/interviews/consolidation.py), [run service](../backend/app/services/interviews/consolidation_runs.py), [consolidated UI](../frontend/src/features/assessments/ConsolidatedAssessment.tsx). Existing CV and interview scores remain separate; unsupported results can be withheld. |
+| Assessment workspace and reports | Job/candidate selection, search/status filters, stage/source versions, run history, analysis/consolidation actions, two-candidate F6 comparison modal, recruiter and technical reports, optional evidence and PDF export | [Assessments UI](../frontend/src/features/assessments/Assessments.tsx), [comparison modal](../frontend/src/features/assessments/CandidateComparison.tsx), [report projection](../backend/app/services/interviews/full_report.py), [PDF renderer](../backend/app/services/interviews/report_pdf.py). Comparison is implemented and fixture-verified; live comparison and final real-data report acceptance remain open. |
+| MCP boundaries | Recruitment, CV and email servers; six recruitment tools, five CV tools and one worker email tool in current source | [Server registry](../backend/app/core/mcp_servers.py), [recruitment MCP](../backend/app/mcp_recruitment.py), [CV MCP](../backend/app/mcp_cv.py). Central assistant uses the authorized Recruitment facade; email sending remains worker-mediated. Broader planned MCP expansion is not claimed implemented. |
+| Background operations | Separate CV-screening, source-check, assessment and invitation workers; persistent processing records and checkpoints | [Compose services](../compose.yaml), [CV worker](../backend/app/scripts/cv_screening_worker.py). Secrets remain local; clean build/start documentation and comprehensive operational acceptance are pending. |
+
+### Current end-to-end flow
+
+1. Recruiter signs up or signs in; Dashboard shows owned-data activity and attention items.
+2. Recruiter creates/revises a JD in chat, reviews its criteria/priorities/weights,
+   supplies the application form, then explicitly approves/saves it. Eligible
+   unposted JDs can also use reviewed manual editing. External posting is separate.
+3. Recruiter connects the job's Drive folder/Sheet tab and explicitly imports CVs.
+   Downloaded file versions are extracted/parsed, evidence-indexed and screened.
+4. Screening validates each decision against original CV sources, calculates
+   deterministic dimension/aggregate scores and ranks completed assessments.
+   Incomplete results remain visible for review/resume; no invented fallback score.
+5. Recruiter reviews evidence and saves a shortlist. Invitations use a preview,
+   explicit confirmation, durable queue and worker delivery to expiring links.
+6. Recruiter and candidate prepare devices; candidate waits for admission.
+   Recruiter admits, conducts and explicitly ends the LiveKit interview.
+7. Microphone speech is transcribed with interim/final separation and source
+   metadata. Finalization establishes readiness or reports limitations/failures.
+8. Recruiter starts F5 analysis on eligible inputs, reviews evidence, requests F6
+   consolidation, then views/exports the saved recruiter or technical report.
+
+### Changes and verification completed on 21 October
+
+| Work | Verified result | Practical limit |
+| --- | --- | --- |
+| Gemini chat replacement | Pinned Gemini LangChain adapter compatible with existing core; backend/worker images rebuilt and services restarted; dependency check passed and Groq package absent from the rebuilt backend | Quotas remain shared with other Gemini work. Provider replacement does not fix every routing or context-growth issue. |
+| Chat/assistant regression checks | 76 checks: 75 passed, one previously documented JD-profile failure | The failing `test_incomplete_screening_does_not_override_draft_readiness` expects only technical skills while existing defaults address all four dimensions. Not counted as a new Gemini regression. |
+| Live Gemini checks | Structured function extraction, text streaming and tool-call/result roundtrip passed; full benchmark extraction retained 16 criteria and 50/30/10/10 weights | Direct verification calls did not establish a saved job/profile or scoring accuracy. |
+| Synthetic screening pack | Detailed JD and profile-confirmation prompts, eight one-page PDF CVs, criterion-level reference labels/scores and testing guide created | Pack is under `output/pdf/screening-benchmark-2026-10-21/`; do not ingest the answer key as candidate evidence. All CVs are fictional and text PDFs. |
+| Current screening performance diagnosis | JD 117 initially processed Mira in about 2 minutes 10 seconds; candidate and criterion processing are sequential, with per-criterion retrieval/model requests under a shared 12 RPM cap | This is an observed run, not a latency guarantee. Batching and broader token optimization remain unimplemented. |
+| Tara processing failure and recovery | Parsing/indexing succeeded; original failure followed 10 saved matches at the Docker/operations criterion. Added specific repair guidance, bounded attempts and safe diagnostics; resumed remaining work using the existing service | Original rejected outputs were not retained, so their precise initial validation defect cannot be reconstructed. No validation rule was weakened. |
+| Recovered saved screening run | Run `ac427c67-1f8c-490b-9b51-f7a63425aa67` for JD 117 completed with all five candidates; Tara completed all 17 saved criteria and scored 39.7619/100; four already-completed candidates retained | This was a five-candidate run, not verification of all eight CVs. Its profile has an extra fresher-eligibility criterion, so the 16-criterion benchmark totals are not directly comparable. |
+| Match-repair verification | Five focused repair checks and ten screening-result regressions passed; frontend build/lint passed | Separate from the 76-check Gemini run; do not add overlapping suites as a universal test total. |
+| Public remote preview | Verified `PUBLIC_APP_URL=https://acids-boating-brands-shut.trycloudflare.com` and `VITE_ALLOWED_HOST=acids-boating-brands-shut.trycloudflare.com` in `.env` and the running frontend/backend/invitation worker; public HTTP 200 and database `connected` confirmed after the F7 backend reload | Active Quick Tunnel on 22 October; temporary address. Existing delivered email links are not rewritten, and no invitation email was sent for these checks. |
+| Growing chat input | Dashboard bar and shared expanded composer grow from one line up to eight visible lines, then scroll; shrink on deletion and wrap on resize | Build/lint and desktop/mobile browser checks passed with mocked APIs. Existing message-length rules remain. |
+| Interview responsiveness | 63 state/viewport checks passed across 320×568, 360×640, 390×844, 667×375, 844×390, 768×1024 and 1280×800 | Checked recruiter preparation/waiting/live stage and candidate device, ready, live, finished and unavailable states. No horizontal page overflow; candidate call controls fit; portrait stage video ratio, tabs and rotation/note retention passed. Camera/microphone capture was not requested. |
+| Latest frontend checks | Production build and ESLint passed after the final responsive changes | Existing large-bundle warning remains. Browser fixtures do not replace real-device media/permission acceptance. |
+
+The original Tara failure was `MATCH_SCHEMA_OR_EVIDENCE_INVALID`, not a low
+suitability score, unreadable PDF or Gemini quota failure. Her separate
+`CV_SHEET_EMAIL_DISCREPANCY` warning did not cause that failure and remains an
+identity-metadata review item, not a scoring criterion. The improved repair path
+now retains safe validation codes such as `MATCH_QUOTE_INVALID` or
+`UNREQUESTED_REQUIREMENT_ADDED` when a later failure occurs; it does not retain or
+log rejected CV/model text. Successful scoring clears prior repair diagnostics.
+
+### Remaining work and acceptance boundaries
+
+- Fix and verify JD application-form update routing/persistence and prevent a
+  conversational success claim before the profile actually changes. The earlier
+  Google Form reply falsely confirmed an update; changing providers alone is not
+  proof that this path is corrected.
+- Reconcile the extra fresher-eligibility criterion in JD 117 before using the
+  16-criterion reference totals. Review semantic disagreements, not just aggregate
+  scores; one successful run does not establish perfect screening.
+- Reduce screening request volume through reviewed multi-criterion batching and/or
+  retrieval reuse, with per-criterion validation, durable recovery and shared quota
+  pacing retained. No quota increase or batching change is claimed completed.
+- General token-budgeted chat history, incremental summaries, context deduplication,
+  model-stage usage measurement and broader MCP expansion remain planned work.
+- Complete real two-device media, portrait/landscape browser checks on actual
+  phones, permissions, unplug/reconnect, hidden transcription participants and live
+  recovery/recognition acceptance. The latest 63 checks validate UI fixtures only.
+- Calibrate Q&A accuracy and F6 synthesis with reviewed technical references and real
+  interview evidence. Historical handoff notes recorded two report expectations
+  failing on wording/section counts; those were not rerun or fixed in today's work.
+- Finish report acceptance and verify the implemented F6 comparison modal against
+  actual saved interview assessments. Offline comparison and existing assessment
+  browser regressions passed; this does not establish live-data acceptance.
+- F7 now adds fixed mandatory Name/Email/CV File/Image columns, application photo linking, explicit waiting-room
+  consent, one-to-one face comparison, recruiter manual review and retention/deletion.
+  See [F7 setup and limits](F7_CANDIDATE_IDENTIFICATION.md). Representative face calibration
+  and real Form/video acceptance remain open. Voice matching and liveness are outside
+  this increment. F11 scope is still unconfirmed.
+- Calendar scheduling/rescheduling, a separately assigned interviewer workflow and
+  a separate candidate-management workspace are not delivered here. The Candidates
+  route redirects to CV Screening rather than providing a dedicated page.
+- Implement complete candidate deletion across relational records, stored CV files
+  and vector indexes. Existing foreign-key rules are not a complete deletion flow.
+- Finish Docker startup/reproducibility documentation, clean-setup verification and
+  migration-status review before schema work; do not reset databases or volumes.
+- Reconcile older setup guides and module comments with the implemented runtime.
+  Some older source/doc comments still describe integration work as pending.
+
+### F6 comparison implementation and N19 deletion plan — 22 October 2026
+
+Status: **F6 comparison implemented locally and fixture-verified; N19 deletion
+remains planned and has not started.** The estimates below retain the original
+planning ranges, not measured diffs. Live F6 acceptance and N19 implementation
+remain separate work.
+
+| Requirement | Placement and initial scope | Estimated change size, including tests |
+| --- | --- | --- |
+| F6 side-by-side candidate comparison | Assessments candidate list: select two candidates from the same job and choose **Compare selected** to open a wide comparison modal. Initially require completed F6 assessments. | Approximately 6–9 added/modified files and 400–700 lines. |
+| N19 complete candidate-data deletion | CV Screening candidate row menu: **Delete candidate data** opens a confirmation listing affected data and applications before deletion. | Approximately 9–14 added/modified files and 700–1,200 lines. |
+
+Combined estimate: approximately **14–22 distinct files and 1,100–1,900 lines**,
+allowing for shared files. These are planning ranges, not measured diffs or a
+delivery commitment; actual scope depends on existing cleanup and worker behavior.
+
+#### F6 comparison scope and acceptance
+
+- Reuse saved CV, F5, F6 and interview-performance results, existing evidence links,
+  and modal patterns. Opening comparison must not start new AI analysis or rescore
+  candidates. No new database tables are expected.
+- Align rows by job criterion and display candidates in columns. Include CV,
+  interview and combined scores, interview-performance dimensions, competency
+  coverage, strengths, weaknesses, evidence gaps and verification recommendations.
+- Preserve missing/unassessed values separately from zero. Display assessment,
+  criteria and scoring versions; flag incompatible criteria or scoring revisions
+  rather than presenting their results as equivalent.
+- Reuse existing **Verify next** findings; recommendation generation is already
+  implemented and must not be duplicated. This candidate comparison does not
+  implement F10 cross-candidate interview-process consistency analysis.
+- Use a wide modal on desktop and a full-screen dialog with horizontal scrolling
+  on small screens. Retain keyboard focus, Escape handling and focus restoration.
+- Verify same-job selection, recruiter ownership, criterion alignment, exact saved
+  sources, version differences, missing scores and desktop/mobile interaction.
+
+#### N19 deletion scope and acceptance
+
+- Distinguish complete candidate-data deletion from removing one job application.
+  Confirm the affected applications and scope explicitly. Enforce recruiter
+  ownership; an owned application must not authorize deletion of another
+  recruiter's applications or shared data they still require.
+- Add an authenticated endpoint and deletion service covering applicable candidate
+  and application records, CV files, extracted profiles, screening results,
+  interview records/transcripts, assessments and vector-index entries. Existing
+  foreign-key cascade rules alone do not satisfy N19.
+- Revoke invitation access and coordinate pending/running workers so they cannot
+  recreate deleted records or continue processing deleted candidate data.
+- Make cleanup retryable and expose partial failures. Do not report complete
+  deletion while required database, file or vector cleanup remains unfinished.
+- Prevent ordinary source sync from silently re-importing the deleted application.
+  Persist only the minimum suppression/cleanup metadata needed for this behavior.
+- Explain that deletion from Distill AI does not itself remove the original
+  submission from Google Drive/Sheets. Verify cleanup of any other retained
+  candidate artifacts discovered during implementation.
+- A migration will likely be needed for persistent deletion progress and/or
+  re-import suppression. Review the live migration state before schema changes.
+- Verify ownership, shared candidates across jobs/recruiters, active-worker races,
+  invitation revocation, repeated requests, partial-cleanup retries, storage/index
+  cleanup and subsequent source sync using synthetic data.
+
+### Working and delivery policy
+
+No new Redmine status, completion percentage or Git delivery is inferred from
+these local checks. The user requires Git commands to be supplied for manual
+execution; no Git commands have been run since that instruction. Documentation
+and test-file changes remain local unless the user changes that policy. Keep
+`.env`, credentials and invitation tokens out of commits and documentation.
+
+The startup handoff records the prior M05 and recruitment UI merges into `dev`;
+that is historical handoff context, not an independently rechecked branch state.
+The saved docs/tests stash was not applied by the agent. No new module/feature
+branch creation, staging, commit, push or Redmine update is claimed here.
+
+## Historical record — 12–13 October 2026
+
+The entries below are preserved as dated implementation history. Their feature
+inventory, provider choices and pending-work lists describe that earlier point in
+time; use the 22 October checkpoint above for current project status.
+
+<details>
+<summary>Expand the earlier checkpoints, feature inventory and verification history</summary>
+
+## Checkpoint — 13 October 2026
 
 This summary supersedes older pending/not-implemented statements below; earlier entries remain as the implementation history.
 
@@ -398,3 +798,5 @@ Add the newest entry first. Move a feature to Verified only when an explicit res
 | 2026-10-12 | Created current feature inventory, project flows, verification record and open-work checklist | Baseline documented | Reviewed source and existing documentation; no runtime tests executed | Verify the implemented recruiter journey and record results |
 
 For each future update, record the change, owner if known, relevant source or PR, checks performed, remaining gap and next action. Tick completed checklist items and revise the inventory/flows when behavior changes.
+
+</details>

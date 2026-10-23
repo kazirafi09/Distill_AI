@@ -14,7 +14,7 @@ class AssessmentRun(Base):
     __mapper_args__ = {"eager_defaults": True}
     __table_args__ = (
         UniqueConstraint("recruiter_id", "input_key", name="uq_assessment_run_input"),
-        CheckConstraint("kind IN ('f5', 'f6')", name="ck_assessment_run_kind"),
+        CheckConstraint("kind IN ('f5', 'f6', 'cv_claim_review', 'interview_performance', 'interview_quality')", name="ck_assessment_run_kind"),
         CheckConstraint("status IN ('queued', 'running', 'completed', 'needs_review', 'failed')", name="ck_assessment_run_status"),
         CheckConstraint("attempt >= 0 AND attempt <= 6", name="ck_assessment_run_attempt"),
         CheckConstraint("NOT synthetic OR (application_id IS NULL AND transcript_id IS NULL)", name="ck_assessment_synthetic_scope"),
@@ -27,7 +27,7 @@ class AssessmentRun(Base):
     # F6 pins the exact completed F5 run and CV assessment.
     parent_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("assessment_runs.id", ondelete="CASCADE"))
     cv_assessment_id: Mapped[UUID | None] = mapped_column(ForeignKey("cv_assessments.id", ondelete="SET NULL"))
-    kind: Mapped[str] = mapped_column(String(8), default="f5")
+    kind: Mapped[str] = mapped_column(String(32), default="f5")
     synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     label: Mapped[str] = mapped_column(String(255))
     input_key: Mapped[str] = mapped_column(String(64))
@@ -65,5 +65,29 @@ class AssessmentAnswer(Base):
 class AssessmentResult(Base):
     __tablename__ = "assessment_results"
     run_id: Mapped[UUID] = mapped_column(ForeignKey("assessment_runs.id", ondelete="CASCADE"), primary_key=True)
+    payload: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class InterviewScoringRevision(Base):
+    __tablename__ = "interview_scoring_revisions"
+    __table_args__ = (
+        UniqueConstraint("job_id", "revision", name="uq_interview_scoring_revision"),
+        CheckConstraint("revision > 0", name="ck_interview_scoring_revision_positive"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id", ondelete="CASCADE"), index=True)
+    recruiter_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    revision: Mapped[int] = mapped_column(Integer)
+    policy: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AssessmentFindingReview(Base):
+    __tablename__ = "assessment_finding_reviews"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("assessment_runs.id", ondelete="CASCADE"), index=True)
+    recruiter_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    finding_id: Mapped[str] = mapped_column(String(64))
     payload: Mapped[dict] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

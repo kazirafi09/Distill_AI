@@ -16,10 +16,13 @@ const entrySelector = '.motion-chat-message, .stage-transcript-turn, .screening-
 export function useWorkspaceMotion(ref: RefObject<HTMLElement | null>, scope: string, stage = false) {
   useEffect(() => {
     const root = ref.current
-    if (!root || (!stage && !['/recruiter/job-descriptions', '/recruiter/cv-screening', '/recruiter/interviews', '/recruiter/invitations'].includes(scope))) return
+    if (!root || (!stage && !['/recruiter/job-descriptions', '/recruiter/cv-screening', '/recruiter/interviews', '/recruiter/invitations', '/recruiter/assessments'].includes(scope))) return
     const media = window.matchMedia('(prefers-reduced-motion: reduce)')
     const styles = getComputedStyle(document.documentElement)
-    const duration = (token: string) => Number.parseFloat(styles.getPropertyValue(`--motion-${token}`)) || 0
+    const duration = (token: string) => {
+      const value = styles.getPropertyValue(`--motion-${token}`).trim()
+      return (Number.parseFloat(value) || 0) * (value.endsWith('ms') ? 1 : 1000)
+    }
     const easing = styles.getPropertyValue('--motion-enter').trim()
     const seen = new WeakSet<Element>()
     const loadedLists = new WeakSet<Element>()
@@ -115,7 +118,7 @@ export function useWorkspaceMotion(ref: RefObject<HTMLElement | null>, scope: st
             navs.forEach(indicator)
           }
         }
-        if (!stage && record.type === 'childList' && element.closest('.jd-document-scroll')) fades.add(element.closest('.jd-document-scroll')!)
+        if (!stage && record.type === 'childList' && element.closest('.jd-document-scroll, .motion-tab-content')) fades.add(element.closest('.jd-document-scroll, .motion-tab-content')!)
         if (!stage && record.type === 'childList' && element.matches('.screening-detail-scroll')) fades.add(element)
       }
       for (const element of scans) if (![...scans].some(parent => parent !== element && parent.contains(element))) scan(element)

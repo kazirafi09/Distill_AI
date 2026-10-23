@@ -16,8 +16,8 @@ export default function ConnectionForm({ token, job, source, onLinked }: {
   onLinked: (source: CVSource) => void
 }) {
   const [folder, setFolder] = useState('')
-  const [sheet, setSheet] = useState('')
-  const [tab, setTab] = useState('')
+  const [sheet, setSheet] = useState(source?.spreadsheet_id ?? '')
+  const [tab, setTab] = useState(source?.sheet_tab_id?.toString() ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const submitting = useRef(false)
@@ -49,7 +49,7 @@ export default function ConnectionForm({ token, job, source, onLinked }: {
     <form className="cv-connect" onSubmit={(event) => void handleSubmit(event)}>
       <div>
         <h3>Connect form responses</h3>
-        <p>Share the response Sheet and uploaded CV folder with your service account.</p>
+        <p>Share the response Sheet, CV folder and image upload folder with your service account.</p>
       </div>
       {!source && <label>CV upload folder URL or ID
         <input required value={folder} onChange={(event) => setFolder(event.target.value)} placeholder="https://drive.google.com/drive/folders/…" disabled={saving} />
@@ -58,13 +58,13 @@ export default function ConnectionForm({ token, job, source, onLinked }: {
       {source && <p className="cv-hint">CV folder is linked. Complete the response Sheet connection below.</p>}
       <div className="cv-connect-fields">
         <label>Response Sheet URL or ID
-          <input required value={sheet} onChange={(event) => setSheet(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=…" disabled={saving} />
+          <input required value={sheet} onChange={(event) => setSheet(event.target.value)} placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=…" disabled={saving || !!source?.spreadsheet_id} />
         </label>
         <label>Response tab ID (gid)
-          <input value={tab} onChange={(event) => setTab(event.target.value)} placeholder="Optional when URL has gid" inputMode="numeric" disabled={saving} />
+          <input value={tab} onChange={(event) => setTab(event.target.value)} placeholder="Optional when URL has gid" inputMode="numeric" disabled={saving || !!source?.spreadsheet_id} />
         </label>
       </div>
-      <p className="cv-hint">The response tab needs Name, Email and CV File columns. Timestamp is optional.</p>
+      <p className="cv-hint">Required response columns: Name, Email, CV File and Image. Every response needs a CV upload and one JPEG or PNG image (up to 5 MB). Timestamp is optional. Extra fields are ignored.</p>
       {error && <p className="cv-error" role="alert">{error}</p>}
       <button className="button-primary" disabled={saving}>{saving ? 'Connecting…' : 'Connect responses'}</button>
     </form>

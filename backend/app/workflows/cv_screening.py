@@ -10,7 +10,7 @@ from app.db.session import SessionFactory
 from app.models.cv_parsing import CVParseResult
 from app.models.cv_screening import CVAssessment, ScreeningRun
 from app.services.cv.indexing import digest, ensure_index
-from app.services.cv.matching import match_criterion, validate_match
+from app.services.cv.matching import match_criterion, validate_match, MatchValidationFailure, REPAIR_GUIDANCE
 from app.services.cv.parsing import parse_cv
 from app.services.cv.scoring import calculate_scores, rank_assessments
 from app.services.cv.screening import (
@@ -106,6 +106,7 @@ def build_candidate_graph(saver, db, run, assessment):
         assessment.matches = validated
         assessment.score = calculate_scores(run.inputs["profile"], validated, run.inputs["rubric"])
         assessment.error_code = None
+        assessment.warnings = [warning for warning in assessment.warnings if warning not in REPAIR_GUIDANCE]
         await set_status("completed")
         return {}
 
@@ -149,6 +150,8 @@ async def process_candidate(run_id, assessment_id):
                 code = "MATCH_TIMEOUT"
             assessment.status = "needs_review" if code in {"NO_DOWNLOADED_CV", "TOO_MANY_CV_DOCUMENTS", "CV_TEXT_NEEDS_REVIEW", "MATCH_INPUT_TOO_LARGE", "MATCH_OUTPUT_TOO_LARGE"} else "failed"
             assessment.error_code = code
+            if isinstance(exc, MatchValidationFailure):
+                assessment.warnings = list(dict.fromkeys(assessment.warnings + [exc.validation_code]))
             await commit_screening_write(db, job_id)
 
 

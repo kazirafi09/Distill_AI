@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import RecruiterChat from '../jd/RecruiterChat'
 import type { RecruiterChatHandle } from '../jd/RecruiterChat'
+import AutoGrowingTextarea from '../../components/chat/AutoGrowingTextarea'
 import { loadDashboard } from './api'
 import type { DashboardData } from './api'
 import '../jd/JobDescriptions.css'
@@ -20,7 +21,7 @@ function AssistantDock({ token, userId, onSaved }: { token: string; userId: stri
   const [busy, setBusy] = useState(false)
   const chat = useRef<RecruiterChatHandle>(null)
   const dock = useRef<HTMLElement>(null)
-  const trigger = useRef<HTMLInputElement>(null)
+  const trigger = useRef<HTMLTextAreaElement>(null)
   const pendingMessage = useRef('')
   function expand() {
     if (draft.trim()) {
@@ -73,7 +74,12 @@ function AssistantDock({ token, userId, onSaved }: { token: string; userId: stri
     </div>
     {!open && <form className="field-focus-group" onSubmit={event => { event.preventDefault(); expand() }}>
       <label className="sr-only" htmlFor="dashboard-question">Ask the recruiter assistant</label>
-      <input ref={trigger} id="dashboard-question" value={draft} onChange={event => setDraft(event.target.value)}
+      <AutoGrowingTextarea inputRef={trigger} id="dashboard-question" value={draft} onChange={event => setDraft(event.target.value)}
+        onKeyDown={event => {
+          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+            event.preventDefault(); expand()
+          }
+        }}
         placeholder="Ask about a job description or open your assistant…" />
       <kbd>Ctrl K</kbd><button className="button-primary" aria-expanded={false} aria-controls="dashboard-chat">Ask</button>
     </form>}

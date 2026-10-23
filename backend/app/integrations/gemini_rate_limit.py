@@ -2,6 +2,8 @@
 import asyncio
 import math
 import random
+import time
+import psycopg
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
@@ -72,3 +74,35 @@ def retry_delay(response, attempt):
 
 async def pause_gemini_requests(delay):
     await _slot(0, cooldown=delay)
+
+
+def _sync_slot(interval, cooldown=0):
+    """Same row/clock/locking protocol for synchronous LangGraph model calls."""
+    settings = get_settings()
+    with psycopg.connect(host=settings.postgres_host, port=settings.postgres_port,
+            user=settings.postgres_user, password=settings.postgres_password.get_secret_value(),
+            dbname=settings.postgres_db, connect_timeout=5) as conn:
+        conn.execute("INSERT INTO model_rate_limits (scope, next_request_at) "
+                     "VALUES (%s, clock_timestamp()) ON CONFLICT (scope) DO NOTHING", (SCOPE,))
+        next_at = conn.execute("SELECT next_request_at FROM model_rate_limits "
+                               "WHERE scope=%s FOR UPDATE", (SCOPE,)).fetchone()[0]
+        now = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+        delay = (next_at - now).total_seconds()
+        if cooldown or delay <= 0:
+            target = max(next_at, now + timedelta(seconds=cooldown)) if cooldown else now + timedelta(seconds=interval)
+            conn.execute("UPDATE model_rate_limits SET next_request_at=%s WHERE scope=%s", (target, SCOPE))
+            return 0
+        return delay
+
+
+def acquire_gemini_slot_sync():
+    interval = 60 / min(get_settings().gemini_requests_per_minute, MAX_REQUESTS_PER_MINUTE) + 0.1
+    while True:
+        delay = _sync_slot(interval)
+        if delay <= 0:
+            return
+        time.sleep(delay)
+
+
+def pause_gemini_requests_sync(delay):
+    _sync_slot(0, cooldown=delay)

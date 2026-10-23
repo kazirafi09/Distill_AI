@@ -13,7 +13,7 @@ import type { RecruiterInterviewStatus, RoomCredentials } from './sessionApi'
 import RecruiterChat from '../jd/RecruiterChat'
 import InterviewStage from './InterviewStage'
 import InterviewTranscript from './InterviewTranscript'
-import InterviewCandidateProfile from './InterviewCandidateProfile'
+import RecruiterIdentity from './RecruiterIdentity'
 
 const ignoreSavedJD = () => {}
 
@@ -27,7 +27,7 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
   const [connected, setConnected] = useState(false)
   const [busy, setBusy] = useState(false)
   const [prepared, setPrepared] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
+  const [identityReady, setIdentityReady] = useState(false)
   const [previewRevision, setPreviewRevision] = useState(0)
   const [error, setError] = useState('')
   const [pollError, setPollError] = useState('')
@@ -134,17 +134,15 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
       if (mounted.current) setStatus(next)
     })
   }
+  const verification = <RecruiterIdentity token={token} jobId={jobId} applicationId={candidate.application_id} onReady={setIdentityReady} />
   const lobby = <section className="interview-lobby" aria-labelledby="live-interview-heading">
     <header className="lobby-heading"><div><h2 id="live-interview-heading">Live interview</h2><p>{prepared ? connected ? 'Your waiting room is open. Admit the candidate when you are ready.' : busy || credentials ? 'Connecting to your waiting room…' : 'Rejoin your waiting room or recheck your devices.' : 'Check your camera and microphone before you meet the candidate.'}</p></div><ol className="lobby-steps" aria-label="Interview steps">{['Preparation', 'Waiting room', 'Interview'].map((label, index) => <li key={label} className={(prepared ? index === 1 : index === 0) ? 'is-current' : ''} aria-current={(prepared ? index === 1 : index === 0) ? 'step' : undefined}><span>{prepared && index === 0 ? <svg className="motion-check" aria-hidden="true" width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="m3 10 5 5 9-10" stroke="currentColor" strokeWidth="2" /></svg> : index + 1}</span>{label}</li>)}</ol></header>
     {(pollError || error || message || finished || status?.status === 'closing') && <div className="lobby-notices">{notices}</div>}
-    <details className="interview-profile-preview" onToggle={event => setProfileOpen(event.currentTarget.open)}><summary>Candidate profile and interview preparation</summary>
-      {profileOpen && <InterviewCandidateProfile token={token} jobId={jobId} candidate={candidate} />}
-    </details>
-    {!prepared ? <InterviewPreparation key={previewRevision} candidate={candidate} members={members} invitation={invitation} status={status?.status ?? 'checking'} busy={busy}
+    {!prepared ? <InterviewPreparation key={previewRevision} verification={verification} candidate={candidate} members={members} invitation={invitation} status={status?.status ?? 'checking'} busy={busy}
       canContinue={!invitationLoading && invitation?.link_status === 'active' && !!status && ['not_started', 'ready', 'in_progress'].includes(status.status)}
       onCandidate={onCandidate} onContinue={value => void startOrJoin(value)} onRecheck={() => setPreviewRevision(value => value + 1)} />
-      : credentials ? <InterviewWaitingRoom candidate={candidate} jobTitle={jobTitle} jobNumber={jobNumber} connected={connected} busy={busy} startedAt={status && 'started_at' in status ? status.started_at : null} onAdmit={() => void admit()} onRecheck={recheckDevices} onLeave={recheckDevices} onError={reportError} />
-      : <div className="lobby-content waiting-content"><div className="lobby-preview-column"><div className="preparation-video"><div className="lobby-placeholder"><div className="stage-person" /><strong>{busy ? 'Opening waiting room…' : 'You are disconnected'}</strong><p>{candidate.name} · Candidate</p></div></div></div><div className="lobby-info-column"><div className="lobby-card"><strong>{candidate.name}</strong><p>{candidate.email}</p><p>{jobTitle} · JD {jobNumber}</p></div><div className="lobby-primary-action"><button className="lobby-primary" disabled={busy || !choices || finished || status?.status === 'closing'} onClick={() => choices && void startOrJoin(choices)}>{busy ? 'Connecting…' : 'Rejoin waiting room'}</button><button className="lobby-secondary" disabled={busy} onClick={recheckDevices}>Recheck devices</button></div></div></div>}
+      : credentials ? <InterviewWaitingRoom verification={verification} identityReady={identityReady} candidate={candidate} jobTitle={jobTitle} jobNumber={jobNumber} connected={connected} busy={busy} startedAt={status && 'started_at' in status ? status.started_at : null} onAdmit={() => void admit()} onRecheck={recheckDevices} onLeave={recheckDevices} onError={reportError} />
+      : <div className="lobby-content waiting-content"><div className="lobby-preview-column"><div className="preparation-video"><div className="lobby-placeholder"><div className="stage-person" /><strong>{busy ? 'Opening waiting room…' : 'You are disconnected'}</strong><p>{candidate.name} · Candidate</p></div></div>{verification}</div><div className="lobby-info-column"><div className="lobby-card"><strong>{candidate.name}</strong><p>{candidate.email}</p><p>{jobTitle} · JD {jobNumber}</p></div><div className="lobby-primary-action"><button className="lobby-primary" disabled={busy || !choices || finished || status?.status === 'closing'} onClick={() => choices && void startOrJoin(choices)}>{busy ? 'Connecting…' : 'Rejoin waiting room'}</button><button className="lobby-secondary" disabled={busy} onClick={recheckDevices}>Recheck devices</button></div></div></div>}
     {finished && <div className="lobby-transcript"><InterviewTranscript token={token} jobId={jobId} applicationId={candidate.application_id} /></div>}
     {(active || status?.status === 'closing') && <div className="lobby-end"><button disabled={busy} onClick={finishInterview}>{status?.status === 'closing' ? 'Retry End interview' : 'End interview for everyone'}</button></div>}
   </section>

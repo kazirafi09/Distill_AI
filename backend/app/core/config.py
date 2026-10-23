@@ -24,8 +24,7 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr = Field(min_length=32)
     access_token_expire_minutes: int = Field(default=30, ge=1, le=1440)
     auth_session_days: int = Field(default=7, ge=1, le=90)
-    groq_api_key: SecretStr | None = None
-    groq_model: str = "openai/gpt-oss-20b"
+    gemini_chat_model: str = Field(default="gemini-3.5-flash-lite", pattern=r"^[a-zA-Z0-9._-]+$")
     ollama_base_url: str = "http://127.0.0.1:11435"
     cv_parser_model: str = "qwen3:4b"
     gemini_api_key: SecretStr | None = None
@@ -49,6 +48,11 @@ class Settings(BaseSettings):
     f6_model_context_tokens: int = Field(default=262144, ge=8192, le=1048576)
     f6_model_output_tokens: int = Field(default=8192, ge=512, le=16384)
     f6_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
+    post_interview_model_provider: Literal["ollama", "gemini"] = "gemini"
+    post_interview_model_name: str = Field(default="gemini-3.5-flash-lite", min_length=1)
+    post_interview_model_context_tokens: int = Field(default=262144, ge=8192, le=1048576)
+    post_interview_model_output_tokens: int = Field(default=16384, ge=512, le=32768)
+    post_interview_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
     cv_ocr_language: str = Field(default="eng", pattern=r"^[A-Za-z0-9_]+(?:\+[A-Za-z0-9_]+)*$")
     cv_ocr_timeout_seconds: int = Field(default=25, ge=1, le=60)
     cv_document_timeout_seconds: int = Field(default=180, ge=10, le=600)
@@ -76,6 +80,10 @@ class Settings(BaseSettings):
     email_mcp_secret: SecretStr | None = None
     public_app_url: str = "http://localhost:5173"
     interview_link_days: int = Field(default=7, ge=1, le=365)
+    face_model_path: Path = PROJECT_ROOT / "storage" / "face_models"
+    # Explicitly configure a calibrated threshold before automatic match verdicts.
+    face_match_threshold: float | None = Field(default=None, gt=0, lt=1)
+    identity_retention_days: int = Field(default=30, ge=1, le=365)
 
     # Backend API address and browser connection address.
     livekit_api_url: str = "http://127.0.0.1:7880"

@@ -13,7 +13,7 @@ from app.integrations.google_drive import SUPPORTED_TYPES, list_folder_files, va
 
 
 _email = TypeAdapter(EmailStr)
-REQUIRED_HEADERS = ("Name", "Email", "CV File")
+REQUIRED_HEADERS = ("Name", "Email", "CV File", "Image")
 
 
 def source_lock_key(source_id: UUID) -> int:
@@ -75,11 +75,15 @@ def parse_response_rows(sheet: dict) -> tuple[list[dict], list[dict]]:
             timestamp = cell("Timestamp") or None
             if timestamp and len(timestamp) > 100:
                 raise ValueError("Timestamp is too long.")
+            photo_ids = drive_ids_from_cell(cell("Image"))
+            if len(photo_ids) != 1:
+                raise ValueError("Image must contain exactly one Google Drive upload.")
             rows.append({
                 "row_number": row["row_number"],
                 "full_name": name,
                 "email": email,
                 "drive_file_ids": drive_ids_from_cell(cell("CV File")),
+                "photo_file_id": photo_ids[0],
                 "submitted_at_text": timestamp,
             })
         except (ValueError, ValidationError):
@@ -175,6 +179,9 @@ async def import_response_rows(
                         source_row_number=row["row_number"], submitted_at_text=row["submitted_at_text"]))
                     await db.flush()
                 linked = 0
+                if row.get("photo_file_id"):
+                    from app.services.interviews.identification import link_reference
+                    await link_reference(db, application_id, row["photo_file_id"])
                 for document in documents:
                     if document.application_id is None:
                         document.application_id = application_id

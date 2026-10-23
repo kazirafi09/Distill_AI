@@ -6,9 +6,10 @@ import { AssessmentDetails } from '../cv/CVResults'
 import { loadScreeningResults } from './api'
 import type { SavedInterviewee, ScreeningResults } from './api'
 import './InterviewCandidateProfile.css'
+import RecruiterIdentity from './RecruiterIdentity'
 
-export default function InterviewCandidateProfile({ token, jobId, candidate }: {
-  token: string; jobId: string; candidate: SavedInterviewee
+export default function InterviewCandidateProfile({ token, jobId, candidate, showIdentity = true }: {
+  token: string; jobId: string; candidate: SavedInterviewee; showIdentity?: boolean
 }) {
   const [revision, setRevision] = useState(0)
   const key = `${jobId}:${candidate.application_id}`
@@ -40,6 +41,7 @@ export default function InterviewCandidateProfile({ token, jobId, candidate }: {
 
   return <div className="interview-candidate-profile">
     <header><h2>{candidate.name}</h2><p>{candidate.email}</p></header>
+    {showIdentity && <RecruiterIdentity token={token} jobId={jobId} applicationId={candidate.application_id} />}
     <dl className="interview-profile-metrics"><div><dt>Saved CV score</dt><dd>{Number.isFinite(aggregate) ? `${aggregate.toFixed(2)} / 100` : 'Unavailable'}</dd></div>
       <div><dt>Shortlist rank</dt><dd>#{candidate.rank}</dd></div></dl>
     <p className="interview-profile-note">Scores and rank come from the saved shortlist. CV details are candidate-reported, not identity verification or a live interview rating.</p>

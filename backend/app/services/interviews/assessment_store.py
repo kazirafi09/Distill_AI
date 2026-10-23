@@ -28,7 +28,7 @@ async def leased(db, state):
 
 async def claim(run_id=None):
     async with SessionFactory() as db, db.begin():
-        statement = select(AssessmentRun).where(AssessmentRun.kind.in_(["f5", "f6"]), or_(
+        statement = select(AssessmentRun).where(AssessmentRun.kind.in_(["f5", "f6", "cv_claim_review", "interview_performance", "interview_quality"]), or_(
             and_(AssessmentRun.status == "queued", AssessmentRun.next_attempt_at <= func.now()),
             and_(AssessmentRun.status == "running", AssessmentRun.lease_expires_at <= func.now())))
         if run_id:
@@ -100,6 +100,8 @@ async def finish(state, artifact):
         error = artifact.get("error_code")
         if artifact["status"] in {"completed", "completed_synthetic"}:
             run.status, run.stage = "completed", "completed"
+            if run.kind in {"cv_claim_review", "interview_performance", "interview_quality"}:
+                run.completed_groups = run.total_groups
         elif artifact["status"] == "failed" and error in TRANSIENT_ERRORS and run.attempt < 3:
             run.status, run.stage = "queued", "retry_wait"
             run.next_attempt_at = await db.scalar(select(func.now() + timedelta(seconds=10 * 2 ** run.attempt)))

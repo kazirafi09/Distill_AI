@@ -3,6 +3,7 @@ import type { LocalUserChoices } from '@livekit/components-react'
 import { ApiError } from '../../services/api'
 import InterviewRoom from './InterviewRoom'
 import DeviceCheck from './DeviceCheck'
+import CandidateFaceVerification from './CandidateFaceVerification'
 import { joinCandidateInterview, loadCandidateInterviewStatus } from './sessionApi'
 import type { CandidateInterviewStatus, RoomCredentials } from './sessionApi'
 import CandidateInterviewView from './CandidateInterviewView'
@@ -21,6 +22,7 @@ export default function InterviewEntry() {
   const [entry, setEntry] = useState<Entry | null>(null)
   const [status, setStatus] = useState<CandidateInterviewStatus | null>(null)
   const [choices, setChoices] = useState<LocalUserChoices | null>(null)
+  const [verificationPreview, setVerificationPreview] = useState<HTMLDivElement | null>(null)
   const [checkingDevices, setCheckingDevices] = useState(false)
   const [credentials, setCredentials] = useState<RoomCredentials | null>(null)
   const [connected, setConnected] = useState(false)
@@ -138,6 +140,8 @@ export default function InterviewEntry() {
     error={[error, pollError && `Status check failed: ${pollError}`].filter(Boolean).join(' ')} notice={message}
     onJoin={() => void join()} onRecheck={() => setCheckingDevices(true)}
     canReturnToWaiting={!!choices} onWaiting={() => setCheckingDevices(false)}
+    waitingVideoRef={setVerificationPreview}
+    verification={choices && phase === 'waiting' ? <CandidateFaceVerification token={token} choices={choices} previewTarget={verificationPreview} /> : undefined}
     deviceCheck={entry && phase === 'devices' ? <DeviceCheck name={entry.candidate_name} choices={choices} onReady={value => { setChoices(value); setCheckingDevices(false); setError('') }} /> : undefined}
     call={credentials && choices ? <InterviewRoom credentials={credentials} choices={choices}
       stage participantRole="candidate" candidateName="Interviewer"
