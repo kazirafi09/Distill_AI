@@ -165,6 +165,8 @@ async def save_approved_jd(
     )
 
     if existing is not None:
+        from app.services.wind_tunnel.queue import enqueue
+        await enqueue(db, existing, conversation.recruiter_id)
         return existing
 
     validate_acceptance(state)
@@ -183,6 +185,9 @@ async def save_approved_jd(
     db.add(document)
     await db.flush()
     await db.refresh(document)
+
+    from app.services.wind_tunnel.queue import enqueue
+    await enqueue(db, document, conversation.recruiter_id)
 
     return document
 

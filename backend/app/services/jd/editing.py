@@ -227,12 +227,14 @@ edited metadata and do not guess when ambiguous. Nothing is saved until recruite
     return {"content": public_jd_narrative(edit.content), "screening_profile": proposed.model_dump(mode="json")}
 
 
-async def save_manual_edit(db, graph, recruiter_id, conversation_id, edit: ManualEdit):
+async def save_manual_edit(db, graph, recruiter_id, conversation_id, edit: ManualEdit, *, before_save=None):
     conversation, document, snapshot, config = await edit_target(
         db, graph, recruiter_id, conversation_id, edit.edit_version, lock=True,
     )
     if not edit.criteria_reviewed:
         raise HTTPException(422, "Review the description and screening criteria together before saving.")
+    if before_save is not None:
+        await before_save(db, document, edit)
     state = snapshot.values
     previous_profile = document.screening_profile if document else state.get("screening_profile")
     previous_content = document.content if document else state.get("draft_jd")
