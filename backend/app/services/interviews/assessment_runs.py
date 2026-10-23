@@ -308,7 +308,9 @@ async def run_result(run_id, recruiter_id):
         if run.kind == "f5":
             from app.services.interviews.consolidation_runs import eligibility
             f6 = await eligibility(db, run)
+        from app.services.interviews.final_score import for_run
         return {"run": public_run(run), "result": result_payload, "f6": f6,
+            "final_score": await for_run(db, run, result_payload),
             "answers": payloads, "dimension_summaries": dimension_summaries(payloads),
             "criteria": run.inputs["criteria"], "source_turns": run.inputs["prepared"]["turns"],
             "outdated": job.profile_version != run.inputs.get("profile_version") or digest(

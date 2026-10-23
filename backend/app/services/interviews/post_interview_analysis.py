@@ -3,14 +3,14 @@ import json
 from typing import Annotated, Literal
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError, model_validator
 
 from app.integrations.cv_model import ModelExecution, generate_json
 from app.services.interviews import analysis, assessment_store as store
 from app.services.interviews import performance_rubric as rubric
 
 KINDS = ("cv_claim_review", "interview_performance", "interview_quality")
-PROMPT_VERSION = "interview-extensions-1"
+PROMPT_VERSION = "interview-extensions-2"
 VERSIONS = {"cv_claim_review": "cv-claim-review-1", "interview_performance": rubric.RUBRIC_VERSION, "interview_quality": "interview-quality-1"}
 Text = Annotated[str, Field(min_length=1, max_length=1400)]
 
@@ -43,6 +43,13 @@ class Claim(Schema):
     same_context: StrictBool
     scope_comparison: Text
     follow_up: Text
+    uncertainty: Text | None
+
+    @model_validator(mode="after")
+    def uncertain_claim(self):
+        if self.uncertainty and self.status != "unable_to_assess":
+            raise ValueError("Ambiguous claim evidence must remain unable_to_assess.")
+        return self
 
 
 class Claims(Schema):
@@ -58,14 +65,17 @@ class ReferenceQuote(Schema):
 class DimensionResult(Schema):
     dimension: rubric.Dimension
     score: Annotated[StrictInt, Field(ge=0, le=4)] | None
-    reason: Literal["assessed", "insufficient_evidence", "unreliable_attribution", "not_elicited"]
+    reason: Literal["assessed", "insufficient_evidence", "unreliable_attribution", "not_elicited", "transcript_uncertain"]
     justification: Text
     evidence: list[Quote] = Field(max_length=8)
     basis: Literal["saved_reference_and_interview", "interview_only", "model_knowledge", "not_assessed"]
     reference_evidence: list[ReferenceQuote] = Field(max_length=6)
+    uncertainty: Text | None
 
     @model_validator(mode="after")
     def assessed(self):
+        if bool(self.uncertainty) != (self.reason == "transcript_uncertain"):
+            raise ValueError("Material transcript ambiguity requires transcript_uncertain and an explanation.")
         if (self.score is not None) != (self.reason == "assessed"):
             raise ValueError("Score and reason must agree.")
         if self.score is not None and (not self.evidence or self.basis == "not_assessed"):
@@ -85,6 +95,7 @@ class QualityFinding(Schema):
     group_ids: list[str] = Field(min_length=1, max_length=12)
     evidence: list[Quote] = Field(min_length=1, max_length=8)
     improvement: Text
+    uncertainty: Text | None
 
 
 class Quality(Schema):
@@ -102,6 +113,17 @@ evidence. Do not infer protected attributes, personality, accent or vocal qualit
 hire/reject/ranking or accusations. Missing evidence is not evidence of inability or dishonesty.
 References are saved scoped RAG snapshots. Question banks are not answer keys, and technical
 documents do not prove employment history. Do not invent external verification or citations.
+Read complete grouped answers, including later corrections, before judging an excerpt. F5
+interpretations are fallible; recheck original text. Compare contradictory wording with the
+rest of the answer. Never silently repair or assume a transcription error is a speaker error.
+Set uncertainty to null when usable evidence supports the finding. When ambiguous wording,
+missing speech or unclear attribution prevents a defensible judgment, explain uncertainty:
+claims must be unable_to_assess; performance dimensions must have score null, reason
+transcript_uncertain and basis not_assessed. Source limitations alone do not invalidate clear
+answers. For quality findings, state uncertainty explicitly and recommend verification;
+do not present ambiguous wording as a proven interviewer mistake. Do not infer stuttering,
+fluency or delivery from transcript artifacts. Do not claim question phrasing caused a weak
+answer without evidence; separate the observed gap from a suggested improvement.
 Keep output bounded to the schema. /no_think"""
 INSTRUCTIONS = {
     "cv_claim_review": """Select up to 24 substantive, atomic, job-relevant CV claims. Each has an exact
@@ -122,7 +144,9 @@ not CV scores. Do not merely rename or average the four F5 scores. Missing suita
 unclear attribution or insufficient evidence yields null with the correct reason. A zero
 requires an observed poor answer to an asked relevant question. A polished but incorrect
 answer can score well for text communication and poorly for technical competency. Technical
-answers relying on model knowledge must say so. An overall score is calculated by backend;
+correctness judgments without eligible reference quotations must use basis model_knowledge,
+including technical_competency; interview_only describes observations that do not need a
+technical answer key. An overall score is calculated by backend;
 never produce a total yourself. Unasked JD requirements are coverage gaps, not automatic zeros.""",
     "interview_quality": """Assess interview process quality, not candidate performance. Use saved F5 groups
 to assess relevance/effectiveness of questions, useful follow-ups and interaction. Every
@@ -132,6 +156,48 @@ specific improvements. Coverage is calculated separately from F5 mappings; do no
 competencies or infer lack of ability from unasked topics. Do not invent speaking-time values,
 judge personality, compare other candidates, or output a candidate score.""",
 }
+
+
+VALIDATION_MESSAGES = {
+    "EXTENSION_SCHEMA_INVALID": ("The analysis did not satisfy the required evidence and scoring format.", "output"),
+    "EXTENSION_OUTPUT_INVALID": ("The model did not return a valid analysis response.", "output"),
+    "EXTENSION_EVIDENCE_INVALID": ("An interview quotation or speaker attribution did not match the saved transcript.", "evidence"),
+    "CV_CLAIM_REVIEW_CV_EVIDENCE_INVALID": ("A CV quotation, page span or job criterion did not match the saved source.", "claims.cv_evidence"),
+    "CV_CLAIM_REVIEW_DUPLICATE_CLAIM": ("The analysis repeated the same CV source claim.", "claims.cv_evidence"),
+    "CV_CLAIM_REVIEW_CANDIDATE_EVIDENCE_REQUIRED": ("A CV finding was missing supporting candidate speech.", "claims.interview_evidence"),
+    "CV_CLAIM_REVIEW_CONTEXT_NOT_ESTABLISHED": ("A possible contradiction did not establish matching project, time, role and scope.", "claims.same_context"),
+    "CV_CLAIM_REVIEW_ABSENCE_NOT_ESTABLISHED": ("Missing discussion could not be established from the available transcript.", "claims.status"),
+    "INTERVIEW_PERFORMANCE_DIMENSIONS_INVALID": ("The analysis did not cover all six performance dimensions exactly once.", "dimensions"),
+    "INTERVIEW_PERFORMANCE_REFERENCE_EVIDENCE_INVALID": ("A technical reference quotation did not match an eligible saved reference.", "dimensions.reference_evidence"),
+    "INTERVIEW_PERFORMANCE_REFERENCE_BASIS_INVALID": ("The stated knowledge basis did not match the supplied reference evidence.", "dimensions.basis"),
+    "INTERVIEW_PERFORMANCE_TECHNICAL_BASIS_INVALID": ("Technical correctness requires saved reference evidence or an explicit model-knowledge label.", "dimensions.basis"),
+    "INTERVIEW_QUALITY_GROUP_SCOPE_INVALID": ("A process finding cited an unknown question group.", "findings.group_ids"),
+    "INTERVIEW_QUALITY_GROUP_EVIDENCE_INVALID": ("A process finding cited evidence outside its question groups.", "findings.evidence"),
+}
+
+
+def validation_diagnostic(error):
+    """Static messages and schema paths only; never persist model text or error input."""
+    code = "EXTENSION_SCHEMA_INVALID" if isinstance(error, ValidationError) else str(error)
+    if code not in VALIDATION_MESSAGES:
+        code = "EXTENSION_OUTPUT_INVALID"
+    message, path = VALIDATION_MESSAGES[code]
+    if isinstance(error, ValidationError):
+        fields = {name for schema in (Claims, Claim, CVQuote, Quote, Performance, DimensionResult,
+                                      ReferenceQuote, Quality, QualityFinding) for name in schema.model_fields}
+        location = error.errors(include_input=False, include_context=False, include_url=False)[0]["loc"]
+        path = ".".join(str(part) if type(part) is int or part in fields else "field" for part in location[:8]) or "output"
+    return {"code": code, "field_path": path, "message": message}
+
+
+def source_warnings(prepared):
+    flags = set(prepared.get("source_quality_flags", []))
+    warnings = []
+    if prepared.get("text_only") or flags & {"SESSION_TIMELINE_NOT_ALIGNED", "SAVED_ORDER_NOT_VERIFIED_CHRONOLOGY"}:
+        warnings.append("Transcript timing and cross-speaker order are unverified. Interpret question/answer pairings cautiously.")
+    if flags & {"TRANSCRIPT_INCOMPLETE", "MICROPHONE_TRACK_INTERRUPTED", "TRANSCRIPTION_FLUSH_FAILED", "TRANSCRIPT_CAPTURE_NEEDS_REVIEW"}:
+        warnings.append("The recording may omit speech. Missing discussion is not proof of inability or a CV contradiction.")
+    return warnings
 
 
 def checked_quotes(quotes, turns, candidate=False):
@@ -199,13 +265,13 @@ def materialize(kind, raw, inputs):
                 raise ValueError("CV_CLAIM_REVIEW_CANDIDATE_EVIDENCE_REQUIRED")
             if status == "potential_contradiction" and not claim["same_context"]:
                 raise ValueError("CV_CLAIM_REVIEW_CONTEXT_NOT_ESTABLISHED")
-            if status == "not_discussed" and (claim["interview_evidence"] or inputs["prepared"].get("text_only")):
+            if status == "not_discussed" and (claim["interview_evidence"] or source_warnings(inputs["prepared"])):
                 raise ValueError("CV_CLAIM_REVIEW_ABSENCE_NOT_ESTABLISHED")
             claim["search_basis"] = {"complete_saved_transcript": True, "turn_count": len(turns),
                                      "content_sha256": inputs["prepared"]["aligned_content_sha256"]}
     elif kind == "interview_performance":
         dimensions = {item["dimension"]: item for item in result["dimensions"]}
-        if set(dimensions) != set(rubric.DIMENSIONS):
+        if len(dimensions) != len(result["dimensions"]) or set(dimensions) != set(rubric.DIMENSIONS):
             raise ValueError("INTERVIEW_PERFORMANCE_DIMENSIONS_INVALID")
         references = {r["id"]: r for r in inputs.get("references", [])}
         for dimension in dimensions.values():
@@ -221,6 +287,8 @@ def materialize(kind, raw, inputs):
             dimension["reference_evidence"] = cited
             if (dimension["basis"] == "saved_reference_and_interview") != bool(cited):
                 raise ValueError("INTERVIEW_PERFORMANCE_REFERENCE_BASIS_INVALID")
+            if dimension["dimension"] == "technical_competency" and dimension["score"] is not None and dimension["basis"] == "interview_only":
+                raise ValueError("INTERVIEW_PERFORMANCE_TECHNICAL_BASIS_INVALID")
         result["dimensions"] = dimensions
         result["summary"] = rubric.calculate(dimensions, inputs["scoring_settings"]["policy"])
         result["scoring_settings"] = inputs["scoring_settings"]
@@ -260,31 +328,39 @@ async def execute(claim, version):
             await store.fail(claim, "EXTENSION_INPUT_TOO_LARGE")
             return
         attempts = await store.read_stage(claim, "extension-attempts") or {"count": 0}
+        system = SYSTEM
+        if source_warnings(inputs["prepared"]):
+            system += "\nSource limitations: " + " ".join(source_warnings(inputs["prepared"]))
+            system += " Saved order is a reading aid, not proven chronology. Use speaker roles and conversational context; adjacency alone does not establish a pairing. Do not invent missing words or answers."
         while attempts["count"] < 2:
+            if attempts.get("errors"):
+                text = json.dumps({**payload, "validation_error": attempts["errors"][-1],
+                    "repair": "Correct the indicated validation failure. Recheck IDs, exact source spans, uncertainty, score/reason pairs and same-context rules. Omit unsupported claims."}, ensure_ascii=False)
             # Persist budget before a call; process crashes cannot create unlimited repairs.
-            attempts = {"count": attempts["count"] + 1}
+            attempts = {**attempts, "count": attempts["count"] + 1}
             await store.write_stage(claim, "extension-attempts", attempts)
             try:
-                raw = await generate_json(SYSTEM, text, SCHEMAS[kind].model_json_schema(),
+                raw = await generate_json(system, text, SCHEMAS[kind].model_json_schema(),
                     "EXTENSION_OUTPUT_INVALID", execution=ModelExecution(**inputs["model_options"]))
                 output = materialize(kind, json.loads(raw), inputs)
                 await store.write_stage(claim, "extension-output", output)
                 break
             except (httpx.TimeoutException, TimeoutError):
-                await store.write_stage(claim, "extension-attempts", {"count": attempts["count"] - 1})
+                await store.write_stage(claim, "extension-attempts", {**attempts, "count": attempts["count"] - 1})
                 await store.fail(claim, "ANALYSIS_MODEL_TIMEOUT")
                 return
             except httpx.HTTPError:
-                await store.write_stage(claim, "extension-attempts", {"count": attempts["count"] - 1})
+                await store.write_stage(claim, "extension-attempts", {**attempts, "count": attempts["count"] - 1})
                 await store.fail(claim, "ANALYSIS_MODEL_REQUEST_FAILED")
                 return
             except (ValueError, KeyError, TypeError) as error:
                 if str(error) in store.TRANSIENT_ERRORS | {"MODEL_AUTH_FAILED", "MODEL_API_KEY_MISSING", "MODEL_REQUEST_INVALID"}:
-                    await store.write_stage(claim, "extension-attempts", {"count": attempts["count"] - 1})
+                    await store.write_stage(claim, "extension-attempts", {**attempts, "count": attempts["count"] - 1})
                     await store.fail(claim, str(error))
                     return
-                # Only bounded, static feedback; no raw candidate text in diagnostics.
-                text = json.dumps({**payload, "repair": "Previous output failed schema or exact citation validation. Recheck all IDs, exact source spans, score/reason pairs and same-context rules. Omit unsupported claims."}, ensure_ascii=False)
+                diagnostic = {"attempt": attempts["count"], **validation_diagnostic(error)}
+                attempts["errors"] = [*attempts.get("errors", []), diagnostic][-2:]
+                await store.write_stage(claim, "extension-attempts", attempts)
         if output is None:
             await store.finish(claim, {"status": "needs_review", "publishable": False,
                 "synthetic": inputs["prepared"]["synthetic"], "error_code": "EXTENSION_OUTPUT_NEEDS_REVIEW"})
@@ -294,6 +370,7 @@ async def execute(claim, version):
         "provenance": {"parent_run_id": inputs["parent_run_id"], "f5_artifact_sha256": inputs["f5"]["artifact_sha256"],
             "input_key": inputs["source_key"], "prompt_version": PROMPT_VERSION, "rubric_version": VERSIONS[kind],
             "model": version, "reference_ids": [r["id"] for r in inputs.get("references", [])]},
-        "warnings": ["AI-assisted evidence review for human follow-up; no automated hiring decision."]}
+        "warnings": [*source_warnings(inputs["prepared"]),
+                     "AI-assisted evidence review for human follow-up; no automated hiring decision."]}
     artifact["artifact_sha256"] = analysis.digest(artifact)
     await store.finish(claim, artifact)

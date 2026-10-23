@@ -39,7 +39,19 @@ export type F6Report = { findings: Record<'strengths' | 'weaknesses' | 'evidence
   component_scores: { cv: { aggregate: string; dimensions: {dimension: string; score: string; approved_percentage: string}[]; note: string }; interview: Record<Dimension, Summary> }
   source_registry: F6Source[]; provenance: { f5_run_id: string; cv_assessment_id: string; repairs_used: number }
 }
+
+export type SavedPerformance = {
+  dimensions: Record<string, { score: number | null; justification: string; evidence: {turn_id: string; quote: string}[] }>
+  scoring_settings: { revision: number; policy_sha256: string; rubric_version?: string; policy: {weights: Record<string, number>} }
+  warnings: string[]
+}
+export type PostInterviewSnapshot = { items: {run: Omit<Run, 'kind'> & {kind: string}; result: SavedPerformance | null}[] }
+export const loadPostInterviewSnapshot = (token: string, parentId: string, signal?: AbortSignal) =>
+  apiRequest<PostInterviewSnapshot>(`/assessments/runs/${parentId}/post-interview`, { token, signal, cache: 'no-store' })
 export type Result = {
+  final_score?: {status: 'provisional' | 'incomplete'; score_100: string | null; cv_score_100: string | null; interview_score_100: string | null;
+    cv_contribution?: string; interview_contribution?: string; reason: string; warnings: string[];
+    policy: {version: string; cv_weight: number; interview_weight: number}; interview_created_at?: string; interview_run_id?: string}
   run: Run; result: null | { publishable: boolean; f6_ready: boolean; warnings: string[];
     validation_error?: string | null;
     coverage?: { criterion_id: string; group_ids: string[]; exploration: string; performance_score: number | null }[];

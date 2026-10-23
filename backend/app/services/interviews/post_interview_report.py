@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.models.assessments import AssessmentResult, AssessmentFindingReview
 from app.services.interviews.analysis import digest
 from app.services.interviews.assessment_runs import owned_run
+from app.services.interviews.post_interview_analysis import source_warnings
 
 
 def label(text):
@@ -35,6 +36,9 @@ async def append(db, document, parent_id, recruiter_id, run_ids, include_evidenc
                 for excerpt in excerpts:
                     text(f"{excerpt.get('speaker_role', 'CV')} · {excerpt.get('turn_id', excerpt.get('source_id', 'source'))}: {excerpt['quote']}", "quote")
 
+        for warning in dict.fromkeys([*source_warnings(run.inputs.get("prepared", {})), *payload.get("warnings", [])]):
+            text(warning, "warning")
+
         if run.kind == "cv_claim_review":
             title = "CV claim review"
             text(payload["selection_note"], "note")
@@ -44,6 +48,8 @@ async def append(db, document, parent_id, recruiter_id, run_ids, include_evidenc
             for claim in payload["claims"]:
                 text(f"{label(claim['status'])}: {claim['claim']}", "heading")
                 text(claim["explanation"])
+                if claim.get("uncertainty"):
+                    text("Evidence uncertainty: " + claim["uncertainty"], "warning")
                 text("Context: " + claim["scope_comparison"])
                 text("Follow up: " + claim["follow_up"])
                 evidence([claim["cv_evidence"], *claim["interview_evidence"]])
@@ -65,6 +71,8 @@ async def append(db, document, parent_id, recruiter_id, run_ids, include_evidenc
                 value = "Not assessed" if dimension["score"] is None else f"{dimension['score'] * 25}/100"
                 text(f"{label(name)}: {value} · {policy['weights'][name]}% weight · {label(dimension['basis'])}", "heading")
                 text(dimension["justification"])
+                if dimension.get("uncertainty"):
+                    text("Evidence uncertainty: " + dimension["uncertainty"], "warning")
                 evidence(dimension["evidence"])
                 if include_evidence:
                     for reference in dimension["reference_evidence"]:
@@ -78,6 +86,8 @@ async def append(db, document, parent_id, recruiter_id, run_ids, include_evidenc
             for finding in payload["findings"]:
                 text(label(finding["category"]), "heading")
                 text(finding["observation"])
+                if finding.get("uncertainty"):
+                    text("Evidence uncertainty: " + finding["uncertainty"], "warning")
                 text("Improve: " + finding["improvement"])
                 evidence(finding["evidence"])
             timing = payload["speaking_time"]

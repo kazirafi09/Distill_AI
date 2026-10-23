@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.db.session import SessionFactory
 from app.integrations.cv_model import ModelExecution
-from app.models.assessments import AssessmentRun, AssessmentResult, AssessmentFindingReview
+from app.models.assessments import AssessmentRun, AssessmentResult, AssessmentFindingReview, AssessmentStage
 from app.services.recruitment_access import lock_job
 from app.services.interviews import analysis, post_interview_analysis as service, scoring_settings
 from app.services.interviews.assessment_runs import owned_run, public_run
@@ -81,8 +81,11 @@ async def workspace(parent_id, recruiter_id):
                 raise HTTPException(409, "Post-interview result integrity check failed.")
             reviews = list(await db.scalars(select(AssessmentFindingReview).where(AssessmentFindingReview.run_id == row.id)
                 .order_by(AssessmentFindingReview.created_at, AssessmentFindingReview.id)))
-            items.append({"run": public_run(row), "result": payload, "reviews": [public_review(r) for r in reviews]})
+            stage = await db.get(AssessmentStage, (row.id, "extension-attempts")) if row.status == "needs_review" else None
+            items.append({"run": public_run(row), "result": payload, "reviews": [public_review(r) for r in reviews],
+                          "diagnostics": stage.payload.get("errors", []) if stage else []})
         return {"parent_run_id": str(parent.id), "blockers": blockers, "items": items,
+                "source_warnings": service.source_warnings(parent.inputs.get("prepared", {})), "prompt_version": service.PROMPT_VERSION,
                 "scoring_settings": await scoring_settings.snapshot(db, parent.job_id), "review_required": not parent.synthetic}
 
 

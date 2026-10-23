@@ -57,7 +57,7 @@ export default function App() {
   const mainRef = useRef<HTMLElement>(null)
   const navigationRef = useRef<HTMLElement>(null)
   const closeNavigation = useCallback(() => setNavigationOpen(false), [])
-  const animatedPage = ['/recruiter/job-descriptions', '/recruiter/cv-screening', '/recruiter/interviews', '/recruiter/invitations'].includes(location.pathname)
+  const animatedPage = ['/recruiter/job-descriptions', '/recruiter/cv-screening', '/recruiter/interviews', '/recruiter/invitations', '/recruiter/assessments'].includes(location.pathname)
   useWorkspaceMotion(mainRef, session ? location.pathname : '')
   useSidebarIndicator(navigationRef, `${session?.user.id ?? ''}:${location.pathname}`)
   const cvChecks = useCVSourceChecks(isInterviewEntry ? undefined : session?.token)
