@@ -27,6 +27,7 @@ from app.models.interviews import (
 )
 from app.models.interview_transcripts import InterviewTranscript, InterviewTranscriptTurn, InterviewAudioStream
 from app.models.assessments import AssessmentRun, AssessmentStage, AssessmentAnswer, AssessmentResult, InterviewScoringRevision, AssessmentFindingReview
+from app.models.wind_tunnel import WindTunnelRun, WindTunnelDocument, WindTunnelAssessment, WindTunnelSuggestion, WindTunnelTask
 
 config = context.config
 
