@@ -4,11 +4,13 @@ import json
 import logging
 import re
 from typing import Literal
+from collections.abc import Sequence
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.core.config import get_settings
 from app.integrations.cv_model import generate_json, context_tokens
 from app.services.cv.profile_schema import resolve_excerpt
+from app.services.cv.processing import ParsedEvidenceSource
 
 MATCH_VERSION = "cv-semantic-5"
 logger = logging.getLogger("distill_ai.cv_matching")
@@ -82,7 +84,7 @@ class RequirementMatch(BaseModel):
     evidence: list[MatchExcerpt] = Field(max_length=8)
 
 
-def validate_match(raw, criterion, parsed):
+def validate_match(raw, criterion, parsed: Sequence[ParsedEvidenceSource]):
     item = RequirementMatch.model_validate_json(raw) if isinstance(raw, str) else RequirementMatch.model_validate(
         {**{k: raw[k] for k in ("requirement_id", "decision", "justification", "unsupported_requirement_parts")},
          "evidence": [{k: e[k] for k in ("file_version_id", "parse_id", "source_id", "quote")} for e in raw["evidence"]]})
@@ -115,7 +117,7 @@ def validate_match(raw, criterion, parsed):
     return {**item.model_dump(), "evidence": evidence}
 
 
-async def match_criterion(criterion, parsed, retrieved, profile):
+async def match_criterion(criterion, parsed: Sequence[ParsedEvidenceSource], retrieved, profile):
     settings = get_settings()
     sources = [{"file_version_id": str(p.file_version_id), "parse_id": str(p.id),
                 "source_id": s["id"], "method": s["method"], "text": p.text[s["start"]:s["end"]]}

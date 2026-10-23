@@ -25,7 +25,7 @@ def collection(versions):
         name="cv_evidence_v1_" + digest(versions)[:16], embedding_function=None, configuration={"hnsw": {"space": "cosine"}})
 
 
-def index_chunks(index_id, text, sources, metadata, versions):
+def index_chunks(index_id, text, sources, metadata, versions, *, target=None):
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200, add_start_index=True)
     chunks = []
     for source in sources:
@@ -38,7 +38,7 @@ def index_chunks(index_id, text, sources, metadata, versions):
                 "method": source["method"], "page": source.get("page") or 0, "start": start, "end": start + len(part.page_content)}))
     if not chunks or len(chunks) > 1000:
         raise ValueError("INDEX_INPUT_TOO_LARGE")
-    target = collection(versions)
+    target = collection(versions) if target is None else target
     target.delete(where={"index_id": str(index_id)})
     for offset in range(0, len(chunks), 8):
         batch = chunks[offset:offset + 8]

@@ -3,8 +3,9 @@ from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 from starlette.concurrency import run_in_threadpool
 
-from app.core.config import get_settings
 from app.services.cv.llm import extract_profile, check_input_size
+from app.core.config import get_settings
+from app.services.cv.processing import SourceAccess
 from app.services.cv.profile_schema import identity_warnings, validate_profile
 from app.services.cv.text import finalize_text, isolated_extract
 
@@ -21,52 +22,64 @@ class ParsingState(TypedDict, total=False):
 
 
 def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
-    """No MCP calls: graph nodes call shared extraction/OCR/Ollama directly."""
-    settings = get_settings()
-
     async def status(value):
         result.status = value
         await db.commit()
 
+    from app.services.cv.parsing import stored_path, verify_integrity
+    return build_source_parsing_graph(
+        checkpointer, result,
+        SourceAccess(file_version.id, lambda: stored_path(file_version), lambda: verify_integrity(file_version)),
+        status, identity=(candidate.full_name, candidate.email),
+    )
+
+
+def build_source_parsing_graph(checkpointer, result, source: SourceAccess, status, *, identity=None, extraction_only=False):
+    """Existing parsing nodes shared by ordinary and synthetic storage adapters.
+
+The ordinary entry service still authorizes before cache reads or graph startup.
+Source access/status callbacks preserve each adapter's integrity and save rules.
+"""
+    settings = get_settings()
+
     async def load(state):
         # Ownership and exact-version loading occur in the shared entry service.
-        if state["file_version_id"] != str(file_version.id):
+        if state["file_version_id"] != str(source.id):
             raise ValueError("CV_VERSION_MISMATCH")
         await status("verifying")
         return {}
 
     async def verify(state):
-        from app.services.cv.parsing import verify_integrity
-        await run_in_threadpool(verify_integrity, file_version)
+        await run_in_threadpool(source.verify)
         return {}
 
     async def extract(state):
         if result.text is not None:
             return {"saved_text": True}
-        from app.services.cv.parsing import stored_path
         await status("extracting")
-        extracted = await run_in_threadpool(isolated_extract, stored_path(file_version), "native", settings.cv_ocr_language,
-                                            settings.cv_ocr_timeout_seconds, settings.cv_document_timeout_seconds, None, file_version.file_sha256)
+        extracted = await run_in_threadpool(isolated_extract, source.path(), "native", settings.cv_ocr_language,
+                                            settings.cv_ocr_timeout_seconds, settings.cv_document_timeout_seconds,
+                                            None, result.file_sha256)
         return {"extracted": extracted, "saved_text": False}
 
     async def assess(state):
         return {"ocr_needed": not state.get("saved_text") and any(s.get("ocr_needed") for s in state["extracted"]["sources"])}
 
     async def ocr(state):
-        from app.services.cv.parsing import stored_path
         await status("ocr")
         from app.services.documents.extraction import DocumentExtractionError
         try:
-            extracted = await run_in_threadpool(isolated_extract, stored_path(file_version), "ocr", settings.cv_ocr_language,
-                                                settings.cv_ocr_timeout_seconds, settings.cv_document_timeout_seconds, state["extracted"], file_version.file_sha256)
+            extracted = await run_in_threadpool(isolated_extract, source.path(), "ocr", settings.cv_ocr_language,
+                                                settings.cv_ocr_timeout_seconds, settings.cv_document_timeout_seconds,
+                                                state["extracted"], result.file_sha256)
         except DocumentExtractionError as exc:
             if exc.code == "FILE_HASH_MISMATCH":
                 raise
             extracted = state["extracted"]
             extracted["warnings"] = extracted["warnings"] + [exc.code]
-            for source in extracted["sources"]:
-                if source.get("ocr_needed"):
-                    source["ocr_failed"] = True
+            for segment in extracted["sources"]:
+                if segment.get("ocr_needed"):
+                    segment["ocr_failed"] = True
         return {"extracted": extracted}
 
     async def validate_text(state):
@@ -80,7 +93,7 @@ def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
             usable = any(readable(result.text[s["start"]:s["end"]]) for s in result.sources) and not any(s.get("ocr_failed") for s in result.sources)
         result.status = "text_saved" if usable else "needs_review"
         result.error_code = None if usable else "TEXT_UNUSABLE_OR_INCOMPLETE"
-        await db.commit()  # Saved BEFORE any LLM call, including oversized-input check.
+        await status(result.status)  # Ordinary adapter commits text BEFORE model calls.
         if usable:
             check_input_size(result.text, result.sources)
         return {"usable": usable}
@@ -104,7 +117,8 @@ def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
 
     async def persist(state):
         result.profile, result.evidence = state["profile"], state["evidence"]
-        result.warnings = list(dict.fromkeys(result.warnings + state.get("profile_warnings", []) + identity_warnings(result.profile, candidate.full_name, candidate.email)))
+        identity_notes = identity_warnings(result.profile, *identity) if identity is not None else []
+        result.warnings = list(dict.fromkeys(result.warnings + state.get("profile_warnings", []) + identity_notes))
         result.error_code = None
         await status("completed")
         return {}
@@ -116,10 +130,10 @@ def build_cv_parsing_graph(checkpointer, db, result, file_version, candidate):
     for name, node in nodes:
         graph.add_node(name, node)
     graph.add_edge(START, "load_version")
-    for source, target in [("load_version", "verify_integrity"), ("verify_integrity", "extract_text"),
+    for source_node, target in [("load_version", "verify_integrity"), ("verify_integrity", "extract_text"),
                            ("extract_text", "assess_quality"), ("local_ocr", "validate_text"),
                            ("qwen_extract", "validate_profile"), ("validate_profile", "persist_profile"), ("persist_profile", END)]:
-        graph.add_edge(source, target)
+        graph.add_edge(source_node, target)
     graph.add_conditional_edges("assess_quality", lambda s: "local_ocr" if s["ocr_needed"] else "validate_text")
-    graph.add_conditional_edges("validate_text", lambda s: "qwen_extract" if s["usable"] else END)
+    graph.add_conditional_edges("validate_text", lambda s: "qwen_extract" if s["usable"] and not extraction_only else END)
     return graph.compile(checkpointer=checkpointer)
