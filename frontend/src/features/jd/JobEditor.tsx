@@ -3,6 +3,8 @@ import Markdown from 'react-markdown'
 import { ApiError } from '../../services/api'
 import { saveJobEdits, suggestJobEdits } from './api'
 import type { EditableProfile, JDConversation, ScreeningProfile } from './api'
+import type { WindTunnelSuggestion } from './windTunnelApi'
+import SuggestionReview from './SuggestionReview'
 
 const dimensions = [
   ['technical_skills', 'Technical skills'], ['work_experience', 'Work experience'],
@@ -32,21 +34,23 @@ function criterionChanged(a: EditableProfile['criteria'][number], b: EditablePro
   return a.text !== b.text || a.dimension !== b.dimension || a.priority !== b.priority
 }
 
-export default function JobEditor({ token, target, onSaved, onCancel }: {
+export default function JobEditor({ token, target, onSaved, onCancel, proposal }: {
   token: string
   target: JobEditorTarget
   onSaved: (conversation: JDConversation) => void
   onCancel: () => void
+  proposal?: { content: string; screening_profile: EditableProfile; apply: (signal: AbortSignal) => Promise<JDConversation>; title: string; patches: WindTunnelSuggestion['patches']; position?: string; conflict?: boolean }
 }) {
-  const [content, setContent] = useState(target.content)
-  const [profile, setProfile] = useState(() => editableProfile(target.profile))
+  const [content, setContent] = useState(proposal?.content ?? target.content)
+  const [profile, setProfile] = useState(() => proposal?.screening_profile ?? editableProfile(target.profile))
   const [section, setSection] = useState(target.section)
   const [changedSection, setChangedSection] = useState(target.section)
-  const [reviewing, setReviewing] = useState(false)
+  const [reviewing, setReviewing] = useState(Boolean(proposal))
   const [reviewed, setReviewed] = useState(false)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [saveConflict, setSaveConflict] = useState(false)
   const request = useRef<AbortController | null>(null)
   const editor = useRef<HTMLElement | null>(null)
   const original = editableProfile(target.profile)
@@ -129,16 +133,23 @@ export default function JobEditor({ token, target, onSaved, onCancel }: {
     setWorking(true)
     setError('')
     try {
-      const updated = await saveJobEdits(token, target.conversationId, {
+      const updated = proposal ? await proposal.apply(controller.signal) : await saveJobEdits(token, target.conversationId, {
         edit_version: target.editVersion, content, screening_profile: profile, criteria_reviewed: reviewed,
       }, controller.signal)
       if (!controller.signal.aborted) onSaved(updated)
     } catch (caught) {
-      if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : 'Could not save changes.')
+      if (!controller.signal.aborted) {
+        setError(caught instanceof Error ? caught.message : 'Could not save changes.')
+        if (proposal && caught instanceof ApiError && caught.status === 409) { setSaveConflict(true); setReviewed(false) }
+      }
     } finally {
       if (!controller.signal.aborted) { request.current = null; setWorking(false) }
     }
   }
+
+  if (proposal) return <SuggestionReview title={proposal.title} position={proposal.position} content={content} profile={profile} original={target.profile}
+    patches={proposal.patches} working={working} conflict={saveConflict || Boolean(proposal.conflict)} error={error} reviewed={reviewed}
+    onReviewed={setReviewed} onBack={onCancel} onApply={() => { void save() }} />
 
   return <section ref={editor} className="jd-editor" aria-label="Edit job" aria-busy={working}>
     <header>
@@ -146,14 +157,14 @@ export default function JobEditor({ token, target, onSaved, onCancel }: {
       <p className="muted">{target.approved
         ? 'Changes update this approved, unposted job. Earlier screening results retain their original criteria.'
         : 'Your draft remains unapproved. The assistant will use your changes after you save.'}</p>
-      <p className="muted">Requirements in the public description come from screening criteria. Other wording is checked for matching changes during review.</p>
+      <p className="muted">{proposal ? 'Review this exact proposal in both tabs. Applying saves the description and criteria together.' : 'Requirements in the public description come from screening criteria. Other wording is checked for matching changes during review.'}</p>
     </header>
     <div className="jd-editor-tabs" role="group" aria-label="Editor sections">
       <button type="button" className="button-secondary" aria-pressed={section === 'description'} onClick={() => setSection('description')}>Description</button>
       <button type="button" className="button-secondary" aria-pressed={section === 'criteria'} onClick={() => setSection('criteria')}>Screening criteria</button>
     </div>
     {notice && <p className="jd-editor-notice" role="status">{notice}</p>}
-    <fieldset disabled={working}>
+    <fieldset disabled={working || Boolean(proposal)}>
       {section === 'description' ? <>
         <label>Job title<input value={title} maxLength={255} onChange={event => updateContent(`# ${event.target.value}\n\n${body}`)} /></label>
         <div className="jd-editor-field"><label htmlFor="jd-editor-description">Description wording (Markdown)</label><textarea id="jd-editor-description" rows={14} value={body} onChange={event => updateContent(`# ${title}\n\n${event.target.value}`)} /></div>
@@ -182,9 +193,10 @@ export default function JobEditor({ token, target, onSaved, onCancel }: {
         {removed.length > 0 && <div className="jd-editor-notice"><strong>Removed criteria</strong><ul>{removed.map(criterion => <li key={criterion.id}>{criterion.text}</li>)}</ul></div>}
         <button type="button" className="button-secondary" onClick={() => updateProfile({ ...profile, criteria: [...profile.criteria, { id: '', dimension: 'technical_skills', text: '', priority: null }] })}>Add criterion</button>
         <h4>Dimension weights</h4>
+        {proposal && <p className="muted">Previous weights: {dimensions.map(([key, label]) => `${label}: ${original.dimension_weights[key]}%`).join(' · ')}</p>}
         <div className="jd-editor-columns">{dimensions.map(([key, label]) => <label key={key}>{label} (%)<input type="number" min="0" max="100" step="0.1" value={profile.dimension_weights[key]} onChange={event => updateProfile({ ...profile, dimension_weights: { ...profile.dimension_weights, [key]: Number(event.target.value) } })} /></label>)}</div>
         <p className={Math.abs(total - 100) < 0.000001 ? 'muted' : 'ui-error'}>Total: {Number(total.toFixed(4))}% · Dimensions without criteria must have zero weight.</p>
-        {([['minimum_years_experience', 'Minimum experience'], ['fresher_eligibility', 'Fresher eligibility'], ['google_form_url', 'Google Form URL']] as const).map(([key, label]) => <label key={key}>{label}<input value={profile[key] ?? ''} onChange={event => updateProfile({ ...profile, [key]: event.target.value || null })} /></label>)}
+        {([['minimum_years_experience', 'Minimum experience'], ['fresher_eligibility', 'Fresher eligibility'], ['google_form_url', 'Google Form URL']] as const).map(([key, label]) => <label key={key}>{label}{proposal && original[key] !== profile[key] && <small>Previously: {original[key] || 'Not set'}</small>}<input value={profile[key] ?? ''} onChange={event => updateProfile({ ...profile, [key]: event.target.value || null })} /></label>)}
       </>}
     </fieldset>
     <footer>
@@ -192,8 +204,8 @@ export default function JobEditor({ token, target, onSaved, onCancel }: {
       {reviewing && <label className="jd-review-check"><input type="checkbox" checked={reviewed} disabled={working} onChange={event => setReviewed(event.target.checked)} />I reviewed the description and screening criteria together.</label>}
       <div className="jd-editor-row">
         <button type="button" className="button-secondary" disabled={working} onClick={onCancel}>Cancel editing</button>
-        <button type="button" className="button-secondary" disabled={working} onClick={() => { void reviewChanges() }}>{working ? 'Working…' : reviewing ? 'Suggest matching changes again' : 'Review matching changes'}</button>
-        {reviewing && <button type="button" className="button-primary" disabled={working || !reviewed} onClick={() => { void save() }}>Save changes</button>}
+        {!proposal && <button type="button" className="button-secondary" disabled={working} onClick={() => { void reviewChanges() }}>{working ? 'Working…' : reviewing ? 'Suggest matching changes again' : 'Review matching changes'}</button>}
+        {reviewing && <button type="button" className="button-primary" disabled={working || !reviewed} onClick={() => { void save() }}>{working ? 'Saving…' : proposal ? 'Apply suggestion' : 'Save changes'}</button>}
       </div>
     </footer>
   </section>

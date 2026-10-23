@@ -9,11 +9,12 @@ import RecruiterChat from './RecruiterChat'
 import type { RecruiterChatHandle } from './RecruiterChat'
 import ReferenceDocuments from './ReferenceDocuments'
 import JobEditor from './JobEditor'
+import JobSuggestions, { UnapprovedSuggestions } from './JobSuggestions'
 import type { JobEditorTarget } from './JobEditor'
 import type { JDConversation } from './api'
 import './JobDescriptions.css'
 
-type Tab = 'description' | 'criteria' | 'assistant'
+type Tab = 'description' | 'criteria' | 'assistant' | 'suggestions'
 
 function Criteria({ profile }: { profile: ScreeningProfile | null }) {
   if (!profile) return <div className="ui-state"><h3>Screening criteria are not set up</h3><p>Ask the assistant to define the requirements and weights for this job.</p></div>
@@ -133,9 +134,10 @@ export default function JobDescriptions({ token, userId }: { token: string; user
   }
   function newJob() { setEditNotice(''); chat.current?.startNew(); setSelected('draft'); setTab('assistant') }
 
-  return <section className={`job-descriptions-page${tab === 'assistant' ? ' is-assistant' : ''}`}>
+  return <section className={`job-descriptions-page${tab === 'assistant' ? ' is-assistant' : tab === 'suggestions' ? ' is-suggestions' : ''}`}>
     <header className="redesign-header"><div><p className="workspace-eyebrow">Recruitment workspace</p><h1>Job Descriptions</h1><p className="muted">Find a job, review its criteria, or draft with the assistant.</p></div>{tab === 'assistant' && <label className="jd-job-picker">Job<select aria-label="Job for assistant" value={activeId} disabled={busy || Boolean(editor)} onChange={event => selectJob(event.target.value)}><option value="draft">{draft ? 'Current draft · not approved' : 'New job description'}</option>{library.jobs.map(job => <option key={job.id} value={job.id}>{job.title} (JD {job.number})</option>)}</select></label>}<button className="button-primary" disabled={busy || Boolean(editor)} onClick={newJob}>New job description</button></header>
 
+    {tab === 'suggestions' && <label className="jd-mobile-job-picker">Job<select aria-label="Job for suggestions" value={activeId} disabled={busy || Boolean(editor)} onChange={event => selectJob(event.target.value)}>{draft && <option value="draft">Current draft · not approved</option>}{library.jobs.map(job => <option key={job.id} value={job.id}>{job.title} · JD {job.number}</option>)}</select></label>}
     <div className="jd-redesign-workspace">
       {tab !== 'assistant' && <aside className="jd-redesign-library"><h2>Job library</h2><div className="jd-library-filters"><label>Search jobs<input type="search" placeholder="Title or JD number" value={query} onChange={event => setQuery(event.target.value)} /></label><label>Status<select aria-label="Status" value={status} onChange={event => setStatus(event.target.value)}><option value="all">All</option><option value="approved">Approved</option><option value="draft">Current draft</option></select></label></div>
         <div className="jd-library-scroll">
@@ -147,13 +149,14 @@ export default function JobDescriptions({ token, userId }: { token: string; user
         </div><button className="button-secondary" onClick={() => referenceDialog.current?.showModal()}>Reference documents ›</button>
       </aside>}
       <section className="jd-detail-panel">
-        {tab !== 'assistant' && <header className="jd-detail-header"><div><h2>{title ?? 'Select or create a job'}</h2>{title && <p className="muted">{showingDraft ? 'Review this draft before using it for screening.' : `JD ${document?.number ?? '…'} · Screening criteria ${document?.profile_version != null ? `v${document.profile_version}` : 'not set up'}`}</p>}</div><div className="jd-detail-actions">{content && editVersion && !editor && <button className="button-secondary" disabled={busy || editingLocked} onClick={beginEdit}>{tab === 'criteria' ? 'Edit screening criteria' : 'Edit description'}</button>}{title && <span className={`ui-badge ${showingDraft ? 'is-warning' : 'is-success'}`}>{showingDraft ? 'Draft · not approved' : '✓ Approved'}</span>}{!showingDraft && document && <Link className="button-primary" to={`/recruiter/cv-screening?job=${document.id}`}>Go to CV Screening</Link>}{showingDraft && <button className="button-secondary" disabled={busy || Boolean(editor)} onClick={() => changeTab('assistant')}>Ask the assistant to revise</button>}</div></header>}
-        <nav className="redesign-tabs" aria-label="Job description sections">{(['description', 'criteria', 'assistant'] as const).map(value => <button key={value} aria-current={tab === value ? 'page' : undefined} onClick={() => changeTab(value)} disabled={Boolean(editor) || (busy && value === 'assistant')}>{value === 'description' ? 'Description' : value === 'criteria' ? 'Screening criteria' : 'AI assistant'}</button>)}</nav>
+        {tab !== 'assistant' && <header className="jd-detail-header"><div><h2>{title ?? 'Select or create a job'}</h2>{title && <p className="muted">{showingDraft ? 'Review this draft before using it for screening.' : `JD ${document?.number ?? '…'} · Screening criteria ${document?.profile_version != null ? `v${document.profile_version}` : 'not set up'}`}</p>}</div><div className="jd-detail-actions">{tab !== 'suggestions' && content && editVersion && !editor && <button className="button-secondary" disabled={busy || editingLocked} onClick={beginEdit}>{tab === 'criteria' ? 'Edit screening criteria' : 'Edit description'}</button>}{title && <span className={`ui-badge ${showingDraft ? 'is-warning' : 'is-success'}`}>{showingDraft ? 'Draft · not approved' : '✓ Approved'}</span>}{!showingDraft && document && <Link className="button-primary" to={`/recruiter/cv-screening?job=${document.id}`}>Go to CV Screening</Link>}{showingDraft && <button className="button-secondary" disabled={busy || Boolean(editor)} onClick={() => changeTab('assistant')}>Ask the assistant to revise</button>}</div></header>}
+        <nav className="redesign-tabs" aria-label="Job description sections">{(['description', 'criteria', 'suggestions', 'assistant'] as const).map(value => <button key={value} aria-current={tab === value ? 'page' : undefined} onClick={() => changeTab(value)} disabled={Boolean(editor) || (busy && value === 'assistant')}>{value === 'description' ? 'Description' : value === 'criteria' ? 'Screening criteria' : value === 'suggestions' ? 'Suggestions' : 'AI assistant'}</button>)}</nav>
         <div className="jd-assistant-mount" hidden={tab !== 'assistant'}><RecruiterChat ref={chat} token={token} userId={userId} onSaved={onSaved} onStateChange={onStateChange} onReviewTab={changeTab} /></div>
-        {editNotice && <p className="jd-save-notice" role="status">{editNotice}</p>}
-        {editingLocked && tab !== 'assistant' && <p className="jd-save-notice">This job is posted or posting is pending. Its description and screening criteria are locked.</p>}
+        {editNotice && tab !== 'suggestions' && <p className="jd-save-notice" role="status">{editNotice}</p>}
+        {editingLocked && tab !== 'assistant' && tab !== 'suggestions' && <p className="jd-save-notice">This job is posted or posting is pending. Its description and screening criteria are locked.</p>}
         {editor && <JobEditor token={token} target={editor} onSaved={finishEditing} onCancel={cancelEditing} />}
-        {tab !== 'assistant' && !editor && <div className="jd-document-layout"><div className="jd-document-scroll">
+        {tab === 'suggestions' && (showingDraft ? <UnapprovedSuggestions onNavigate={changeTab} /> : document ? <JobSuggestions key={`${token}:${document.id}:${document.edit_version}`} token={token} job={document} onSaved={finishEditing} onNavigate={changeTab} onReload={onSaved} /> : <p role="status">Select a saved job to view suggestions.</p>)}
+        {tab !== 'assistant' && tab !== 'suggestions' && !editor && <div className="jd-document-layout"><div className="jd-document-scroll">
           {activeId && !showingDraft && detail?.id !== activeId && <div className="ui-state" role="status">Loading job description…</div>}
           {detail?.id === activeId && detail.error && <div className="ui-state" role="alert"><p>{detail.error}</p><button className="button-secondary" onClick={onSaved}>Try again</button></div>}
           {!activeId || (showingDraft && !content) ? <div className="ui-state"><h3>Start with a job description</h3><p>Tell the assistant about the role, seniority, and requirements.</p><button className="button-primary" onClick={() => changeTab('assistant')}>Open AI assistant</button></div> : content && (tab === 'description' ? <div className="markdown"><Markdown skipHtml>{content}</Markdown></div> : <Criteria profile={profile} />)}
