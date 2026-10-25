@@ -19,6 +19,7 @@ import CandidateInterviewPreview from '../features/interviews/CandidateInterview
 import Assessments from '../features/assessments/Assessments'
 import Dashboard from '../features/dashboard/Dashboard'
 import SidebarDrawer from '../components/motion/SidebarDrawer'
+import { useDialogBackdropClose } from '../components/useDialogBackdropClose'
 import { useSidebarIndicator, useWorkspaceMotion } from '../components/motion/useWorkspaceMotion'
 import type { RecruiterSession } from '../services/api'
 import { logoutRecruiter, restoreSession } from '../services/api'
@@ -37,6 +38,7 @@ const navigation = [
 
 
 export default function App() {
+  useDialogBackdropClose()
   const navigate = useNavigate()
   const location = useLocation()
   const isInterviewPreview = import.meta.env.DEV && location.pathname === '/interview-preview'
