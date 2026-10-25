@@ -2,9 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useRecruitmentJob } from '../interviews/useRecruitmentJob'
 import ShortlistWorkspace from '../interviews/ShortlistWorkspace'
-import { fetchSource, listApplications, listSources } from './api'
-import type { CandidateApplication, CVSource, CVSourceCheck, FetchResult } from './api'
-import { CVBatchParse } from './CVParsing'
+import { listApplications, listSources } from './api'
+import type { CandidateApplication, CVSource, CVSourceCheck } from './api'
 import ConnectionForm from './CVSourceSetup'
 import ScreeningWorkspace from './ScreeningWorkspace'
 import './CVScreening.css'
@@ -23,19 +22,24 @@ export default function CVScreening({ token, sourceChecks, checksError, refreshC
   const [revision, setRevision] = useState(0)
   const [sourceRevision, setSourceRevision] = useState(0)
   const [candidates, setCandidates] = useState<{ jobId: string; revision: number; applications: CandidateApplication[]; error: string } | null>(null)
-  const [fetching, setFetching] = useState(false)
-  const [feedback, setFeedback] = useState<{ jobId: string; result?: FetchResult; error?: string } | null>(null)
   const [sourceJob, setSourceJob] = useState<string | null>(null)
   const sourceDialog = useRef<HTMLDialogElement>(null)
   const shortlistDialog = useRef<HTMLDialogElement>(null)
   const shortlistOpen = params.get('shortlist') === '1' || location.hash === '#interview-shortlist'
-  const fetchLock = useRef(false)
   const job = picker.job
   const jobId = job?.id ?? ''
   const source = sources?.find(item => item.job_description_id === jobId)
   const connected = !!source && source.spreadsheet_id != null && source.sheet_tab_id != null
   const check = sourceChecks.find(item => item.job_description_id === jobId)
+  const importError = check?.error_code === 'CV_SOURCE_CONFIGURATION_INVALID'
+    ? 'Source setup is invalid. Check the selected Sheet tab and folder. The response Sheet requires exactly one Name, Email, CV File and Image column. The worker will retry in 1 minute.'
+    : check?.error_code === 'CV_SOURCE_IMPORT_INCOMPLETE'
+      ? 'Some CV files or Sheet rows could not be imported. Check the response columns, file links and access permissions. The worker will retry in 1 minute.'
+      : 'The last automatic import failed. Check source setup and access permissions. The worker will retry in 1 minute.'
   const current = candidates?.jobId === jobId && candidates.revision === revision ? candidates : null
+  const lastImportCheck = check?.last_checked_at
+    ? new Date(check.last_checked_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })
+    : null
 
   useEffect(() => {
     const dialog = shortlistDialog.current
@@ -65,31 +69,34 @@ export default function CVScreening({ token, sourceChecks, checksError, refreshC
       if (!controller.signal.aborted) setCandidates({ jobId, revision, applications, error: '' })
     }).catch(error => { if (!controller.signal.aborted) setCandidates({ jobId, revision, applications: [], error: error instanceof Error ? error.message : 'Could not load applications.' }) })
     return () => controller.abort()
-  }, [token, jobId, revision])
-
-  async function sync() {
-    if (!source || !connected || fetchLock.current) return
-    fetchLock.current = true; setFetching(true); setFeedback(null)
-    try { setFeedback({ jobId, result: await fetchSource(token, source.id) }) }
-    catch (error) { setFeedback({ jobId, error: error instanceof Error ? error.message : 'Application sync failed.' }) }
-    finally { setRevision(value => value + 1); refreshChecks(); fetchLock.current = false; setFetching(false) }
-  }
+  }, [token, jobId, revision, check?.last_checked_at])
   function openSource() { setSourceJob(jobId); sourceDialog.current?.showModal() }
   function linked(next: CVSource) { setSources(current => [...(current ?? []).filter(item => item.id !== next.id), next]); refreshChecks() }
 
   return <section className="cv-redesign">
-    <header className="redesign-header"><div><p className="workspace-eyebrow">Recruitment workspace</p><h1>CV Screening</h1><p className="muted">Review candidates against approved job criteria.</p></div><div className="screening-header-actions"><label>Job<select aria-label="Job" value={jobId} disabled={picker.loading || fetching} onChange={event => setParams({ job: event.target.value })}>{!job && <option value="">Select a job</option>}{picker.jobs.map(item => <option value={item.id} key={item.id}>{item.title} (JD {item.number})</option>)}</select></label></div></header>
+    <header className="redesign-header"><div><p className="workspace-eyebrow">Recruitment workspace</p><h1>CV Screening</h1><p className="muted">Review candidates against approved job criteria.</p></div><div className="screening-header-actions">
+      {job && <div className="screening-import-status">
+        <button type="button" className={`screening-import-indicator${check?.error_code && connected ? ' needs-attention' : ''}`} disabled={sources === null} onClick={openSource} aria-describedby="screening-import-help">
+          <span className={`screening-import-dot${connected ? ' is-connected' : ''}`} aria-hidden="true" />
+          {connected ? check?.error_code ? 'Import needs attention' : 'Auto-import · 1 min' : sources === null ? 'Checking source…' : 'Connect source'}
+        </button>
+        <span id="screening-import-help" className="screening-import-tooltip" role="tooltip">
+          {connected ? 'Checks the Sheet and CV folder every minute, even with this page closed.' : 'Connect a response Sheet and CV folder to import applications.'}
+          {connected && lastImportCheck && <span>Last checked: {lastImportCheck} (Bangladesh time)</span>}
+          <span>Click for source details.</span>
+        </span>
+      </div>}
+      <label>Job<select aria-label="Job" value={jobId} disabled={picker.loading} onChange={event => setParams({ job: event.target.value })}>{!job && <option value="">Select a job</option>}{picker.jobs.map(item => <option value={item.id} key={item.id}>{item.title} (JD {item.number})</option>)}</select></label>
+    </div></header>
     {(picker.error || sourceError) && <div className="screening-notice is-danger" role="alert"><p>{picker.error || sourceError}</p><button className="button-secondary" onClick={() => { picker.retry(); setSourceRevision(value => value + 1) }}>Try again</button></div>}
     {checksError && <p className="muted" role="status">Source notifications could not be refreshed. {checksError}</p>}
     {picker.loading && <div className="ui-state" role="status">Loading jobs…</div>}
     {!picker.loading && !picker.error && !job && <div className="ui-state"><h3>No approved jobs yet</h3><p>Create and approve a job description before screening candidates.</p></div>}
     {job && <>
-      {(!connected || !!check?.new_cv_count || !!check?.error_code) && <div className="screening-sync-bar"><div><strong>{check?.new_cv_count ? `${check.new_cv_count} new source files available to sync` : connected ? 'Application source connected' : sources === null ? 'Checking application source…' : 'Connect an application source'}</strong><p className="muted">{check?.error_code ? 'The last source check failed. Review source setup and access permissions.' : check?.last_success_at ? `Last checked ${new Date(check.last_success_at).toLocaleString('en-GB', { timeZone: 'Asia/Dhaka' })}` : connected ? 'Sync applications before screening newly submitted CVs.' : 'Connect the response Sheet and uploaded CV folder.'}</p></div></div>}
-      {feedback?.jobId === jobId && feedback.error && <div className="screening-notice is-danger" role="alert">{feedback.error}</div>}
-      {feedback?.jobId === jobId && feedback.result && <div className={`screening-notice${feedback.result.failed || feedback.result.errors.length || feedback.result.sheet?.errors.length ? ' is-warning' : ''}`} role="status"><strong>{feedback.result.failed || feedback.result.errors.length || feedback.result.sheet?.errors.length ? 'Sync finished with issues' : 'Sync completed'}</strong><p>{feedback.result.downloaded} files downloaded · {feedback.result.skipped} skipped · {feedback.result.failed} failed{feedback.result.sheet ? ` · ${feedback.result.sheet.rows_imported} responses imported` : ''}</p>{feedback.result.errors.map((error, index) => <p key={index}>{error.filename ?? 'CV file'}: {error.error_code.replaceAll('_', ' ').toLowerCase()}</p>)}{feedback.result.sheet?.errors.map((error, index) => <p key={`sheet-${index}`}>Sheet row {error.row_number ?? '?'}: {error.error_code.replaceAll('_', ' ').toLowerCase()}</p>)}</div>}
-      <ScreeningWorkspace key={job.id} token={token} jobId={job.id} jobTitle={job.title} applications={current?.applications ?? []} applicationsLoading={!current} applicationsError={current?.error ?? ''} connected={connected} syncing={fetching} sourceReady={sources !== null} onShortlist={() => setParams(current => { const next = new URLSearchParams(current); next.set('job', jobId); next.set('shortlist', '1'); return next })} onSync={() => void sync()} onSource={openSource} onReload={() => setRevision(value => value + 1)} />
+      {connected && check?.error_code && <p className="screening-notice is-warning" role="status">{importError}</p>}
+      <ScreeningWorkspace key={job.id} token={token} jobId={job.id} jobTitle={job.title} applications={current?.applications ?? []} applicationsLoading={!current} applicationsError={current?.error ?? ''} connected={connected} sourceReady={sources !== null} onShortlist={() => setParams(current => { const next = new URLSearchParams(current); next.set('job', jobId); next.set('shortlist', '1'); return next })} onSource={openSource} onReload={() => setRevision(value => value + 1)} />
     </>}
-    <dialog className="screening-dialog" ref={sourceDialog} aria-label="Application source setup"><header><h2>Source setup</h2><button className="button-secondary" onClick={() => sourceDialog.current?.close()}>Close</button></header>{job && sourceJob === jobId && <>{!connected ? <ConnectionForm key={jobId} token={token} job={job} source={source} onLinked={linked} /> : <><p className="muted">The response Sheet and CV folder are connected for {job.title}.</p><div className="screening-source-links"><a className="text-link" href={`https://drive.google.com/drive/folders/${encodeURIComponent(source!.drive_folder_id)}`} target="_blank" rel="noopener noreferrer">Open CV folder ↗</a><a className="text-link" href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(source!.spreadsheet_id!)}/edit#gid=${source!.sheet_tab_id}`} target="_blank" rel="noopener noreferrer">Open response Sheet ↗</a></div><p className="muted">Required response columns: Name, Email, CV File and Image. Timestamp is optional; extra fields are ignored.</p><CVBatchParse key={jobId} token={token} jobId={jobId} onFinished={() => setRevision(value => value + 1)} /></>}</>}</dialog>
+    <dialog className="screening-dialog" ref={sourceDialog} aria-label="Application source setup"><header><h2>Source setup</h2><button className="button-secondary" onClick={() => sourceDialog.current?.close()}>Close</button></header>{job && sourceJob === jobId && <>{!connected ? <ConnectionForm key={jobId} token={token} job={job} source={source} onLinked={linked} /> : <><p className="muted">The response Sheet and CV folder are connected for {job.title}.</p><div className="screening-source-links"><a className="text-link" href={`https://drive.google.com/drive/folders/${encodeURIComponent(source!.drive_folder_id)}`} target="_blank" rel="noopener noreferrer">Open CV folder ↗</a><a className="text-link" href={`https://docs.google.com/spreadsheets/d/${encodeURIComponent(source!.spreadsheet_id!)}/edit#gid=${source!.sheet_tab_id}`} target="_blank" rel="noopener noreferrer">Open response Sheet ↗</a></div><p className="muted">Required response columns: Name, Email, CV File and Image. Timestamp is optional; extra fields are ignored.</p><p className="muted">New applications are imported every minute. Use Screen applications to parse their CVs, match the criteria and calculate scores in one action.</p></>}</>}</dialog>
     <dialog className="screening-dialog is-wide" ref={shortlistDialog} aria-label="Interview shortlist" onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeShortlist() } }} onCancel={event => { event.preventDefault(); closeShortlist() }} onClose={closeShortlist}><header><h2>Interview shortlist</h2><button className="button-secondary" onClick={closeShortlist}>Close</button></header>{job && shortlistOpen && <ShortlistWorkspace key={job.id} token={token} job={job} />}</dialog>
   </section>
 }
