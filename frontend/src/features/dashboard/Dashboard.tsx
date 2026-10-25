@@ -34,12 +34,18 @@ function AssistantDock({ token, userId, onSaved }: { token: string; userId: stri
   }
   const onChatState = useCallback((_: unknown, working: boolean) => {
     setBusy(working)
-    if (!working && pendingMessage.current) {
+  }, [])
+  useEffect(() => {
+    if (!mounted || busy || !pendingMessage.current) return
+    // Let the chat finish mounting before sending. StrictMode replays mount
+    // effects; sending inside the child's state callback would be aborted.
+    const timer = setTimeout(() => {
       const message = pendingMessage.current
       pendingMessage.current = ''
-      chat.current?.send(message)
-    }
-  }, [])
+      if (message) chat.current?.send(message)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [mounted, busy])
   function collapse() {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) setOpen(false)
     else setClosing(true)
@@ -69,7 +75,7 @@ function AssistantDock({ token, userId, onSaved }: { token: string; userId: stri
         <button className="button-secondary" disabled={closing} aria-expanded={open} aria-controls="dashboard-chat" onClick={collapse}>Collapse ↓</button></>}
     </header>
     <div id="dashboard-chat" className="dashboard-chat" hidden={!open}>
-      {mounted && <RecruiterChat compact ref={chat} token={token} userId={userId} onSaved={onSaved}
+      {mounted && <RecruiterChat compact startFresh conversationScope="dashboard" ref={chat} token={token} userId={userId} onSaved={onSaved}
         onStateChange={onChatState} />}
     </div>
     {!open && <form className="field-focus-group" onSubmit={event => { event.preventDefault(); expand() }}>

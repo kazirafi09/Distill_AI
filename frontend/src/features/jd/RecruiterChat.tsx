@@ -25,6 +25,7 @@ type RecruiterChatProps = {
   onSaved: () => void
   interviewSessionId?: string
   interviewCandidateName?: string
+  conversationScope?: string
   startFresh?: boolean
   compact?: boolean
   ref?: Ref<RecruiterChatHandle>
@@ -45,6 +46,7 @@ export default function RecruiterChat({
   userId,
   onSaved,
   interviewSessionId,
+  conversationScope,
   startFresh = false,
   compact = false,
   ref,
@@ -58,9 +60,9 @@ export default function RecruiterChat({
     restoreError,
     resetConversation,
     retryRestore,
-  } = usePersistentAssistantConversation(token, userId, interviewSessionId ? `interview:${interviewSessionId}` : undefined, !startFresh)
+  } = usePersistentAssistantConversation(token, userId, interviewSessionId ? `interview:${interviewSessionId}` : conversationScope, !startFresh)
 
-  const draftStorageKey = `distill-ai:assistant-drafts:${userId}:${interviewSessionId ?? 'jobs'}`
+  const draftStorageKey = `distill-ai:assistant-drafts:${userId}:${interviewSessionId ?? conversationScope ?? 'jobs'}`
   const [drafts, setDrafts] = useState<Record<string, string>>(() => {
     try {
       const saved: unknown = JSON.parse(sessionStorage.getItem(draftStorageKey) ?? '{}')
@@ -202,7 +204,7 @@ export default function RecruiterChat({
         )
       }
     } finally {
-      if (!controller.signal.aborted) {
+      if (requestRef.current === controller) {
         requestRef.current = null
         setBusy(false)
         setPendingMessage(null)
@@ -218,6 +220,7 @@ export default function RecruiterChat({
     if (suggested) setInput(suggested)
 
     void runRequest(async (signal) => {
+      setPendingMessage(message)
       let current = conversation
 
       if (!current) {
@@ -229,7 +232,6 @@ export default function RecruiterChat({
         setConversation(current)
       }
 
-      setPendingMessage(message)
       return sendAssistantMessage(token, current, message, signal, interviewSessionId, text => {
         if (!signal.aborted) setReplyText(text)
       })
@@ -314,6 +316,7 @@ export default function RecruiterChat({
   return (
     <div className="jd-chat jd-assistant-layout">
       {!compact && <ConversationHistory token={token} activeId={conversation?.conversation_id}
+        jdOnly={Boolean(onReviewTab)}
         refreshKey={conversation?.checkpoint_id ?? 'new'} disabled={isBusy || Boolean(restoreError)}
         onSelect={(id) => { void runRequest((signal) => getAssistant(token, id, signal)) }} />}
       <ChatWindow
