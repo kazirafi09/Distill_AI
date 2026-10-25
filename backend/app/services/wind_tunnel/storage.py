@@ -280,9 +280,14 @@ class JobSnapshot:
     profile_version: int
 
 
-async def store_suggestion(db, run_id, owner_id, proposal: SuggestionProposal, finding_ids: list[str]):
+async def store_suggestion(db, run_id, owner_id, proposal: SuggestionProposal, finding_ids: list[str], *, basis="diagnostic", source_references=None):
     run = await owned_run(db, run_id, owner_id, lock=True, writable=True)
-    if not finding_ids or not set(finding_ids) <= {f["id"] for f in run.findings}:
+    if basis == "jd_quality":
+        from app.services.jd.suggestions import validate_quality_sources
+        if finding_ids:
+            raise ValueError("SUGGESTION_QUALITY_SCOPE_INVALID")
+        validate_quality_sources(run.snapshot, proposal, source_references or [])
+    elif basis != "diagnostic" or not finding_ids or not set(finding_ids) <= {f["id"] for f in run.findings}:
         raise ValueError("SUGGESTION_FINDINGS_NOT_IN_RUN")
     preview_suggestion(JobSnapshot(**{k: run.snapshot[k] for k in ("content", "screening_profile", "profile_version")}),
                        proposal, run.source_version)

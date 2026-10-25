@@ -170,14 +170,17 @@ def build_nodes(run_id, owner_id, token, *, root, session_factory, saver=False, 
         return {"stage": "analysis_complete"}
 
     async def draft_proposals(state):
+        await stage("generate_suggestions")
         result = await suggestions.draft_suggestions(run_id, owner_id, token, root=root, session_factory=factory)
         return {"stage": "generate_suggestions", "suggestion_status": result["status"]}
 
     async def validate_proposals(state):
+        await stage("validate_suggestions")
         result = await suggestions.review_suggestions(run_id, owner_id, token, root=root, session_factory=factory)
         return {"stage": "validate_suggestions", "suggestion_status": result["status"]}
 
     async def persist_proposals(state):
+        await stage("suggestions_complete")
         result = await suggestions.persist_suggestions(run_id, owner_id, token, root=root, session_factory=factory)
         return {"stage": "suggestions_complete", "suggestion_status": result["status"]}
 

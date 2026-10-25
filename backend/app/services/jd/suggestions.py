@@ -30,6 +30,10 @@ class DescriptionPatch(Contract):
     kind: Literal["description"]
     expected: str = Field(min_length=1, max_length=40000)
     proposed: str = Field(min_length=1, max_length=40000)
+    # Server-resolved ranges distinguish identical passages in the same snapshot.
+    # Legacy suggestions without ranges retain their unique-text lookup.
+    start: int | None = Field(default=None, ge=0, strict=True)
+    end: int | None = Field(default=None, ge=0, strict=True)
 
 
 class CriterionPatch(Contract):
@@ -87,10 +91,15 @@ No recruiter review, SQL mutation, or model request occurs here.
         if patch.expected == patch.proposed:
             raise HTTPException(422, "A suggestion must change its target value.")
         if isinstance(patch, DescriptionPatch):
-            if narrative.count(patch.expected) != 1:
-                raise HTTPException(422, "Suggested wording must identify exactly one passage.")
-            start = narrative.index(patch.expected)
-            end = start + len(patch.expected)
+            if patch.start is not None or patch.end is not None:
+                start, end = patch.start, patch.end
+                if start is None or end is None or not 0 <= start < end <= len(narrative) or narrative[start:end] != patch.expected:
+                    raise HTTPException(422, "Suggested wording does not match the saved source range.")
+            else:
+                if narrative.count(patch.expected) != 1:
+                    raise HTTPException(422, "Suggested wording must identify exactly one passage.")
+                start = narrative.index(patch.expected)
+                end = start + len(patch.expected)
             if any(start < old_end and old_start < end for old_start, old_end, _ in replacements):
                 raise HTTPException(422, "Suggested description changes overlap.")
             replacements.append((start, end, patch.proposed))
@@ -126,3 +135,23 @@ No recruiter review, SQL mutation, or model request occurs here.
     if contains_internal_metadata(narrative + "\n\n" + public_profile_section(checked)):
         raise HTTPException(422, "Keep internal screening metadata out of public wording.")
     return ManualEdit(edit_version=source_version, content=narrative, screening_profile=incoming)
+
+
+def validate_quality_sources(snapshot, proposal, references):
+    criteria = {c['id']: c for c in snapshot['screening_profile']['criteria']}
+    if not references:
+        raise ValueError('SUGGESTION_SOURCE_REFERENCE_INVALID')
+    for ref in references:
+        text = snapshot['content'] if ref['kind'] == 'description' else criteria.get(ref.get('criterion_id'), {}).get('text', '')
+        if not ref.get('quote') or ref['quote'] not in text:
+            raise ValueError('SUGGESTION_SOURCE_REFERENCE_INVALID')
+    for patch in proposal.patches:
+        if patch.kind == 'description':
+            if not any(r['kind'] == 'description' and r['quote'] in patch.expected for r in references):
+                raise ValueError('SUGGESTION_SOURCE_REFERENCE_INVALID')
+        elif patch.kind == 'criterion' and patch.field == 'text':
+            if not any(r['kind'] == 'criterion' and r.get('criterion_id') == patch.criterion_id for r in references):
+                raise ValueError('SUGGESTION_SOURCE_REFERENCE_INVALID')
+        else:
+            # Changes to eligibility, priority and weights need diagnostic grounding.
+            raise ValueError('SUGGESTION_QUALITY_SCOPE_INVALID')
