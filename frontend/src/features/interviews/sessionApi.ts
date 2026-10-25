@@ -53,6 +53,10 @@ export type CandidateInterviewStatus = {
   status: InterviewSessionStatus | 'waiting_for_recruiter'
   can_join: boolean
   waiting_for_admission?: boolean
+  join_opens_at?: string
+  starts_at?: string
+  ends_at?: string
+  display_timezone?: string
 }
 
 function sessionPath(jobId: string, applicationId: string) {

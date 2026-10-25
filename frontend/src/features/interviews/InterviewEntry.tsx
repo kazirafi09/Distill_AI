@@ -8,6 +8,7 @@ import { joinCandidateInterview, loadCandidateInterviewStatus } from './sessionA
 import type { CandidateInterviewStatus, RoomCredentials } from './sessionApi'
 import CandidateInterviewView from './CandidateInterviewView'
 import type { CandidatePhase } from './CandidateInterviewView'
+import type { InvitationSchedule } from './api'
 
 type Entry = {
   candidate_name: string
@@ -15,6 +16,7 @@ type Entry = {
   instructions: string
   expires_at: string
   interview_ready: boolean
+  schedule?: InvitationSchedule | null
 }
 
 export default function InterviewEntry() {
@@ -133,10 +135,12 @@ export default function InterviewEntry() {
       : phase === 'unavailable' ? 'Invitation unavailable' : phase === 'checking' ? 'Checking invitation…'
         : phase === 'devices' ? 'Check your devices' : !status ? 'Checking interview status…'
           : status.can_join ? 'The recruiter admitted you. You can join now.'
+            : status.status === 'scheduled' && status.join_opens_at ? `Joining opens ${new Date(status.join_opens_at).toLocaleString()}.`
             : status.status === 'waiting_for_recruiter' ? 'Waiting for the recruiter to start the interview.'
               : 'Waiting for the recruiter to admit you.'
   return <CandidateInterviewView phase={phase} statusText={statusText} jobTitle={entry?.job_title}
     instructions={entry?.instructions} expiresAt={entry?.expires_at} busy={busy}
+    schedule={entry?.schedule}
     error={[error, pollError && `Status check failed: ${pollError}`].filter(Boolean).join(' ')} notice={message}
     onJoin={() => void join()} onRecheck={() => setCheckingDevices(true)}
     canReturnToWaiting={!!choices} onWaiting={() => setCheckingDevices(false)}

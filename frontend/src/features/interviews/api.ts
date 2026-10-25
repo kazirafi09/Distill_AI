@@ -69,6 +69,11 @@ export type SavedShortlist = {
 }
 
 export type InvitationMode = 'new' | 'retry_failed' | 'reissue'
+export type InvitationSchedule = { starts_at: string; ends_at: string; display_timezone: string }
+export type InvitationOptions = {
+  join_early_minutes: number
+  recipients: { application_id: string; name: string; email: string; schedule: InvitationSchedule | null }[]
+}
 export type InvitationPreview = {
   batch_id: string
   preview_key: string
@@ -80,7 +85,8 @@ export type InvitationPreview = {
   link_days: number
   send_count: number
   mode: InvitationMode
-  recipients: { application_id: string; name: string; email: string; action: string; reason: string }[]
+  include_calendar: boolean
+  recipients: { application_id: string; name: string; email: string; action: string; reason: string; schedule: InvitationSchedule | null; subject: string; body: string }[]
 }
 
 export type InvitationStatus = {
@@ -93,11 +99,17 @@ export type InvitationStatus = {
   error_code: string | null
   link_status: string
   expires_at: string
+  schedule?: InvitationSchedule | null
 }
 
-export function prepareInvitations(token: string, jobId: string, mode: InvitationMode) {
+export function loadInvitationOptions(token: string, jobId: string, signal?: AbortSignal) {
+  return apiRequest<InvitationOptions>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations/options`, { token, signal })
+}
+
+export function prepareInvitations(token: string, jobId: string, mode: InvitationMode,
+  schedules: (InvitationSchedule & { application_id: string })[] = [], includeCalendar = true) {
   return apiRequest<InvitationPreview>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations/preview`, {
-    method: 'POST', token, body: { mode },
+    method: 'POST', token, body: { mode, schedules, include_calendar: includeCalendar },
   })
 }
 

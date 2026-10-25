@@ -1,5 +1,7 @@
 import type { ReactNode, Ref } from 'react'
 import { CallIcon } from './InterviewRoom'
+import type { InvitationSchedule } from './api'
+import { scheduleSummary } from './invitationScheduleView'
 import './InterviewStage.css'
 import './CandidateInterview.css'
 
@@ -9,6 +11,7 @@ type Props = {
   jobTitle?: string
   instructions?: string
   expiresAt?: string
+  schedule?: InvitationSchedule | null
   statusText: string
   error?: string
   notice?: string
@@ -64,6 +67,7 @@ export default function CandidateInterviewView({ waitingVideoRef, ...props }: Pr
           </div>}
         </section>
         <aside className="candidate-info">
+          {props.schedule && !inCall && <section className="candidate-card"><p className="candidate-card-kicker">Your scheduled time</p><p>{scheduleSummary(props.schedule)}</p><p>Joining opens 10 minutes before the start. Please wait for your interviewer to admit you.</p></section>}
           {props.verification}
           <section className="candidate-card"><p className="candidate-card-kicker">{inCall ? 'In this interview' : 'Before you join'}</p>
             <h2>{props.jobTitle ?? 'Your upcoming conversation'}</h2>
