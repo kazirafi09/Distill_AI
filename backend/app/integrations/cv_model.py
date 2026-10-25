@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.integrations.gemini_rate_limit import acquire_gemini_slot, pause_gemini_requests, retry_delay
 
 API = "https://generativelanguage.googleapis.com/v1beta/models/"
-ADAPTER_VERSION = "cv-model-transport-1"
+ADAPTER_VERSION = "cv-model-transport-2"
 
 
 @dataclass(frozen=True)
@@ -46,8 +46,16 @@ def gemini_schema(schema):
             return node
         if "$ref" in node:
             return convert(definitions[node["$ref"].split("/")[-1]])
-        return {key: ({name: convert(value) for name, value in item.items()} if key == "properties" else convert(item))
-                for key, item in node.items() if key in allowed}
+        result = {key: ({name: convert(value) for name, value in item.items()} if key == "properties" else convert(item))
+                  for key, item in node.items() if key in allowed}
+        # Pydantic discriminated unions use oneOf and Literal uses const.
+        # Dropping these turns exact-edit patches into unconstrained objects.
+        # Gemini supports anyOf/enum; Python still enforces exclusivity afterward.
+        if "oneOf" in node:
+            result["anyOf"] = convert(node["oneOf"])
+        if "const" in node:
+            result["enum"] = [node["const"]]
+        return result
     return convert(schema)
 
 

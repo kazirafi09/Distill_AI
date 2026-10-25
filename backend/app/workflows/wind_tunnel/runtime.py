@@ -13,10 +13,10 @@ from app.services.cv.screening import processing_versions
 from app.services.wind_tunnel import generation, storage, suggestions
 from app.services.wind_tunnel.evaluation import EVALUATOR_VERSION
 from app.services.wind_tunnel.indexing import INDEX_ADAPTER_VERSION
-from app.services.wind_tunnel.policy import REPETITIONS, repetitions_for
+from app.services.wind_tunnel.policy import REPETITIONS, personas_for, repetitions_for
 from app.workflows.wind_tunnel.graph import build_wind_tunnel_graph
 
-ORCHESTRATOR_VERSION = "synthetic-analysis-2"
+ORCHESTRATOR_VERSION = "synthetic-analysis-3"
 
 
 async def analysis_versions():
@@ -39,7 +39,7 @@ async def run_analysis(run_id, owner_id, *, root=None, session_factory=None, sav
         reuse_analysis = previous.get("status") in {"completed", "completed_with_issues"} and include_suggestions
         if reuse_analysis:
             report = run.resources.get("evaluations", {}).get(previous.get("evaluation_id"), {})
-            reuse_analysis = report.get("coverage", {}).get("completed_assessments") == len(generation.PERSONAS) * repetitions_for(run.versions)
+            reuse_analysis = report.get("coverage", {}).get("completed_assessments") == len(personas_for(run.versions)) * repetitions_for(run.versions)
         if include_suggestions and run.versions.get("suggestions") != suggestions.config_for(run.versions):
             raise ValueError("SUGGESTION_CONFIG_MISMATCH")
         if include_suggestions and proposal_state.get("status") in {"completed", "no_suggestions"}:

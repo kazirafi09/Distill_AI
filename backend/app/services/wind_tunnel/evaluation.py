@@ -6,9 +6,9 @@ from statistics import median
 
 from app.services.cv.scoring import calculate_scores, rank_assessments, validate_scoring_profile
 from app.services.wind_tunnel import storage
-from app.services.wind_tunnel.generation import PERSONAS
+from app.services.wind_tunnel.policy import personas_for
 
-EVALUATOR_VERSION = "synthetic-evaluation-2"
+EVALUATOR_VERSION = "synthetic-evaluation-3"
 
 
 def rank(items, profile, rubric):
@@ -30,10 +30,11 @@ def evaluate(snapshot, plan, assessments, *, repetitions=1):
     if type(repetitions) is not int or repetitions not in {1, 3}:
         raise ValueError("SYNTHETIC_REPETITIONS_INVALID")
     passes = range(1, repetitions + 1)
+    personas = personas_for({"generation": {"persona_keys": list(plan["personas"])}})
     profile = validate_scoring_profile(snapshot["screening_profile"], snapshot["profile_version"])
     rubric, criteria = snapshot["rubric"], profile["criteria"]
     pairs = [(a["persona"], a["repetition"]) for a in assessments]
-    if len(set(pairs)) != len(pairs) or any(p not in PERSONAS or r not in passes for p, r in pairs):
+    if len(set(pairs)) != len(pairs) or any(p not in personas or r not in passes for p, r in pairs):
         raise ValueError("SYNTHETIC_COHORT_IDENTITY_INVALID")
     completed = [a for a in assessments if a["status"] == "completed"]
     for item in completed:
@@ -42,13 +43,14 @@ def evaluate(snapshot, plan, assessments, *, repetitions=1):
     cohorts = []
     for repetition in passes:
         items = [a for a in completed if a["repetition"] == repetition]
-        missing = [p for p in PERSONAS if not any(a["persona"] == p for a in items)]
+        missing = [p for p in personas if not any(a["persona"] == p for a in items)]
         cohorts.append({"repetition": repetition, "status": "inconclusive" if missing else "complete",
                         "missing_personas": missing, "ranks": [] if missing else rank(items, profile, rubric)})
     complete_cohorts = [c for c in cohorts if c["status"] == "complete"]
-    target = plan["personas"]["near_miss"]
+    # Only historical three-persona plans have a missing-requirement probe.
+    target = plan["personas"].get("near_miss")
     findings, observations, summaries = [], [], {}
-    for persona in PERSONAS:
+    for persona in personas:
         items = [a for a in completed if a["persona"] == persona]
         scores = [Decimal(a["score"]["aggregate"]) for a in items]
         ranked = [next(r for r in c["ranks"] if r["persona"] == persona) for c in complete_cohorts]
@@ -63,7 +65,7 @@ def evaluate(snapshot, plan, assessments, *, repetitions=1):
         for criterion in criteria:
             matches = [(a, next(m for m in a["matches"] if m["requirement_id"] == criterion["id"])) for a in items]
             decisions = [m["decision"] for _, m in matches]
-            missing_probe = persona == "near_miss" and criterion["id"] == target["criterion_id"]
+            missing_probe = target is not None and persona == "near_miss" and criterion["id"] == target["criterion_id"]
             outcomes = [d != "met" if missing_probe else d == "met" for d in decisions]
             status = ("observed" if len(decisions) == repetitions and len(set(decisions)) == 1 else "inconclusive") if persona == "keyword_stuffer" else expectation(outcomes, repetitions)
             if len(set(decisions)) > 1:
@@ -80,7 +82,7 @@ def evaluate(snapshot, plan, assessments, *, repetitions=1):
                     summary=f"{persona}: {len(matches)}/{repetitions} criterion observations; {status}. Decisions: {', '.join(decisions)}. System diagnostic assumption, not proof of a JD defect.",
                     references=[storage.EvidenceReference(assessment_id=a["assessment_id"], requirement_id=criterion["id"]) for a, _ in matches]))
     comparisons = []
-    for left, right in combinations(PERSONAS, 2):
+    for left, right in combinations(personas, 2):
         gaps = []
         for cohort in complete_cohorts:
             by_persona = {r["persona"]: r for r in cohort["ranks"]}
@@ -114,8 +116,8 @@ def evaluate(snapshot, plan, assessments, *, repetitions=1):
                             "baseline_top": before, "top": after, "top_set_changed": before != after})
         vectors.append({"donor": donor, "recipient": recipient, "weights": {d: str(w) for d, w in weights.items()}, "cohorts": results})
     return {"version": EVALUATOR_VERSION, "kind": "system_diagnostic_assumptions",
-        "status": "completed" if len(completed) == len(PERSONAS) * repetitions else "completed_with_issues",
-        "coverage": {"expected_assessments": len(PERSONAS) * repetitions, "completed_assessments": len(completed), "complete_cohorts": len(complete_cohorts)},
+        "status": "completed" if len(completed) == len(personas) * repetitions else "completed_with_issues",
+        "coverage": {"expected_assessments": len(personas) * repetitions, "completed_assessments": len(completed), "complete_cohorts": len(complete_cohorts)},
         "cohorts": cohorts, "personas": summaries, "criterion_observations": observations, "comparisons": comparisons,
         "weight_sensitivity": {"conditional_on_fixed_matches": True, "transfer_points": 5, "tested_vectors": vectors,
             "finding_ids": [f.id for f in findings]},
