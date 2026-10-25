@@ -5,6 +5,7 @@ export type FindingSection = typeof findingSections[number]
 export const findingLabels: Record<FindingSection, string> = { strengths: 'Strength', weaknesses: 'Weakness', evidence_gaps: 'Gap' }
 
 export function savedReport(data: Result): F6Report | null {
+  if (data.run.kind !== 'f6' || data.run.status !== 'completed') return null
   const result = data.result
   return result?.findings && result.component_scores && result.source_registry && result.provenance
     ? result as F6Report : null
@@ -25,11 +26,11 @@ export function candidateHistory(run: Run, runs: Run[]) {
 
 export function cvCoverage(sources: F6Source[], criterionId: string) {
   const decisions = new Set(sources.filter(source => source.kind === 'cv' && source.criterion_ids.includes(criterionId)).map(source => source.decision))
-  if (decisions.has('unmet')) return { label: 'Weakness', tone: 'weaknesses' }
-  if (decisions.has('insufficient_evidence')) return { label: 'Gap', tone: 'evidence_gaps' }
-  if (decisions.has('partially_met')) return { label: 'Partial support', tone: 'evidence_gaps' }
-  if (decisions.has('met')) return { label: 'Strength', tone: 'strengths' }
-  return { label: 'Not available', tone: 'unknown' }
+  if (decisions.has('unmet')) return { label: 'CV evidence does not meet criterion', tone: 'weaknesses' }
+  if (decisions.has('insufficient_evidence')) return { label: 'Insufficient CV evidence', tone: 'evidence_gaps' }
+  if (decisions.has('partially_met')) return { label: 'Partially documented', tone: 'evidence_gaps' }
+  if (decisions.has('met')) return { label: 'Documented in CV', tone: 'strengths' }
+  return { label: 'CV detail unavailable', tone: 'unknown' }
 }
 
 export function numericScore(value: number | string | null | undefined) {

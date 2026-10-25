@@ -40,6 +40,20 @@
 .ca-count { display: inline-block; padding: 1px 7px; border-radius: 15px; background: #edf0f3; color: #263445; font-size: 11px; font-weight: 650; }
 .ca-content { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding-bottom: 24px; }
 .ca-card { border: 1px solid #dce2eb; border-radius: 14px; background: white; padding: 16px; min-width: 0; }
+.ca-feature-states { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.ca-feature-states > button { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 10px 12px; border: 1px solid #dce2eb; border-radius: 10px; background: white; text-align: left; cursor: pointer; }
+.ca-feature-states strong { font-size: 12px; font-weight: 600; }
+.ca-feature-states > button:hover { border-color: #07815f; }
+.ca-not-generated { grid-column: 1 / -1; }
+.ca-dimension-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.ca-dimension-summary > span { border-bottom: 2px solid #dce2eb; padding-bottom: 8px; font-size: 12px; }
+.ca-dimension-summary small { display: block; font-size: 11px; color: #526075; margin-top: 4px; }
+.ca-criterion-priority { display: block; color: #526075; font-size: 10px; margin-top: 5px; text-transform: uppercase; }
+.ca-coverage-detail { max-width: 900px; padding: 4px 8px; }
+.ca-insights-panel .post-interview-assessment { margin: 0; padding: 18px; border: 1px solid #dce2eb; border-radius: 14px; background: white; }
+.ca-insights-panel[hidden] { display: none; }
+@media (max-width: 1050px) { .ca-feature-states { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .ca-feature-states { display: flex; overflow-x: auto; padding-bottom: 4px; } .ca-feature-states > button { min-width: 155px; flex-shrink: 0; flex-direction: column; align-items: flex-start; } .ca-dimension-summary { grid-template-columns: 1fr 1fr; } .ca-insights-panel .post-interview-assessment { padding: 14px; } }
 .candidate-assessment h3, .ca-drawer h3 { font-size: 14px; font-weight: 700; line-height: 1.4; }
 .ca-muted { color: #526075; font-size: 12px; line-height: 1.6; }
 .ca-summary-scores { display: grid; grid-template-columns: minmax(240px, .85fr) minmax(0, 2.2fr); gap: 14px; }
@@ -143,6 +157,7 @@ button.ca-citation { cursor: pointer; }
 .ca-verification-list p { color: #475569; line-height: 1.6; font-size: 12px; margin-top: 3px; }
 .ca-verification-list summary { font-size: 11px; }
 .ca-empty { padding: 24px 0; color: #526075; line-height: 1.7; }
+.ca-card.ca-empty { padding: 24px; }
 .ca-progress { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 12px; background: #eaf3ff; border-radius: 9px; margin-top: 12px; }
 .ca-progress progress { width: 100%; accent-color: #07815f; }
 .ca-drawer-overlay { position: fixed; inset: 0; background: #14203266; z-index: 1000; display: flex; justify-content: flex-end; }
@@ -181,6 +196,9 @@ button.ca-citation { cursor: pointer; }
 .ca-history > button.selected { border-color: #07815f; background: #e6f8f1; }
 .ca-history strong { font-size: 14px; font-weight: 650; }
 .ca-history span { font-size: 12px; color: #526075; }
+.ca-source-versions dl { display: grid; gap: 8px; font-size: 12px; }
+.ca-source-versions dt { color: #526075; margin-top: 10px; }
+.ca-source-versions dd { overflow-wrap: anywhere; margin: 0; }
 .candidate-assessment :is(button, select, summary):focus-visible, .ca-drawer :is(button, select, summary):focus-visible { outline: 2px solid #147d65; outline-offset: 3px; }
 .assessments-page:has(.candidate-assessment) > .recruitment-page-header { display: none; }
 .assessments-page:has(.candidate-assessment) { padding-top: 0; height: 100%; }

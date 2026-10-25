@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { candidateHistory, cvCoverage, findingsFor, formatScoreValue, numericScore } from '../src/features/assessments/assessmentView.ts'
+import { candidateHistory, cvCoverage, findingsFor, formatScoreValue, numericScore, savedReport } from '../src/features/assessments/assessmentView.ts'
 
 test('coverage uses CV decisions rather than interview weaknesses for the same criterion', () => {
   const sources = [{ kind: 'cv', criterion_ids: ['python'], decision: 'met' },
     { kind: 'interview', criterion_ids: ['python'], score_100: 0, decision: 'unmet' }]
-  assert.deepEqual(cvCoverage(sources, 'python'), { label: 'Strength', tone: 'strengths' })
-  assert.equal(cvCoverage(sources, 'unasked').label, 'Not available')
-  assert.equal(cvCoverage([{ kind: 'cv', criterion_ids: ['python'], decision: 'partially_met' }], 'python').label, 'Partial support')
+  assert.deepEqual(cvCoverage(sources, 'python'), { label: 'Documented in CV', tone: 'strengths' })
+  assert.equal(cvCoverage(sources, 'unasked').label, 'CV detail unavailable')
+  assert.equal(cvCoverage([{ kind: 'cv', criterion_ids: ['python'], decision: 'partially_met' }], 'python').label, 'Partially documented')
 })
 
 test('saved run history does not include another candidate or substitute a missing selected run', () => {
@@ -36,4 +36,14 @@ test('long stored decimals display at most two places without changing zero or m
   assert.equal(formatScoreValue('100.0000'), '100')
   assert.equal(formatScoreValue(0), '0')
   assert.equal(formatScoreValue(null), '—')
+})
+
+
+test('withheld consolidation findings are never presented as a published assessment', () => {
+  const result = {findings: {}, component_scores: {}, source_registry: [], provenance: {}}
+  for (const status of ['queued', 'running', 'failed', 'needs_review']) {
+    assert.equal(savedReport({run: {kind: 'f6', status}, result}), null)
+  }
+  assert.equal(savedReport({run: {kind: 'f5', status: 'completed'}, result}), null)
+  assert.equal(savedReport({run: {kind: 'f6', status: 'completed'}, result}), result)
 })

@@ -3,8 +3,9 @@ import { apiRequest, ApiError } from '../../services/api'
 import { ActionButton, Notice, StatusBadge } from '../../components/recruitment/RecruitmentUI'
 import './InterviewScoringSettings.css'
 
-const performanceDimensions = ['technical_competency', 'communication', 'response_relevance', 'problem_solving', 'experience_depth', 'job_alignment'] as const
-export type PerformanceDimension = typeof performanceDimensions[number]
+import { performanceDimensions } from './performanceDimensions'
+import type { PerformanceDimension } from './performanceDimensions'
+export type { PerformanceDimension } from './performanceDimensions'
 export type InterviewPolicy = { weights: Record<PerformanceDimension, number>; minimum_assessed_dimensions: number; essential_dimensions: PerformanceDimension[] }
 type Settings = { revision: number; policy: InterviewPolicy; default_policy: InterviewPolicy; job: {title: string; requirements: string} }
 const labels: Record<PerformanceDimension, string> = {
