@@ -47,8 +47,9 @@ async def create_conversation(request: Request, user: Recruiter, db: DatabaseSes
 async def list_conversations(
     request: Request, user: Recruiter, db: DatabaseSession,
     limit: int = Query(default=20, ge=1, le=100), offset: int = Query(default=0, ge=0),
+    jd_only: bool = Query(default=False),
 ):
-    return await list_assistant_conversations(db, request.app.state.assistant_graph, user.id, limit=limit, offset=offset)
+    return await list_assistant_conversations(db, request.app.state.assistant_graph, user.id, limit=limit, offset=offset, jd_only=jd_only)
 
 
 @router.get("/conversations/{conversation_id}")

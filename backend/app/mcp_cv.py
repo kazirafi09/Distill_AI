@@ -6,6 +6,8 @@ Also mounted at /mcp/ on the existing API. No workflow-to-MCP recursion.
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from uuid import UUID
+from datetime import datetime, timezone
+from typing import Literal
 import jwt
 from pydantic import BaseModel, Field
 
@@ -23,10 +25,26 @@ from app.core.security import ALGORITHM
 from app.db.session import SessionFactory
 from app.services.cv.parsing import get_cv_profile as retrieve, parse_cv as process
 from app.services.cv.profile_schema import CVParsingResponse
+from app.integrations.cv_results_mcp import ResultsClaims, RESULTS_AUDIENCE
+from app.models.user import User
+from app.models.auth_session import AuthSession
 
 recruiter_context: ContextVar[UUID] = ContextVar("cv_mcp_recruiter")
 evidence_assessment_context: ContextVar[UUID | None] = ContextVar("cv_mcp_assessment", default=None)
-mcp = FastMCP("Distill AI CV Parsing", stateless_http=True, json_response=True,
+results_job_context: ContextVar[UUID | None] = ContextVar("cv_mcp_results_job", default=None)
+
+
+class ScopedCVMCP(FastMCP):
+    async def list_tools(self):
+        tools = await super().list_tools()
+        if results_job_context.get() is not None:
+            return [tool for tool in tools if tool.name == "get_screening_results"]
+        if evidence_assessment_context.get() is not None:
+            return [tool for tool in tools if tool.name == "search_cv_evidence"]
+        return tools
+
+
+mcp = ScopedCVMCP("Distill AI CV Parsing", stateless_http=True, json_response=True,
               streamable_http_path="/", transport_security=TransportSecuritySettings(
                   enable_dns_rebinding_protection=True,
                   allowed_hosts=["localhost:*", "127.0.0.1:*", "backend:*", "host.docker.internal:*"],
@@ -48,6 +66,8 @@ async def get_cv_profile(file_version_id: str) -> CVParsingResponse:
 
 
 def require_general_tools():
+    if results_job_context.get() is not None:
+        raise ValueError("This credential permits reading screening results only.")
     if evidence_assessment_context.get() is not None:
         raise ValueError("This credential permits scoped evidence retrieval only.")
 
@@ -67,6 +87,8 @@ class ScreeningToolResponse(BaseModel):
 @mcp.tool(structured_output=True)
 async def search_cv_evidence(job_id: str, application_id: str, query: str) -> EvidenceResponse:
     """Retrieve owned application evidence from exact assessed versions; distances are not scores."""
+    if results_job_context.get() is not None:
+        raise ValueError("This credential permits reading screening results only.")
     from app.services.cv.indexing import search_evidence
     return EvidenceResponse.model_validate(await search_evidence(UUID(job_id), UUID(application_id), query,
         recruiter_context.get(), evidence_assessment_context.get()))
@@ -81,11 +103,29 @@ async def start_job_screening(job_id: str) -> ScreeningToolResponse:
 
 
 @mcp.tool(structured_output=True)
-async def get_screening_results(job_id: str) -> ScreeningToolResponse:
-    """Read current ranks, scores, evidence, incomplete results and outdated history."""
-    require_general_tools()
+async def get_screening_results(job_id: str, limit: int | None = None, offset: int = 0,
+                                view: Literal["ranked", "issues", "all"] = "ranked") -> ScreeningToolResponse:
+    """Read saved results. Supply limit (1–20) for a bounded ranked/issues/all summary.
+
+    Omitting limit preserves the full-results contract for existing clients.
+    Delegated chatbot credentials always receive a bounded summary.
+    """
+    scoped_job = results_job_context.get()
+    if scoped_job is not None:
+        if UUID(job_id) != scoped_job:
+            raise ValueError("This credential does not permit results for another job.")
+        if limit is None:
+            limit = 5
+    else:
+        require_general_tools()
+    if limit is not None and (not 1 <= limit <= 20 or not 0 <= offset <= 10000):
+        raise ValueError("Invalid results pagination.")
     from app.services.cv.screening import get_screening_results as results
-    return ScreeningToolResponse(result=await results(UUID(job_id), recruiter_context.get()))
+    result = await results(UUID(job_id), recruiter_context.get())
+    if limit is not None:
+        from app.services.cv.result_summary import summarize_results
+        result = summarize_results(result, limit=limit, offset=offset, view=view)
+    return ScreeningToolResponse(result=result)
 
 
 class RecruiterAuth:
@@ -98,28 +138,48 @@ class RecruiterAuth:
         headers = dict(scope.get("headers", []))
         authorization = headers.get(b"authorization", b"").decode("latin-1")
         scheme, _, token = authorization.partition(" ")
+        delegated_job = None
         try:
             if scheme.lower() != "bearer" or not token:
                 raise HTTPException(401, "Recruiter authentication required.")
             async with SessionFactory() as db:
-                user = await get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db)
+                claims = jwt.decode(token, get_settings().jwt_secret_key.get_secret_value(), algorithms=[ALGORITHM], options={"verify_aud": False})
+                if claims.get("aud") == RESULTS_AUDIENCE:
+                    claims = jwt.decode(token, get_settings().jwt_secret_key.get_secret_value(), algorithms=[ALGORITHM], audience=RESULTS_AUDIENCE,
+                        options={"require": ["sub", "iat", "exp", "aud", "conversation_id", "job_id", "tool"]})
+                    if claims["exp"] - claims["iat"] > 120:
+                        raise ValueError("Delegated credential lifetime is too long.")
+                    delegated = ResultsClaims.model_validate(claims)
+                    user = await db.get(User, delegated.recruiter_id)
+                    if not user or not user.is_active:
+                        raise HTTPException(403, "Active recruiter access required.")
+                    if delegated.sid is not None:
+                        session = await db.get(AuthSession, delegated.sid)
+                        if not session or session.user_id != user.id or session.expires_at <= datetime.now(timezone.utc):
+                            raise HTTPException(401, "Browser session is no longer active.")
+                    from app.services.assistant.conversations import get_owned_assistant
+                    await get_owned_assistant(db, user.id, delegated.conversation_id)
+                    delegated_job = delegated.job_id
+                else:
+                    user = await get_current_user(HTTPAuthorizationCredentials(scheme="Bearer", credentials=token), db)
                 if user.role != "recruiter":
                     raise HTTPException(403, "Recruiter access required.")
                 recruiter_id = user.id
-                claims = jwt.decode(token, get_settings().jwt_secret_key.get_secret_value(), algorithms=[ALGORITHM])
-                assessment_id = UUID(claims["cv_evidence_assessment"]) if claims.get("cv_evidence_assessment") else None
+                assessment_id = UUID(claims["cv_evidence_assessment"]) if delegated_job is None and claims.get("cv_evidence_assessment") else None
         except HTTPException as exc:
             return await JSONResponse({"detail": exc.detail}, status_code=exc.status_code,
                                       headers={"WWW-Authenticate": "Bearer"})(scope, receive, send)
-        except (jwt.InvalidTokenError, ValueError):
+        except (jwt.InvalidTokenError, ValueError, TypeError):
             return await JSONResponse({"detail": "Invalid recruiter credential."}, status_code=401)(scope, receive, send)
         context_token = recruiter_context.set(recruiter_id)
         assessment_token = evidence_assessment_context.set(assessment_id)
+        results_token = results_job_context.set(delegated_job)
         try:
             await self.app(scope, receive, send)
         finally:
             recruiter_context.reset(context_token)
             evidence_assessment_context.reset(assessment_token)
+            results_job_context.reset(results_token)
 
 
 transport_app = RecruiterAuth(mcp.streamable_http_app())
