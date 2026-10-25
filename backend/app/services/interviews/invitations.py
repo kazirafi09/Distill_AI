@@ -14,7 +14,9 @@ from app.models.cv import Candidate, CandidateApplication
 from app.models.interviews import InterviewInvitation, InterviewShortlist, InterviewShortlistMember
 from app.models.jd import JobDescription
 from app.services.cv.screening import lock_screening_job, owned_job
+from app.services.interviews.scheduling import application_session, schedule_for_session
 
+# Retained for verification of already-queued legacy emails.
 INSTRUCTIONS = "You have been selected. Use this link to join the interview."
 
 
@@ -111,8 +113,10 @@ async def validate_entry(token):
         ).where(CandidateApplication.id == invitation.application_id))
         if candidate_name is None:
             raise HTTPException(410, "This interview link is invalid or no longer active.")
-        return {"job_title": title, "candidate_name": candidate_name, "instructions": INSTRUCTIONS,
-                "expires_at": invitation.expires_at.isoformat(), "interview_ready": False}
+        return {"job_title": title, "candidate_name": candidate_name,
+                "instructions": "Please check your camera and microphone, then wait for your interviewer to admit you. Your invitation link is personal; do not share it.",
+                "expires_at": invitation.expires_at.isoformat(), "interview_ready": False,
+                "schedule": schedule_for_session(await application_session(db, invitation.application_id))}
 
 
 async def revoke_invitation(job_id, recruiter_id, invitation_id):
