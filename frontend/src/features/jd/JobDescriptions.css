@@ -33,6 +33,7 @@
 .redesign-tabs button { padding: 13px 12px 11px; border-bottom: 3px solid transparent; font-size: 13px; font-weight: 550; color: #425067; white-space: nowrap; }
 .redesign-tabs button[aria-current=page] { border-color: #00855e; color: #006548; }
 .jd-document-layout { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 18px; padding: 12px 18px; flex: 1; min-height: 0; overflow-y: auto; }
+.jd-document-layout.is-full-width { grid-template-columns: minmax(0, 1fr); }
 .jd-document-scroll { min-width: 0; overflow-y: auto; scrollbar-gutter: stable; padding-right: 10px; }
 .jd-document-scroll .markdown { font-size: 13px; }
 .jd-document-scroll .markdown h1 { font-size: 20px; }
@@ -41,7 +42,6 @@
 .jd-context { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .jd-context-card { border: 1px solid #dfe3eb; border-radius: 11px; padding: 12px; background: #fafafa; }
 .jd-context-card p { margin: 6px 0 12px; }
-.jd-context-card.is-ready { border-color: #8ee4be; background: #f1faf6; }
 .text-link { color: #007955; text-decoration: underline; font-size: 12px; text-align: left; }
 .criteria-table-scroll { overflow-x: auto; }
 .criteria-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 12px; }
@@ -49,8 +49,30 @@
 .criteria-table th, .criteria-table td { padding: 12px 8px; vertical-align: top; }
 .criteria-table td { border-bottom: 1px solid #dfe3eb; }
 .criteria-table small { display: block; margin-top: 5px; color: #526075; }
-.jd-weight { display: grid; grid-template-columns: 1fr 1fr 40px; gap: 12px; align-items: center; margin: 12px 0; font-size: 12px; text-transform: capitalize; }
-.jd-weight progress { width: 100%; height: 8px; accent-color: #00855e; }
+.jd-weights { margin-top: 28px; padding-top: 22px; border-top: 1px solid #e5eaf0; }
+.jd-weights-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+.jd-weights-heading p { color: #64748b; font-size: 12px; margin: 5px 0 0; }
+.jd-weights-total { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #bce5d5; border-radius: 8px; background: #effaf5; color: #006548; padding: 8px 10px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.jd-weights-total > span:last-child { font-weight: 400; }
+.jd-weights-total.is-invalid { color: #9c321d; border-color: #f0c8ba; background: #fff5ef; }
+.jd-weights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.jd-weight-card { --weight-color: #00855e; min-width: 0; padding: 17px 18px 14px; border: 1px solid #dfe6ed; border-radius: 12px; background: #fff; }
+.jd-weight-card[data-dimension=work_experience] { --weight-color: #3973c4; }
+.jd-weight-card[data-dimension=qualifications] { --weight-color: #8562bb; }
+.jd-weight-card[data-dimension=additional_criteria] { --weight-color: #b67b23; }
+.jd-weight-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.jd-weight-top h4 { display: flex; align-items: center; gap: 8px; margin: 0; color: #263449; font-size: 13px; font-weight: 650; }
+.jd-weight-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 50%; background: var(--weight-color); }
+.jd-weight-top > strong { color: var(--weight-color); font-size: 26px; font-weight: 750; letter-spacing: -1px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.jd-weight-top > strong > span { font-size: 14px; margin-left: 2px; letter-spacing: 0; }
+.jd-weight-description { color: #64748b; font-size: 12px; margin: 9px 0 15px; line-height: 1.5; }
+.jd-weight-card progress { display: block; appearance: none; border: 0; border-radius: 99px; overflow: hidden; width: 100%; height: 7px; background: #edf1f5; accent-color: var(--weight-color); }
+.jd-weight-card progress::-webkit-progress-bar { background: #edf1f5; border-radius: 99px; }
+.jd-weight-card progress::-webkit-progress-value { background: var(--weight-color); border-radius: 99px; }
+.jd-weight-card progress::-moz-progress-bar { background: var(--weight-color); border-radius: 99px; }
+.jd-weight-meta { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-top: 10px; color: #64748b; font-size: 11px; }
+.jd-weight-card.is-zero { background: #fafbfc; }
+.jd-weight-card.is-zero .jd-weight-top > strong { color: #7c8797; }
 .job-descriptions-page .jd-review-check { flex-direction: row; align-items: flex-start; gap: 8px; margin: 14px 0; font-weight: 400; }
 .jd-review-check input { width: 18px; height: 18px; flex-shrink: 0; accent-color: #00855e; }
 .ui-state { padding: 20px; color: #526075; }
