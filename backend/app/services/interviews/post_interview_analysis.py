@@ -1,5 +1,6 @@
 """CV claim review, interview performance scoring and interview quality assessment."""
 import json
+from copy import deepcopy
 from typing import Annotated, Literal
 
 import httpx
@@ -11,7 +12,7 @@ from app.services.interviews import performance_rubric as rubric
 
 KINDS = ("cv_claim_review", "interview_performance", "interview_quality")
 PROMPT_VERSION = "interview-extensions-2"
-VERSIONS = {"cv_claim_review": "cv-claim-review-1", "interview_performance": rubric.RUBRIC_VERSION, "interview_quality": "interview-quality-1"}
+VERSIONS = {"cv_claim_review": "cv-claim-review-3", "interview_performance": rubric.RUBRIC_VERSION, "interview_quality": "interview-quality-1"}
 Text = Annotated[str, Field(min_length=1, max_length=1400)]
 
 
@@ -55,6 +56,132 @@ class Claim(Schema):
 class Claims(Schema):
     claims: list[Claim] = Field(max_length=24)
     selection_note: Text
+
+
+class CVSelection(Schema):
+    source_ref: str
+    quote: Text
+
+
+class SelectedClaim(Claim):
+    cv_evidence: CVSelection
+
+
+class SelectedClaims(Schema):
+    claims: list[SelectedClaim] = Field(max_length=24)
+    selection_note: Text
+
+
+class ReferencedClaim(SelectedClaim):
+    interview_evidence: list[str] = Field(max_length=8)
+
+
+class ReferencedClaims(Schema):
+    claims: list[ReferencedClaim] = Field(max_length=24)
+    selection_note: Text
+
+
+class InterviewEvidenceError(ValueError):
+    def __init__(self, code, path):
+        super().__init__(code)
+        self.path = path
+
+
+class ClaimEvidenceError(ValueError):
+    def __init__(self, code, index):
+        super().__init__(code)
+        self.index = index
+
+
+def uses_cv_selection(inputs):
+    return inputs.get("rubric_version") in {"cv-claim-review-2", "cv-claim-review-3"}
+
+
+def uses_interview_selection(inputs):
+    return inputs.get("rubric_version") == "cv-claim-review-3"
+
+
+def candidate_excerpts(inputs):
+    """Exact candidate-only spans from this run's pinned transcript, without text normalization."""
+    excerpts = {}
+    for turn in inputs["prepared"]["turns"]:
+        if turn["speaker_role"] != "candidate":
+            continue
+        text, start = turn["text"], 0
+        while start < len(text):
+            end = min(start + 1200, len(text))
+            if end < len(text):
+                boundary = max(text.rfind("\n", start, end), text.rfind(" ", start, end))
+                if boundary > start + 600:
+                    end = boundary + 1
+            quote = text[start:end]
+            if quote.strip():
+                ref = f"interview-source-{len(excerpts) + 1}"
+                excerpts[ref] = {"turn_id": turn["id"], "quote": quote, "start": start, "end": end,
+                    "continues_before": start > 0, "continues_after": end < len(text)}
+            start = end
+    return excerpts
+
+
+def cv_sources(inputs):
+    """Stable references to exact pinned page text; model never calculates offsets or IDs."""
+    sources = {}
+    for document in inputs["cv"]["documents"]:
+        for page in document["sources"]:
+            start, end = page.get("start"), page.get("end")
+            if (type(start) is not int or type(end) is not int
+                    or not 0 <= start < end <= len(document["text"])):
+                raise ValueError("CV_CLAIM_REVIEW_PAGE_INVALID")
+            ref = f"cv-source-{len(sources) + 1}"
+            sources[ref] = {"parse_id": document["parse_id"], "file_version_id": document["file_version_id"],
+                "source_id": page["id"], "start": start, "end": end, "text": document["text"][start:end]}
+    return sources
+
+
+def resolve_cv_selection(raw, inputs):
+    result = (ReferencedClaims if uses_interview_selection(inputs) else SelectedClaims).model_validate(raw).model_dump()
+    sources = cv_sources(inputs)
+    excerpts = candidate_excerpts(inputs) if uses_interview_selection(inputs) else None
+    for index, claim in enumerate(result["claims"]):
+        if excerpts is not None:
+            resolved = []
+            for position, ref in enumerate(claim["interview_evidence"]):
+                excerpt = excerpts.get(ref)
+                if excerpt is None:
+                    raise InterviewEvidenceError("INTERVIEW_EVIDENCE_SOURCE_UNKNOWN",
+                        f"claims.{index}.interview_evidence.{position}")
+                resolved.append({key: excerpt[key] for key in ("turn_id", "quote")})
+            claim["interview_evidence"] = resolved
+        selected = claim["cv_evidence"]
+        source = sources.get(selected["source_ref"])
+        if source is None:
+            raise ClaimEvidenceError("CV_CLAIM_REVIEW_SOURCE_UNKNOWN", index)
+        quote = selected["quote"]
+        offset = source["text"].find(quote)
+        if not quote.strip() or offset < 0:
+            raise ClaimEvidenceError("CV_CLAIM_REVIEW_QUOTE_NOT_FOUND", index)
+        if source["text"].find(quote, offset + 1) >= 0:
+            raise ClaimEvidenceError("CV_CLAIM_REVIEW_QUOTE_AMBIGUOUS", index)
+        start = source["start"] + offset
+        claim["cv_evidence"] = {key: source[key] for key in ("parse_id", "file_version_id", "source_id")}
+        claim["cv_evidence"].update(start=start, end=start + len(quote), quote=quote)
+    return result
+
+
+def generation_schema(kind, inputs):
+    contract = (ReferencedClaims if uses_interview_selection(inputs) else SelectedClaims) if kind == "cv_claim_review" and uses_cv_selection(inputs) else SCHEMAS[kind]
+    schema = deepcopy(contract.model_json_schema())
+    if kind == "cv_claim_review" and uses_cv_selection(inputs):
+        schema["$defs"]["CVSelection"]["properties"]["source_ref"]["enum"] = list(cv_sources(inputs))
+        properties = schema["$defs"]["ReferencedClaim" if uses_interview_selection(inputs) else "SelectedClaim"]["properties"]
+        properties["criterion_ids"]["items"]["enum"] = [c["id"] for c in inputs["criteria"]]
+        if uses_interview_selection(inputs):
+            refs = list(candidate_excerpts(inputs))
+            if refs:
+                properties["interview_evidence"]["items"]["enum"] = refs
+            else:
+                properties["interview_evidence"]["maxItems"] = 0
+    return schema
 
 
 class ReferenceQuote(Schema):
@@ -159,6 +286,18 @@ judge personality, compare other candidates, or output a candidate score.""",
 
 
 VALIDATION_MESSAGES = {
+    "INTERVIEW_EVIDENCE_SOURCE_UNKNOWN": ("Select an interview_evidence reference from the supplied candidate excerpt list. Do not supply a turn ID or invent a reference.", "evidence"),
+    "INTERVIEW_EVIDENCE_TURN_UNKNOWN": ("The interview turn ID does not belong to this saved transcript.", "evidence.turn_id"),
+    "INTERVIEW_EVIDENCE_SPEAKER_INVALID": ("This finding requires candidate speech; the selected turn is spoken by the interviewer.", "evidence.turn_id"),
+    "INTERVIEW_EVIDENCE_QUOTE_MISMATCH": ("The quotation does not exactly match the selected saved interview turn. Do not paraphrase, join separate turns or change punctuation.", "evidence.quote"),
+    "CV_CLAIM_REVIEW_PAGE_INVALID": ("A pinned CV page has invalid character bounds. Review its saved parse data.", "cv.sources"),
+    "CV_CLAIM_REVIEW_SOURCE_UNKNOWN": ("Select a source_ref from the supplied CV pages; do not invent or shorten its ID.", "claims.cv_evidence.source_ref"),
+    "CV_CLAIM_REVIEW_DOCUMENT_UNKNOWN": ("The CV document IDs do not identify a supplied pinned document.", "claims.cv_evidence.parse_id"),
+    "CV_CLAIM_REVIEW_PAGE_UNKNOWN": ("The cited page does not belong to the selected pinned CV document.", "claims.cv_evidence.source_id"),
+    "CV_CLAIM_REVIEW_SPAN_INVALID": ("The quoted character range falls outside its pinned CV page.", "claims.cv_evidence.start"),
+    "CV_CLAIM_REVIEW_QUOTE_NOT_FOUND": ("The quotation is not an exact substring of the selected CV page. Copy its original text, including whitespace and punctuation.", "claims.cv_evidence.quote"),
+    "CV_CLAIM_REVIEW_QUOTE_AMBIGUOUS": ("The quotation occurs more than once on the selected CV page. Select a longer, unique exact quotation.", "claims.cv_evidence.quote"),
+    "CV_CLAIM_REVIEW_CRITERION_INVALID": ("A claim cites a criterion outside the saved job criteria. Use the complete supplied criterion ID.", "claims.criterion_ids"),
     "EXTENSION_SCHEMA_INVALID": ("The analysis did not satisfy the required evidence and scoring format.", "output"),
     "EXTENSION_OUTPUT_INVALID": ("The model did not return a valid analysis response.", "output"),
     "EXTENSION_EVIDENCE_INVALID": ("An interview quotation or speaker attribution did not match the saved transcript.", "evidence"),
@@ -182,8 +321,12 @@ def validation_diagnostic(error):
     if code not in VALIDATION_MESSAGES:
         code = "EXTENSION_OUTPUT_INVALID"
     message, path = VALIDATION_MESSAGES[code]
+    if isinstance(error, ClaimEvidenceError):
+        path = path.replace("claims.", f"claims.{error.index}.", 1)
+    if isinstance(error, InterviewEvidenceError):
+        path = error.path
     if isinstance(error, ValidationError):
-        fields = {name for schema in (Claims, Claim, CVQuote, Quote, Performance, DimensionResult,
+        fields = {name for schema in (Claims, Claim, CVQuote, CVSelection, SelectedClaim, SelectedClaims, ReferencedClaim, ReferencedClaims, Quote, Performance, DimensionResult,
                                       ReferenceQuote, Quality, QualityFinding) for name in schema.model_fields}
         location = error.errors(include_input=False, include_context=False, include_url=False)[0]["loc"]
         path = ".".join(str(part) if type(part) is int or part in fields else "field" for part in location[:8]) or "output"
@@ -200,13 +343,16 @@ def source_warnings(prepared):
     return warnings
 
 
-def checked_quotes(quotes, turns, candidate=False):
+def checked_quotes(quotes, turns, candidate=False, path="evidence"):
     result = []
-    for excerpt in quotes:
+    for index, excerpt in enumerate(quotes):
         turn = turns.get(excerpt["turn_id"])
-        if (not turn or not excerpt["quote"].strip() or excerpt["quote"] not in turn["text"]
-                or (candidate and turn["speaker_role"] != "candidate")):
-            raise ValueError("EXTENSION_EVIDENCE_INVALID")
+        if not turn:
+            raise InterviewEvidenceError("INTERVIEW_EVIDENCE_TURN_UNKNOWN", f"{path}.{index}.turn_id")
+        if candidate and turn["speaker_role"] != "candidate":
+            raise InterviewEvidenceError("INTERVIEW_EVIDENCE_SPEAKER_INVALID", f"{path}.{index}.turn_id")
+        if not excerpt["quote"].strip() or excerpt["quote"] not in turn["text"]:
+            raise InterviewEvidenceError("INTERVIEW_EVIDENCE_QUOTE_MISMATCH", f"{path}.{index}.quote")
         result.append({**excerpt, "speaker_role": turn["speaker_role"],
                        "session_start_ms": turn.get("session_start_ms"), "session_end_ms": turn.get("session_end_ms")})
     return result
@@ -235,31 +381,42 @@ def speaking_time(prepared):
             else:
                 merged.append([start, end])
         totals[role + "_ms"] = sum(end - start for start, end in merged)
-    return {"status": "measured", **totals,
-            "note": "Union of validated speech segments per speaker; simultaneous speech may overlap. This is not a share of elapsed interview time."}
+    synthetic = prepared.get("synthetic") or any(t.get("timing_basis") == "synthetic_authoring_ground_truth" for t in turns)
+    return {"status": "synthetic" if synthetic else "measured", **totals,
+            "note": "Authored synthetic intervals, not recorded speech or microphone measurements." if synthetic else
+                "Union of validated speech segments per speaker; simultaneous speech may overlap. This is not a share of elapsed interview time."}
 
 
 def materialize(kind, raw, inputs):
+    if kind == "cv_claim_review" and uses_cv_selection(inputs):
+        raw = resolve_cv_selection(raw, inputs)
     result = SCHEMAS[kind].model_validate(raw).model_dump()
     turns = {t["id"]: t for t in inputs["prepared"]["turns"]}
     criteria = {c["id"] for c in inputs["criteria"]}
     if kind == "cv_claim_review":
         documents = {(d["parse_id"], d["file_version_id"]): d for d in inputs["cv"]["documents"]}
         seen = set()
-        for claim in result["claims"]:
+        for index, claim in enumerate(result["claims"]):
             cv = claim["cv_evidence"]
             doc = documents.get((cv["parse_id"], cv["file_version_id"]))
             page = next((p for p in doc["sources"] if p["id"] == cv["source_id"]), None) if doc else None
-            if (not page or not page["start"] <= cv["start"] < cv["end"] <= page["end"]
-                    or doc["text"][cv["start"]:cv["end"]] != cv["quote"] or not cv["quote"].strip()
-                    or not set(claim["criterion_ids"]) <= criteria):
-                raise ValueError("CV_CLAIM_REVIEW_CV_EVIDENCE_INVALID")
+            if doc is None:
+                raise ClaimEvidenceError("CV_CLAIM_REVIEW_DOCUMENT_UNKNOWN", index)
+            if page is None:
+                raise ClaimEvidenceError("CV_CLAIM_REVIEW_PAGE_UNKNOWN", index)
+            if not page["start"] <= cv["start"] < cv["end"] <= min(page["end"], len(doc["text"])):
+                raise ClaimEvidenceError("CV_CLAIM_REVIEW_SPAN_INVALID", index)
+            if doc["text"][cv["start"]:cv["end"]] != cv["quote"] or not cv["quote"].strip():
+                raise ClaimEvidenceError("CV_CLAIM_REVIEW_QUOTE_NOT_FOUND", index)
+            if not set(claim["criterion_ids"]) <= criteria:
+                raise ClaimEvidenceError("CV_CLAIM_REVIEW_CRITERION_INVALID", index)
             # Stable identity uses the atomic claim and pinned original span, never model list order.
             claim["id"] = "claim-" + analysis.digest(cv)[:24]
             if claim["id"] in seen:
                 raise ValueError("CV_CLAIM_REVIEW_DUPLICATE_CLAIM")
             seen.add(claim["id"])
-            claim["interview_evidence"] = checked_quotes(claim["interview_evidence"], turns, candidate=True)
+            claim["interview_evidence"] = checked_quotes(claim["interview_evidence"], turns, candidate=True,
+                path=f"claims.{index}.interview_evidence")
             status = claim["status"]
             if status in {"supported_in_interview", "potential_contradiction", "discussed_not_substantiated"} and not claim["interview_evidence"]:
                 raise ValueError("CV_CLAIM_REVIEW_CANDIDATE_EVIDENCE_REQUIRED")
@@ -275,7 +432,8 @@ def materialize(kind, raw, inputs):
             raise ValueError("INTERVIEW_PERFORMANCE_DIMENSIONS_INVALID")
         references = {r["id"]: r for r in inputs.get("references", [])}
         for dimension in dimensions.values():
-            dimension["evidence"] = checked_quotes(dimension["evidence"], turns, candidate=True)
+            dimension["evidence"] = checked_quotes(dimension["evidence"], turns, candidate=True,
+                path=f"dimensions.{dimension['dimension']}.evidence")
             cited = []
             for excerpt in dimension["reference_evidence"]:
                 ref = references.get(excerpt["reference_id"])
@@ -295,7 +453,7 @@ def materialize(kind, raw, inputs):
     else:
         result["process_summary"] = result.pop("summary")
         groups = {item["group"]["id"]: item["group"] for item in inputs["f5"]["results"]}
-        for finding in result["findings"]:
+        for index, finding in enumerate(result["findings"]):
             if not set(finding["group_ids"]) <= set(groups):
                 raise ValueError("INTERVIEW_QUALITY_GROUP_SCOPE_INVALID")
             allowed = {key for group_id in finding["group_ids"] for field in (
@@ -303,7 +461,7 @@ def materialize(kind, raw, inputs):
                 for key in groups[group_id].get(field, [])}
             if not {e["turn_id"] for e in finding["evidence"]} <= allowed:
                 raise ValueError("INTERVIEW_QUALITY_GROUP_EVIDENCE_INVALID")
-            finding["evidence"] = checked_quotes(finding["evidence"], turns)
+            finding["evidence"] = checked_quotes(finding["evidence"], turns, path=f"findings.{index}.evidence")
         result["coverage"] = [{"criterion_id": c["id"], "text": c["text"],
             "group_ids": [key for key, group in groups.items() if c["id"] in group["criterion_ids"]],
             "status": "explored" if any(c["id"] in g["criterion_ids"] for g in groups.values()) else "not_explored"}
@@ -319,7 +477,27 @@ async def execute(claim, version):
         payload = {"task": INSTRUCTIONS[kind], "criteria": inputs["criteria"],
             "prepared": inputs["prepared"], "saved_f5": inputs["f5"], "references": inputs.get("references", [])}
         if kind == "cv_claim_review":
-            payload["cv_documents"] = inputs["cv"]["documents"]
+            if uses_cv_selection(inputs):
+                payload["cv_sources"] = [{"source_ref": ref, "text": source["text"]}
+                    for ref, source in cv_sources(inputs).items()]
+                payload["task"] += (" Select cv_evidence.source_ref from cv_sources and copy an exact, unique "
+                    "substring of that page as quote, preserving punctuation, line breaks and whitespace. "
+                    "Choose a longer quotation if words repeat. Do not calculate character offsets or emit "
+                    "document/page IDs; the backend resolves them. Use complete criterion IDs exactly as supplied.")
+                if uses_interview_selection(inputs):
+                    payload["candidate_interview_excerpts"] = [{"source_ref": ref, **excerpt}
+                        for ref, excerpt in candidate_excerpts(inputs).items()]
+                    payload["task"] += (" For interview_evidence, return an array of source_ref strings from "
+                        "candidate_interview_excerpts, such as [\"interview-source-2\"]. Never copy or generate "
+                        "interview quotations or turn IDs in the response: the backend attaches the exact "
+                        "saved candidate text, speaker and timing. Read the full supplied conversation for "
+                        "context and later corrections. Excerpts with continues_before/continues_after are "
+                        "parts of one longer answer, not separate answers; consider the full original turn "
+                        "before selecting evidence. Interviewer prompts cannot substantiate candidate claims. "
+                        "Choose empty evidence and the appropriate unable_to_assess/not_discussed status "
+                        "when no candidate excerpt supports a finding; never choose an unrelated excerpt.")
+            else:
+                payload["cv_documents"] = inputs["cv"]["documents"]
         if kind == "interview_performance":
             payload.update(anchors=rubric.ANCHORS, dimension_guidance=rubric.DIMENSION_GUIDANCE)
         text = json.dumps(payload, ensure_ascii=False)
@@ -328,21 +506,30 @@ async def execute(claim, version):
             await store.fail(claim, "EXTENSION_INPUT_TOO_LARGE")
             return
         attempts = await store.read_stage(claim, "extension-attempts") or {"count": 0}
+        previous_response = None
+        schema = generation_schema(kind, inputs)
         system = SYSTEM
         if source_warnings(inputs["prepared"]):
             system += "\nSource limitations: " + " ".join(source_warnings(inputs["prepared"]))
             system += " Saved order is a reading aid, not proven chronology. Use speaker roles and conversational context; adjacency alone does not establish a pairing. Do not invent missing words or answers."
         while attempts["count"] < 2:
             if attempts.get("errors"):
-                text = json.dumps({**payload, "validation_error": attempts["errors"][-1],
-                    "repair": "Correct the indicated validation failure. Recheck IDs, exact source spans, uncertainty, score/reason pairs and same-context rules. Omit unsupported claims."}, ensure_ascii=False)
+                repair = {**payload, "validation_error": attempts["errors"][-1],
+                    "repair": "Correct the indicated validation failure. Recheck exact quotations, supplied source references and criterion IDs, uncertainty, score/reason pairs and same-context rules. Omit unsupported claims."}
+                # Previous output is untrusted repair context, kept only in memory. Never persist rejected prose.
+                if previous_response is not None:
+                    candidate = {**repair, "previous_response": previous_response}
+                    if len(json.dumps(candidate, ensure_ascii=False)) <= min(180000, inputs["model_options"]["context_tokens"] * 2):
+                        repair = candidate
+                text = json.dumps(repair, ensure_ascii=False)
             # Persist budget before a call; process crashes cannot create unlimited repairs.
             attempts = {**attempts, "count": attempts["count"] + 1}
             await store.write_stage(claim, "extension-attempts", attempts)
             try:
-                raw = await generate_json(system, text, SCHEMAS[kind].model_json_schema(),
+                raw = await generate_json(system, text, schema,
                     "EXTENSION_OUTPUT_INVALID", execution=ModelExecution(**inputs["model_options"]))
-                output = materialize(kind, json.loads(raw), inputs)
+                previous_response = json.loads(raw)
+                output = materialize(kind, previous_response, inputs)
                 await store.write_stage(claim, "extension-output", output)
                 break
             except (httpx.TimeoutException, TimeoutError):

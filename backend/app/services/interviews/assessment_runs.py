@@ -142,9 +142,12 @@ async def owned_run(db, run_id, recruiter_id, *, lock=False):
 def public_run(run):
     from app.services.interviews.consolidation import PROMPT_VERSION as F6_PROMPT_VERSION
     current_prompt = F6_PROMPT_VERSION if run.kind == "f6" else PROMPT_VERSION
+    current_rubric = None
     if run.kind in {"cv_claim_review", "interview_performance", "interview_quality"}:
         from app.services.interviews.post_interview_analysis import PROMPT_VERSION as POST_INTERVIEW_PROMPT
+        from app.services.interviews.post_interview_analysis import VERSIONS as POST_INTERVIEW_VERSIONS
         current_prompt = POST_INTERVIEW_PROMPT
+        current_rubric = POST_INTERVIEW_VERSIONS[run.kind]
     return {"id": str(run.id), "job_id": str(run.job_id),
         "parent_run_id": str(run.parent_run_id) if run.parent_run_id else None,
         "application_id": str(run.application_id) if run.application_id else None,
@@ -154,6 +157,7 @@ def public_run(run):
         "completed_groups": run.completed_groups, "total_groups": run.total_groups,
         "error_code": run.error_code, "can_retry": run.status == "failed" and run.attempt < MAX_ATTEMPTS
             and run.inputs.get("prompt_version") == current_prompt
+            and (current_rubric is None or run.inputs.get("rubric_version") == current_rubric)
             and run.error_code not in {"ASSESSMENT_SOURCE_CHANGED", "F6_SOURCE_CHANGED", "POST_INTERVIEW_SOURCE_CHANGED", "RECRUITER_ACCESS_REVOKED"},
         "profile_version": run.inputs.get("profile_version"), "prompt_version": run.inputs.get("prompt_version"),
         "rubric_version": run.inputs.get("rubric_version"),
@@ -164,7 +168,7 @@ def public_run(run):
 
 def can_recover(run):
     return (run.kind == "f5" and run.status == "needs_review" and run.error_code == "ANALYSIS_OUTPUT_NEEDS_REVIEW"
-        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", PROMPT_VERSION}
+        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", "interview-analysis-12", PROMPT_VERSION}
         and run.inputs.get("rubric_version") == RUBRIC_VERSION)
 
 
@@ -176,12 +180,16 @@ async def recover_run(run_id, recruiter_id):
         if not can_recover(source):
             raise HTTPException(409, "This run is not eligible for bounded schema recovery.")
         stages = list(await db.scalars(select(AssessmentStage).where(AssessmentStage.run_id == source.id)))
-        failed = [s for s in stages if s.name.startswith("evaluation-") and s.name.endswith("-attempts")
-            and s.payload.get("count", 0) >= 2 and s.payload.get("last_error") == "SCHEMA_INVALID"
-            and any(e.get("code") == "SCORE_REASON_CONFLICT" for e in s.payload.get("last_details", {}).get("validation_errors", []))]
+        failed = [s for s in stages if s.payload.get("count", 0) >= 2 and (
+            (s.name == "mapping-attempts" and s.payload.get("last_error") in {
+                "MAPPING_CRITERION_INVALID", "MAPPING_COVERAGE_INVALID"})
+            or (s.name.startswith("evaluation-") and s.name.endswith("-attempts")
+                and s.payload.get("last_error") == "SCHEMA_INVALID"
+                and any(e.get("code") == "SCORE_REASON_CONFLICT"
+                        for e in s.payload.get("last_details", {}).get("validation_errors", []))))]
         if len(failed) != 1 or any(s.name == failed[0].name.removesuffix("-attempts") for s in stages):
-            raise HTTPException(409, "Recovery requires one exhausted score/reason schema conflict with no accepted output.")
-        recovery = {"policy": "score-reason-recovery-1", "source_run_id": str(source.id),
+            raise HTTPException(409, "Recovery requires one exhausted criterion-mapping or score/reason conflict with no accepted output.")
+        recovery = {"policy": "mapping-id-recovery-1" if failed[0].name == "mapping-attempts" else "score-reason-recovery-1", "source_run_id": str(source.id),
             "inherited_prompt_version": source.inputs["prompt_version"], "target_prompt_version": PROMPT_VERSION,
             "retry_stage": failed[0].name.removesuffix("-attempts"),
             "inherited_completed_groups": source.completed_groups,
@@ -309,7 +317,24 @@ async def run_result(run_id, recruiter_id):
             from app.services.interviews.consolidation_runs import eligibility
             f6 = await eligibility(db, run)
         from app.services.interviews.final_score import for_run
+        # Project the immutable selected CV, never substitute a newer screening run.
+        cv = run.inputs.get("cv") if run.kind == "f6" else run.inputs.get("cv_snapshot")
+        pinned_cv = ({key: deepcopy(cv[key]) for key in
+            ("id", "run_id", "score", "matches", "file_version_ids", "parse_result_ids") if key in cv}
+            if cv else None)
+        base_id = run.parent_run_id if run.kind == "f6" else run.id
+        consolidated = run if run.kind == "f6" else await db.scalar(select(AssessmentRun).where(
+            AssessmentRun.parent_run_id == base_id, AssessmentRun.kind == "f6",
+            AssessmentRun.recruiter_id == recruiter_id, AssessmentRun.job_id == run.job_id,
+            AssessmentRun.synthetic == run.synthetic, AssessmentRun.application_id == run.application_id,
+        ).order_by(AssessmentRun.created_at.desc(), AssessmentRun.id.desc()).limit(1))
+        prepared = run.inputs["prepared"]
         return {"run": public_run(run), "result": result_payload, "f6": f6,
+            "pinned_cv": pinned_cv, "consolidation": public_run(consolidated) if consolidated else None,
+            "source_metadata": {"synthetic": run.synthetic, "transcript_version": prepared.get("source_version"),
+                "text_only": prepared.get("text_only", False), "quality_flags": prepared.get("source_quality_flags", []),
+                "timing_basis": "synthetic_authoring_ground_truth" if run.synthetic else
+                    "saved_text_order" if prepared.get("text_only") else "finalized_session_timeline"},
             "final_score": await for_run(db, run, result_payload),
             "answers": payloads, "dimension_summaries": dimension_summaries(payloads),
             "criteria": run.inputs["criteria"], "source_turns": run.inputs["prepared"]["turns"],

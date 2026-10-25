@@ -49,6 +49,10 @@ async def cv_bundle(db, parent):
     cv = synthetic_cv(parent) if parent.synthetic and not parent.inputs.get("test_application_id") else await real_cv(db, parent)
     if not cv.get("documents") or any(not doc.get("text", "").strip() or not doc.get("sources") for doc in cv["documents"]):
         raise HTTPException(409, "Pinned CV source text and page spans are required for claim review.")
+    try:
+        service.cv_sources({"cv": cv})
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(409, "Pinned CV page bounds are invalid. Review the saved CV parse before claim review.") from None
     return cv
 
 
@@ -57,17 +61,49 @@ def public_review(row):
             "created_at": row.created_at.isoformat(), **row.payload}
 
 
+def model_options():
+    settings = get_settings()
+    return asdict(ModelExecution(settings.post_interview_model_provider, settings.post_interview_model_name,
+        settings.post_interview_model_context_tokens, settings.post_interview_model_output_tokens, settings.post_interview_model_timeout_seconds))
+
+
+def feature_inputs(base, parent, kind, options, policy, cv=None):
+    inputs = {**base, "prompt_version": service.PROMPT_VERSION, "rubric_version": service.VERSIONS[kind],
+        "model_options": options, "f5_reviewer_id": str(parent.recruiter_id)}
+    if kind == "cv_claim_review":
+        inputs["cv"] = cv
+    if kind == "interview_performance":
+        inputs["scoring_settings"] = policy
+    inputs["source_key"] = analysis.digest({"kind": kind, "job_id": str(parent.job_id), **inputs})
+    return inputs
+
+
+def available_action(row, blocker=None):
+    if blocker:
+        return {"action": "none", "reason": blocker, "run_id": None}
+    if row is None:
+        return {"action": "start", "reason": "Generate a result using the current sources and settings.", "run_id": None}
+    if public_run(row)["can_retry"]:
+        return {"action": "retry", "reason": "Retry the failed request from saved work.", "run_id": str(row.id)}
+    reason = ("This result is already saved for the current sources and settings." if row.status == "completed" else
+        "This analysis is already queued or running." if row.status in {"queued", "running"} else
+        "Validation attempts are exhausted. No findings were published; the same inputs cannot be retried." if row.status == "needs_review" else
+        "This saved run cannot be retried. Review its source and diagnostic details.")
+    return {"action": "none", "reason": reason, "run_id": str(row.id)}
+
+
 async def workspace(parent_id, recruiter_id):
     async with SessionFactory() as db:
         parent = await owned_run(db, parent_id, recruiter_id)
         blockers = dict.fromkeys(service.KINDS)
+        base, cv = None, None
         try:
-            await bundle(db, parent)
+            base = await bundle(db, parent)
         except HTTPException as error:
             blockers = dict.fromkeys(service.KINDS, error.detail)
         if blockers["cv_claim_review"] is None:
             try:
-                await cv_bundle(db, parent)
+                cv = await cv_bundle(db, parent)
             except HTTPException as error:
                 blockers["cv_claim_review"] = error.detail
         rows = list(await db.scalars(select(AssessmentRun).where(AssessmentRun.parent_run_id == parent.id,
@@ -84,9 +120,20 @@ async def workspace(parent_id, recruiter_id):
             stage = await db.get(AssessmentStage, (row.id, "extension-attempts")) if row.status == "needs_review" else None
             items.append({"run": public_run(row), "result": payload, "reviews": [public_review(r) for r in reviews],
                           "diagnostics": stage.payload.get("errors", []) if stage else []})
-        return {"parent_run_id": str(parent.id), "blockers": blockers, "items": items,
+        policy = await scoring_settings.snapshot(db, parent.job_id)
+        actions = {}
+        options = model_options()
+        for kind in service.KINDS:
+            current = None
+            if base is not None and not blockers[kind]:
+                inputs = feature_inputs(base, parent, kind, options, policy, cv)
+                current = await db.scalar(select(AssessmentRun).where(
+                    AssessmentRun.recruiter_id == recruiter_id, AssessmentRun.input_key == inputs["source_key"]))
+            actions[kind] = available_action(current, blockers[kind])
+        return {"parent_run_id": str(parent.id), "blockers": blockers, "items": items, "actions": actions,
                 "source_warnings": service.source_warnings(parent.inputs.get("prepared", {})), "prompt_version": service.PROMPT_VERSION,
-                "scoring_settings": await scoring_settings.snapshot(db, parent.job_id), "review_required": not parent.synthetic}
+                "rubric_versions": service.VERSIONS,
+                "scoring_settings": policy, "review_required": not parent.synthetic}
 
 
 async def start(parent_id, recruiter_id, request):
@@ -96,23 +143,19 @@ async def start(parent_id, recruiter_id, request):
         if not parent.synthetic and not request.confirm_f5_review:
             raise HTTPException(409, "Review saved F5 questions, scores and evidence before starting post-interview analysis.")
         base = await bundle(db, parent)
-        settings = get_settings()
-        options = asdict(ModelExecution(settings.post_interview_model_provider, settings.post_interview_model_name,
-            settings.post_interview_model_context_tokens, settings.post_interview_model_output_tokens, settings.post_interview_model_timeout_seconds))
+        options = model_options()
+        policy = await scoring_settings.snapshot(db, parent.job_id)
         created, blockers = [], {}
         for kind in dict.fromkeys(request.features):
-            inputs = {**base, "prompt_version": service.PROMPT_VERSION, "rubric_version": service.VERSIONS[kind],
-                "model_options": options, "f5_reviewer_id": str(recruiter_id)}
+            cv = None
             if kind == "cv_claim_review":
                 try:
-                    inputs["cv"] = await cv_bundle(db, parent)
+                    cv = await cv_bundle(db, parent)
                 except HTTPException as error:
                     blockers[kind] = error.detail
                     continue
-            if kind == "interview_performance":
-                inputs["scoring_settings"] = await scoring_settings.snapshot(db, parent.job_id)
-            key = analysis.digest({"kind": kind, "job_id": str(parent.job_id), **inputs})
-            inputs["source_key"] = key
+            inputs = feature_inputs(base, parent, kind, options, policy, cv)
+            key = inputs["source_key"]
             run = await db.scalar(select(AssessmentRun).where(AssessmentRun.recruiter_id == recruiter_id,
                                                              AssessmentRun.input_key == key))
             if run is None:
