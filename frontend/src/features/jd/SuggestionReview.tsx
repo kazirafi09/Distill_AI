@@ -7,7 +7,7 @@ import SuggestionChanges from './SuggestionChanges'
 import { displayValue } from './windTunnelView'
 
 type Props = {
-  title: string; position?: string; content: string; profile: EditableProfile; original: ScreeningProfile | null
+  title: string; position?: string; applyLabel?: string; content: string; profile: EditableProfile; original: ScreeningProfile | null
   patches: WindTunnelSuggestion['patches']; working: boolean; conflict: boolean; error: string
   reviewed: boolean; onReviewed: (value: boolean) => void; onBack: () => void; onApply: () => void
 }
@@ -15,12 +15,26 @@ type Props = {
 function highlight(children: ReactNode, patches: Props['patches']): ReactNode {
   return Children.map(children, child => {
     if (typeof child === 'string') {
-      const patch = patches.find(item => item.kind === 'description' && typeof item.proposed === 'string' && child.includes(item.proposed))
-      if (!patch || typeof patch.proposed !== 'string') return child
-      const start = child.indexOf(patch.proposed)
-      return <>{child.slice(0, start)}<del className="suggestion-removed">{String(patch.expected)}</del>{' '}<ins className="suggestion-added">{patch.proposed}</ins>{child.slice(start + patch.proposed.length)}</>
+      const remaining = patches.filter(item => item.kind === 'description' && typeof item.proposed === 'string' && item.proposed.length > 0)
+      const parts: ReactNode[] = []
+      let cursor = 0
+      while (remaining.length) {
+        let best = -1, start = child.length
+        for (let index = 0; index < remaining.length; index++) {
+          const proposed = remaining[index].proposed
+          const found = typeof proposed === 'string' ? child.indexOf(proposed, cursor) : -1
+          if (found >= 0 && (best < 0 || found < start)) { best = index; start = found }
+        }
+        if (best < 0) break
+        const [patch] = remaining.splice(best, 1)
+        const proposed = String(patch.proposed)
+        parts.push(child.slice(cursor, start), <del key={`old-${start}`} className="suggestion-removed">{String(patch.expected)}</del>, ' ', <ins key={`new-${start}`} className="suggestion-added">{proposed}</ins>)
+        cursor = start + proposed.length
+      }
+      return parts.length ? <>{parts}{child.slice(cursor)}</> : child
     }
     if (isValidElement(child)) {
+      if (child.type === 'del' || child.type === 'ins') return child
       const element = child as ReactElement<{ children?: ReactNode }>
       return cloneElement(element, {}, highlight(element.props.children, patches))
     }
@@ -28,13 +42,30 @@ function highlight(children: ReactNode, patches: Props['patches']): ReactNode {
   })
 }
 
-export default function SuggestionReview({ title, position, content, profile, original, patches, working, conflict, error, reviewed, onReviewed, onBack, onApply }: Props) {
+function patchesAt(content: string, patches: Props['patches'], start: number | undefined, end: number | undefined) {
+  const visible = patches.filter(patch => patch.start == null)
+  // Backend ranges count Unicode code points; Markdown positions use JS offsets.
+  const characters = Array.from(content)
+  let shift = 0
+  const located = patches.filter(patch => patch.kind === 'description' && patch.start != null && patch.end != null)
+    .sort((left, right) => left.start! - right.start!)
+  for (const patch of located) {
+    if (typeof patch.proposed !== 'string' || typeof patch.expected !== 'string') continue
+    const proposedStart = characters.slice(0, patch.start! + shift).join('').length
+    const proposedEnd = proposedStart + patch.proposed.length
+    if (start != null && end != null && proposedStart < end && start < proposedEnd) visible.push(patch)
+    shift += Array.from(patch.proposed).length - Array.from(patch.expected).length
+  }
+  return visible
+}
+
+export default function SuggestionReview({ title, position, applyLabel = 'Apply suggestion', content, profile, original, patches, working, conflict, error, reviewed, onReviewed, onBack, onApply }: Props) {
   return <section className="jd-suggestions jd-suggestion-review" aria-label="Review suggestion" aria-busy={working}>
     <div className="suggestion-review-top"><button className="button-secondary" disabled={working} onClick={onBack}>← Back to suggestions</button>{position && <small>{position}</small>}</div>
     <header><div><h3>{title}</h3><p>This proposal is fixed. You cannot edit it here. Cancel saves nothing.</p></div></header>
     {conflict && <div className="suggestion-alert is-warning" role="alert"><span aria-hidden="true">!</span><p><strong>The job changed or became locked after you started this review.</strong> Apply is turned off. Go back and start a fresh review of the current version.</p></div>}
     <section className="suggestion-review-section"><header><h4>Description</h4><small><span className="suggestion-diff-label is-previous">Previous</span> <span className="suggestion-diff-label is-proposed">Proposed</span> · changes are marked</small></header>
-      <div className="markdown"><Markdown skipHtml components={{ p: ({ children }) => <p>{highlight(children, patches)}</p>, li: ({ children }) => <li>{highlight(children, patches)}</li> }}>{content}</Markdown></div>
+      <div className="markdown"><Markdown skipHtml components={{ p: ({ children, node }) => <p>{highlight(children, patchesAt(content, patches, node?.position?.start.offset, node?.position?.end.offset))}</p>, li: ({ children, node }) => <li>{highlight(children, patchesAt(content, patches, node?.position?.start.offset, node?.position?.end.offset))}</li> }}>{content}</Markdown></div>
     </section>
     <section className="suggestion-review-section"><h4>Screening criteria</h4><div className="suggestion-table-scroll"><table className="suggestion-criteria-table"><thead><tr><th scope="col">Criterion</th><th scope="col">Priority</th><th scope="col">Dimension</th><th scope="col">Change</th></tr></thead>
       <tbody>{profile.criteria.map(criterion => {
@@ -47,10 +78,10 @@ export default function SuggestionReview({ title, position, content, profile, or
     </section>
     <section className="suggestion-review-section"><h4>Exact changes</h4><SuggestionChanges patches={patches} profile={original} /></section>
     <footer className="suggestion-review-footer">
-      <label className="jd-review-check"><input type="checkbox" checked={reviewed} disabled={working || conflict} onChange={event => onReviewed(event.target.checked)} />I reviewed the description and screening criteria together.</label>
+      <label className="jd-review-check"><input type="checkbox" checked={reviewed} disabled={working || conflict} onChange={event => onReviewed(event.target.checked)} />I reviewed all selected changes in the description and screening criteria.</label>
       {error && !conflict && <p className="ui-error" role="alert">{error}</p>}
-      <p className="muted">Applying saves both sections together. It does not publish the job or start a new batch.</p>
-      <div className="suggestion-review-actions"><button className="button-secondary" disabled={working} onClick={onBack}>Cancel review</button><button className="button-primary" disabled={working || conflict || !reviewed} onClick={onApply}>{working ? 'Applying…' : 'Apply suggestion'}</button></div>
+      <p className="muted">Applying saves all selected changes together. Any unselected suggestions become unavailable after the job changes. It does not publish the job or start a new batch.</p>
+      <div className="suggestion-review-actions"><button className="button-secondary" disabled={working} onClick={onBack}>Cancel review</button><button className="button-primary" disabled={working || conflict || !reviewed} onClick={onApply}>{working ? 'Applying…' : applyLabel}</button></div>
     </footer>
   </section>
 }

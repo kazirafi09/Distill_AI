@@ -33,6 +33,12 @@
 .suggestion-state-actions:empty { display: none; }
 .jd-suggestion-card { margin: 10px 0; padding: 16px; border: 1px solid #d7dce5; border-radius: 12px; overflow-wrap: anywhere; background: #fff; }
 .jd-suggestion-card.is-unavailable { background: #f8f9fb; }
+.jd-suggestion-card.is-selected { border-color: #13876a; box-shadow: 0 0 0 1px #13876a; }
+.suggestion-select { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: #006548; cursor: pointer; padding-top: 2px; }
+.suggestion-select input { accent-color: #006548; width: 16px; height: 16px; margin: 0; }
+.suggestion-selection-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 14px; margin: 14px 0; background: #f1faf6; border: 1px solid #a9d4c5; border-radius: 10px; }
+.suggestion-selection-bar > div { flex: 1; min-width: 180px; }
+.suggestion-selection-bar small { display: block; margin-top: 3px; color: #526075; }
 .jd-suggestion-card header { gap: 10px; }
 .jd-suggestion-card header h4 { flex: 1; }
 .jd-suggestion-card > p { margin: 8px 0; }
@@ -109,6 +115,8 @@
   .jd-suggestion-card { padding: 16px; }
   .suggestion-card-actions { margin-top: 8px; display: flex; flex-direction: column; align-items: stretch; }
   .suggestion-card-actions button { width: 100%; }
+  .suggestion-selection-bar > div { flex-basis: 100%; }
+  .suggestion-selection-bar button { flex: 1; }
   .suggestion-exact-changes summary { max-width: none; }
   .suggestion-changes-table th, .suggestion-changes-table td { padding-inline: 5px; }
   .suggestion-changes-table th:first-child { width: 28%; }
@@ -119,3 +127,11 @@
   .suggestion-review-actions { flex-direction: column-reverse; }
   .suggestion-metadata > div { grid-template-columns: 1fr; gap: 4px; }
 }
+
+.suggestion-progress { margin: 16px 0; padding: 16px; border: 1px solid #b8c7e5; border-radius: 12px; background: #f3f7ff; }
+.suggestion-progress strong, .suggestion-progress small { display: block; }
+.suggestion-progress progress { display: block; width: 100%; height: 12px; margin: 12px 0 6px; accent-color: #4567d5; }
+.suggestion-progress small { color: #526075; margin-top: 6px; }
+.suggestion-pulse { display: inline-block; width: 9px; height: 9px; margin-right: 8px; background: #4567d5; border-radius: 50%; animation: suggestion-pulse 1.4s ease-in-out infinite; }
+@keyframes suggestion-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .suggestion-pulse { animation: none; } }

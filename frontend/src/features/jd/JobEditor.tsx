@@ -39,7 +39,7 @@ export default function JobEditor({ token, target, onSaved, onCancel, proposal }
   target: JobEditorTarget
   onSaved: (conversation: JDConversation) => void
   onCancel: () => void
-  proposal?: { content: string; screening_profile: EditableProfile; apply: (signal: AbortSignal) => Promise<JDConversation>; title: string; patches: WindTunnelSuggestion['patches']; position?: string; conflict?: boolean }
+  proposal?: { content: string; screening_profile: EditableProfile; apply: (signal: AbortSignal) => Promise<JDConversation>; title: string; patches: WindTunnelSuggestion['patches']; position?: string; conflict?: boolean; applyLabel?: string }
 }) {
   const [content, setContent] = useState(proposal?.content ?? target.content)
   const [profile, setProfile] = useState(() => proposal?.screening_profile ?? editableProfile(target.profile))
@@ -147,7 +147,7 @@ export default function JobEditor({ token, target, onSaved, onCancel, proposal }
     }
   }
 
-  if (proposal) return <SuggestionReview title={proposal.title} position={proposal.position} content={content} profile={profile} original={target.profile}
+  if (proposal) return <SuggestionReview title={proposal.title} position={proposal.position} applyLabel={proposal.applyLabel} content={content} profile={profile} original={target.profile}
     patches={proposal.patches} working={working} conflict={saveConflict || Boolean(proposal.conflict)} error={error} reviewed={reviewed}
     onReviewed={setReviewed} onBack={onCancel} onApply={() => { void save() }} />
 
