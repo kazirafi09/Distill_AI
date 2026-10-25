@@ -19,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.workflows.runtime import open_workflow_graphs
 from app.jd import router as jd_router
+from app.wind_tunnel_routes import router as wind_tunnel_router
 from app.jd_reference_routes import router as jd_references_router
 from app.cv_routes import router as cv_router
 from app.cv_parsing_routes import router as cv_parsing_router
@@ -79,6 +80,7 @@ app = FastAPI(
 register_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(jd_router)
+app.include_router(wind_tunnel_router)
 app.include_router(jd_references_router)
 app.include_router(assistant_router)
 app.include_router(cv_router)

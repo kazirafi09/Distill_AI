@@ -112,6 +112,7 @@ class Settings(BaseSettings):
         return terms
 
     cv_storage_path: Path = PROJECT_ROOT.parent / "storage" / "cvs"
+    wind_tunnel_storage_path: Path = PROJECT_ROOT.parent / "storage" / "wind_tunnel"
 
     @property
     def database_url(self) -> URL:

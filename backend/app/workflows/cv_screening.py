@@ -81,30 +81,47 @@ def build_candidate_graph(saver, db, run, assessment):
             await commit_screening_write(db, run.job_id)
         return {"reuse": bool(previous)}
 
+    async def retrieve(criterion):
+        return await retrieve_through_mcp(run.job_id, assessment.application_id, criterion["text"], run.recruiter_id, assessment.id)
+
+    async def save():
+        await commit_screening_write(db, run.job_id)
+
+    return build_source_assessment_graph(saver, assessment, run.inputs["profile"], run.inputs["rubric"],
+                                         parse, index, parsed_results, retrieve, save)
+
+
+def build_source_assessment_graph(saver, assessment, profile, rubric,
+                                  parse, index, parsed_results, retrieve, save):
+    """Reuse the existing assessment nodes with explicit source/storage callbacks."""
+    async def set_status(status):
+        assessment.status = status
+        await save()
+
     async def match(state):
         await set_status("matching")
         parsed = await parsed_results()
-        for criterion in run.inputs["profile"]["criteria"]:
+        for criterion in profile["criteria"]:
             existing = next((m for m in assessment.matches if m["requirement_id"] == criterion["id"]), None)
             if existing:
                 validate_match(existing, criterion, parsed)
                 continue
-            retrieved = await retrieve_through_mcp(run.job_id, assessment.application_id, criterion["text"], run.recruiter_id, assessment.id)
-            decision, warnings = await match_criterion(criterion, parsed, retrieved, run.inputs["profile"])
+            retrieved = await retrieve(criterion)
+            decision, warnings = await match_criterion(criterion, parsed, retrieved, profile)
             assessment.matches = [*assessment.matches, decision]
             assessment.warnings = list(dict.fromkeys(assessment.warnings + warnings + retrieved.get("warnings", [])))
-            await commit_screening_write(db, run.job_id)
+            await save()
         return {}
 
     async def score(state):
         await set_status("scoring")
         parsed = await parsed_results()
-        criteria = run.inputs["profile"]["criteria"]
-        if len(assessment.matches) != len(criteria):
+        criteria = profile["criteria"]
+        by_id = {c["id"]: c for c in criteria}
+        if len(assessment.matches) != len(criteria) or {m["requirement_id"] for m in assessment.matches} != set(by_id):
             raise ValueError("MATCH_COVERAGE_INVALID")
-        validated = [validate_match(m, next(c for c in criteria if c["id"] == m["requirement_id"]), parsed) for m in assessment.matches]
-        assessment.matches = validated
-        assessment.score = calculate_scores(run.inputs["profile"], validated, run.inputs["rubric"])
+        assessment.matches = [validate_match(m, by_id[m["requirement_id"]], parsed) for m in assessment.matches]
+        assessment.score = calculate_scores(profile, assessment.matches, rubric)
         assessment.error_code = None
         assessment.warnings = [warning for warning in assessment.warnings if warning not in REPAIR_GUIDANCE]
         await set_status("completed")
