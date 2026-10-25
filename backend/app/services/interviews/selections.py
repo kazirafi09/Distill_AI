@@ -15,6 +15,7 @@ from app.services.cv.screening import (
     get_screening_results,
     owned_job,
     lock_screening_job,
+    available_processing_versions,
 )
 from app.services.interviews.schemas import SaveShortlistRequest
 from app.services.interviews.shortlisting import preview_shortlist
@@ -25,6 +26,7 @@ async def save_shortlist(
     recruiter_id,
     request: SaveShortlistRequest,
 ):
+    versions = await available_processing_versions()
     async with SessionFactory() as db:
         # Serialize saves for this JD using the existing screening lock.
         await lock_screening_job(db, job_id)
@@ -35,6 +37,7 @@ async def save_shortlist(
             recruiter_id,
             request.filters,
             db=db,
+            versions=versions,
         )
 
         if preview["preview_key"] != request.preview_key:
@@ -153,6 +156,7 @@ async def save_shortlist(
             recruiter_id,
             request.filters,
             db=db,
+            versions=versions,
         )
         if latest_preview["preview_key"] != request.preview_key:
             raise HTTPException(
@@ -202,6 +206,9 @@ async def load_shortlist(job_id, recruiter_id):
             )
         ).all()
 
+        # Loaded snapshots stay available with expire_on_commit=False.
+        # Do not reserve this connection while results discover model versions.
+        await db.commit()
         results = await get_screening_results(job_id, recruiter_id)
         current_assessments = {
             item["application_id"]: item

@@ -9,6 +9,7 @@ from app.models.user import User
 from app.services.cv.screening import (
     WORKER_LOCK, digest, inputs_for, owned_job, lock_screening_job,
     commit_screening_write,
+    processing_versions,
 )
 from app.workflows.cv_screening import build_screening_graph
 from app.workflows.runtime import open_async_workflow_checkpointer
@@ -28,8 +29,11 @@ async def run_once():
                 job_id = await db.scalar(select(ScreeningRun.job_id).where(
                     ScreeningRun.status.in_(["queued", "running"]))
                     .order_by(ScreeningRun.created_at).limit(1))
-                if job_id is None:
-                    return False
+            if job_id is None:
+                return False
+            # Provider cooldowns must not hold the per-job transaction lock.
+            versions = await processing_versions()
+            async with SessionFactory() as db:
                 await lock_screening_job(db, job_id)
                 run = await db.scalar(select(ScreeningRun).where(
                     ScreeningRun.job_id == job_id, ScreeningRun.status.in_(["queued", "running"]))
@@ -43,7 +47,7 @@ async def run_once():
                     await commit_screening_write(db, run.job_id)
                     return True
                 job = await owned_job(db, run.job_id, run.recruiter_id)
-                if digest(await inputs_for(db, job, run.recruiter_id)) != run.input_key:
+                if digest(await inputs_for(db, job, run.recruiter_id, versions=versions)) != run.input_key:
                     run.status = "outdated"
                     await commit_screening_write(db, run.job_id)
                     return True

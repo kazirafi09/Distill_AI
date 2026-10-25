@@ -16,6 +16,7 @@ from app.services.cv.scoring import calculate_scores, rank_assessments
 from app.services.cv.screening import (
     retrieve_through_mcp, inputs_for, owned_job, commit_screening_write,
     valid_aggregate_score,
+    processing_versions,
 )
 from app.workflows.runtime import open_async_workflow_checkpointer
 
@@ -58,7 +59,11 @@ def build_candidate_graph(saver, db, run, assessment):
         return {}
 
     async def parsed_results():
-        return [await db.get(CVParseResult, UUID(v)) for v in assessment.parse_result_ids]
+        parsed = [await db.get(CVParseResult, UUID(v)) for v in assessment.parse_result_ids]
+        # Matching can wait through a provider cooldown. Keep the loaded records,
+        # but return their read transaction's connection before external calls.
+        await db.commit()
+        return parsed
 
     async def index(state):
         await set_status("indexing")
@@ -179,12 +184,13 @@ class BatchState(TypedDict, total=False):
 
 def build_screening_graph(saver):
     async def candidate(state):
+        versions = await processing_versions()
         async with SessionFactory() as db:
             run = await db.get(ScreeningRun, UUID(state["run_id"]))
             if run.status == "outdated":
                 return {"more": False}
             job = await owned_job(db, run.job_id, run.recruiter_id)
-            if digest(await inputs_for(db, job, run.recruiter_id)) != run.input_key:
+            if digest(await inputs_for(db, job, run.recruiter_id, versions=versions)) != run.input_key:
                 run.status = "outdated"
                 await commit_screening_write(db, run.job_id)
                 return {"more": False}
@@ -198,12 +204,13 @@ def build_screening_graph(saver):
         return {"more": remaining is not None}
 
     async def rank(state):
+        versions = await processing_versions()
         async with SessionFactory() as db:
             run = await db.get(ScreeningRun, UUID(state["run_id"]))
             if run.status == "outdated":
                 return {}
             job = await owned_job(db, run.job_id, run.recruiter_id)
-            if digest(await inputs_for(db, job, run.recruiter_id)) != run.input_key:
+            if digest(await inputs_for(db, job, run.recruiter_id, versions=versions)) != run.input_key:
                 run.status = "outdated"
                 await commit_screening_write(db, run.job_id)
                 return {}

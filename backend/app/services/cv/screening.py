@@ -24,10 +24,13 @@ from app.services.cv.parsing import local_versions, verify_integrity
 from app.integrations.cv_model import model_version, provider, model_name, context_tokens
 from app.services.cv.scoring import RUBRIC, rank_assessments, validate_scoring_profile
 from app.services.recruitment_access import owned_job, owned_application, lock_job as lock_screening_job
+from app.services.cv.progress import screening_progress
 
 WORKER_LOCK = 73101984023
 _versions_cache = None
 _versions_lock = asyncio.Lock()
+_DISCOVER_VERSIONS = object()
+VERSION_DISCOVERY_TIMEOUT_SECONDS = 5
 
 
 async def commit_screening_write(db, job_id):
@@ -77,6 +80,25 @@ async def processing_versions():
         return versions
 
 
+async def available_processing_versions():
+    """Bound discovery, including provider cooldowns; call before opening a transaction."""
+    try:
+        async with asyncio.timeout(VERSION_DISCOVERY_TIMEOUT_SECONDS):
+            return await processing_versions()
+    except Exception:
+        return None
+
+
+def cached_processing_versions():
+    """Transaction callers may only use a fresh snapshot, never wait on a model."""
+    settings = get_settings()
+    config = (settings.ollama_base_url, provider(), model_name(), settings.embedding_model,
+              context_tokens(), settings.cv_model_output_tokens, settings.cv_ocr_language)
+    if _versions_cache and _versions_cache[0] == config and monotonic() - _versions_cache[1] < 30:
+        return _versions_cache[2]
+    return None
+
+
 async def manifest(db, job_id, recruiter_id):
     applications = (await db.execute(select(CandidateApplication, Candidate).join(Candidate).where(
         CandidateApplication.job_description_id == job_id, Candidate.recruiter_id == recruiter_id).order_by(CandidateApplication.id))).all()
@@ -95,25 +117,33 @@ async def manifest(db, job_id, recruiter_id):
     return output
 
 
-async def inputs_for(db, job, recruiter_id):
+async def inputs_for(db, job, recruiter_id, *, versions=_DISCOVER_VERSIONS):
+    if versions is _DISCOVER_VERSIONS:
+        versions = await processing_versions()
+    if versions is None:
+        raise ValueError("CURRENT_MODEL_VERSIONS_UNAVAILABLE")
     return {"profile": job.screening_profile, "profile_version": job.profile_version, "rubric": RUBRIC,
-            "versions": await processing_versions(), "applications": await manifest(db, job.id, recruiter_id)}
+            "versions": versions, "applications": await manifest(db, job.id, recruiter_id)}
 
 
 def run_public(run, assessments):
     return {"id": str(run.id), "job_id": str(run.job_id), "status": run.status, "attempt": run.attempt,
         "total": len(assessments), "finished": sum(a.status in {"completed", "failed", "needs_review"} for a in assessments),
         "completed": sum(a.status == "completed" for a in assessments), "warnings": run.warnings,
+        "progress": screening_progress(run, assessments, valid_score=valid_aggregate_score),
         "error_code": run.error_code, "profile_version": run.inputs.get("profile_version"),
         "rubric_version": run.inputs.get("rubric", {}).get("version"), "updated_at": run.updated_at.isoformat()}
 
 
 async def start_job_screening(job_id, recruiter_id):
     async with SessionFactory() as db:
+        await owned_job(db, job_id, recruiter_id)
+    versions = await available_processing_versions()
+    async with SessionFactory() as db:
         await lock_screening_job(db, job_id)
         job = await owned_job(db, job_id, recruiter_id)
         try:
-            inputs = await inputs_for(db, job, recruiter_id)
+            inputs = await inputs_for(db, job, recruiter_id, versions=versions)
         except Exception:
             raise HTTPException(503, "Local screening models are unavailable. Check Ollama and retry.") from None
         key = digest(inputs)
@@ -144,6 +174,7 @@ async def start_job_screening(job_id, recruiter_id):
 
 
 async def resume_run(run_id, recruiter_id):
+    versions = await available_processing_versions()
     async with SessionFactory() as db:
         job_id = await db.scalar(select(ScreeningRun.job_id).where(
             ScreeningRun.id == run_id, ScreeningRun.recruiter_id == recruiter_id))
@@ -155,7 +186,7 @@ async def resume_run(run_id, recruiter_id):
             raise HTTPException(404, "Run not found.")
         job = await owned_job(db, run.job_id, recruiter_id)
         try:
-            current = await inputs_for(db, job, recruiter_id)
+            current = await inputs_for(db, job, recruiter_id, versions=versions)
         except Exception:
             raise HTTPException(503, "Local screening models are unavailable.") from None
         if digest(current) != run.input_key or run.status in {"outdated", "correction_needed"}:
@@ -181,9 +212,11 @@ async def run_status(run_id, recruiter_id):
             "warnings": a.warnings, "error_code": a.error_code} for a in assessments]}
 
 
-async def _get_current_screening_key(db, job, recruiter_id):
+async def _get_current_screening_key(db, job, recruiter_id, versions):
     try:
-        return digest(await inputs_for(db, job, recruiter_id)), []
+        if versions is None:
+            raise ValueError("CURRENT_MODEL_VERSIONS_UNAVAILABLE")
+        return digest(await inputs_for(db, job, recruiter_id, versions=versions)), []
     except Exception:
         return None, ["CURRENT_MODEL_VERSIONS_UNAVAILABLE_RANKING_WITHHELD"]
 
@@ -222,27 +255,34 @@ def _assessment_result(assessment, candidate, outdated):
     }
 
 
-async def get_screening_results(job_id, recruiter_id, *, db=None):
+async def get_screening_results(job_id, recruiter_id, *, db=None, versions=_DISCOVER_VERSIONS):
     """Return the latest run's results and summaries of previous runs."""
     if db is None:
+        # Authenticate ownership in a short transaction before contacting providers.
         async with SessionFactory() as session:
-            result = await get_screening_results(job_id, recruiter_id, db=session)
+            await owned_job(session, job_id, recruiter_id)
+        if versions is _DISCOVER_VERSIONS:
+            versions = await available_processing_versions()
+        async with SessionFactory() as session:
+            result = await get_screening_results(job_id, recruiter_id, db=session, versions=versions)
             await session.commit()
             return result
+    if versions is _DISCOVER_VERSIONS:
+        versions = cached_processing_versions()
     await lock_screening_job(db, job_id)
     # Save calls this twice. Reload committed state, rather than cached ORM rows.
     db.expire_all()
-    return await _screening_results_in_session(db, job_id, recruiter_id)
+    return await _screening_results_in_session(db, job_id, recruiter_id, versions)
 
 
-async def _screening_results_in_session(db, job_id, recruiter_id):
+async def _screening_results_in_session(db, job_id, recruiter_id, versions):
     job = await owned_job(db, job_id, recruiter_id)
     runs = list(await db.scalars(
         select(ScreeningRun)
         .where(ScreeningRun.job_id == job_id, ScreeningRun.recruiter_id == recruiter_id)
         .order_by(ScreeningRun.created_at.desc())
     ))
-    current_key, warnings = await _get_current_screening_key(db, job, recruiter_id)
+    current_key, warnings = await _get_current_screening_key(db, job, recruiter_id, versions)
     results = []
     history = []
 

@@ -1,26 +1,18 @@
-"""Check remote metadata without downloading or screening CVs."""
+"""Import connected application sources every minute, independently of chat/UI."""
 from datetime import datetime, timedelta, timezone
 import logging
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.concurrency import run_in_threadpool
+from fastapi import HTTPException
 
 from app.db.session import engine
-from app.integrations.google_sheets import read_response_sheet
 from app.models.cv import CVDocument, CVFileVersion, CVSource, CVSourceCheck
-from app.services.cv.sheet_import import list_source_cv_files, parse_response_rows, source_lock_key
+from app.models.jd import JDConversation, JobDescription
 
-CHECK_INTERVAL_SECONDS = 300
+CHECK_INTERVAL_SECONDS = 60
 WORKER_LOCK = 73101984025
 logger = logging.getLogger("distill_ai.cv_source_checks")
-
-
-def pending_files(files, downloaded_ids, rows=None):
-    ids = {item["id"] for item in files}
-    if rows is not None:
-        ids &= {file_id for row in rows for file_id in row["drive_file_ids"]}
-    return sorted(ids - set(downloaded_ids))
 
 
 async def downloaded_file_ids(db, job_id):
@@ -38,41 +30,51 @@ async def reconcile_source_check(db, source):
 
 
 async def check_source(source_id):
-    key = source_lock_key(source_id)
-    async with engine.connect() as connection:
-        acquired = await connection.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key": key})
-        await connection.commit()
-        if not acquired:
+    # Import lazily: ingestion also uses reconcile_source_check after importing.
+    from app.services.cv.ingestion import fetch_cv_source
+
+    async with AsyncSession(engine, expire_on_commit=False) as db:
+        recruiter_id = await db.scalar(select(JDConversation.recruiter_id)
+            .join(JobDescription, JobDescription.conversation_id == JDConversation.id)
+            .join(CVSource, CVSource.job_description_id == JobDescription.id)
+            .where(CVSource.id == source_id))
+    if recruiter_id is None:
+        return False
+
+    result = None
+    error_code = None
+    try:
+        # The shared importer owns the source lock, checksum/version checks and
+        # idempotent Sheet row linking. Do not take its lock on another connection.
+        result = await fetch_cv_source(source_id, recruiter_id)
+        if result["failed"] or result["errors"] or (result.get("sheet") or {}).get("rows_failed"):
+            error_code = "CV_SOURCE_IMPORT_INCOMPLETE"
+    except HTTPException as error:
+        if error.status_code in {404, 409}:
+            # A concurrent import or source setup owns this source. Leave it due.
             return False
-        try:
-            async with AsyncSession(bind=connection, expire_on_commit=False) as db:
-                source = await db.get(CVSource, source_id)
-                if source is None:
-                    return False
-                check = await db.get(CVSourceCheck, source_id)
-                if check is None:
-                    check = CVSourceCheck(source_id=source_id, pending_file_ids=[])
-                    db.add(check)
-                try:
-                    rows = None
-                    if source.spreadsheet_id is not None:
-                        sheet = await run_in_threadpool(read_response_sheet, source.spreadsheet_id, source.sheet_tab_id)
-                        rows, _ = parse_response_rows(sheet)
-                    files = await run_in_threadpool(list_source_cv_files, source.drive_folder_id, source.spreadsheet_id is not None)
-                    check.pending_file_ids = pending_files(files, await downloaded_file_ids(db, source.job_description_id), rows)
-                    check.last_success_at = datetime.now(timezone.utc)
-                    check.error_code = None
-                except Exception as error:
-                    # Preserve the last good notification during a remote failure.
-                    check.error_code = "CV_SOURCE_CHECK_FAILED"
-                    logger.warning("CV source check failed | error_type=%s", type(error).__name__)
-                check.last_checked_at = datetime.now(timezone.utc)
-                await db.commit()
-                return True
-        finally:
-            await connection.rollback()
-            await connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": key})
-            await connection.commit()
+        error_code = "CV_SOURCE_CONFIGURATION_INVALID" if error.status_code == 422 else "CV_SOURCE_CHECK_FAILED"
+        logger.warning("CV source import failed | status=%s", error.status_code)
+    except Exception as error:
+        error_code = "CV_SOURCE_CHECK_FAILED"
+        logger.warning("CV source import failed | error_type=%s", type(error).__name__)
+
+    async with AsyncSession(engine, expire_on_commit=False) as db:
+        if await db.get(CVSource, source_id) is None:
+            return False
+        check = await db.get(CVSourceCheck, source_id)
+        if check is None:
+            check = CVSourceCheck(source_id=source_id, pending_file_ids=[])
+            db.add(check)
+        now = datetime.now(timezone.utc)
+        check.last_checked_at = now
+        check.error_code = error_code
+        if result is not None:
+            check.pending_file_ids = sorted({error["drive_file_id"] for error in result["errors"] if error.get("drive_file_id")})
+        if error_code is None:
+            check.last_success_at = now
+        await db.commit()
+    return True
 
 
 async def run_due_checks():

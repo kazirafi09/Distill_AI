@@ -13,6 +13,14 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlalchemy import select
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+import httpx
+from fastapi import FastAPI
+from app.auth import CurrentUser
+from app.db.session import get_db
+from app.core.config import get_settings
+from app.core.security import create_access_token
 
 import test_interview_selections as fixtures
 from test_cv_scoring import profile
@@ -42,6 +50,9 @@ class LiveShortlistDatabaseTests(unittest.IsolatedAsyncioTestCase):
         versions = patch.object(screening, "processing_versions", AsyncMock(return_value={"synthetic": "v1"}))
         versions.start()
         self.addCleanup(versions.stop)
+        worker_versions = patch.object(cv_screening, "processing_versions", AsyncMock(return_value={"synthetic": "v1"}))
+        worker_versions.start()
+        self.addCleanup(worker_versions.stop)
         async with SessionFactory() as db:
             job = await db.get(JobDescription, self.job_id)
             job.screening_profile, job.profile_version = profile(), 1
@@ -55,6 +66,79 @@ class LiveShortlistDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def worker(self):
         # Runs the actual batch worker workflow, including ranking and commit.
         return await build_screening_graph(None).ainvoke({"run_id": str(self.run_id)})
+
+    async def test_provider_wait_releases_pool_and_job_lock(self):
+        # One connection makes leaked read transactions immediately observable.
+        engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0, pool_timeout=1)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        entered, release = asyncio.Event(), asyncio.Event()
+        calls = 0
+
+        async def paused_discovery():
+            nonlocal calls
+            calls += 1
+            if calls == 4:
+                entered.set()
+            await release.wait()
+            return {"synthetic": "v1"}
+
+        tasks = []
+        try:
+            with patch.object(screening, "SessionFactory", factory), \
+                 patch.object(screening, "processing_versions", paused_discovery):
+                tasks = [asyncio.create_task(screening.get_screening_results(self.job_id, self.owner)) for _ in range(4)]
+                await asyncio.wait_for(entered.wait(), 3)
+                self.assertEqual(engine.pool.checkedout(), 0)
+                async with factory() as db:
+                    self.assertEqual(await db.scalar(text("SELECT 1")), 1)
+                    self.assertTrue(await db.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"),
+                        {"key": self.job_id.int % (2**63 - 1)}))
+                release.set()
+                results = await asyncio.wait_for(asyncio.gather(*tasks), 5)
+                self.assertTrue(all(result["ranked"] for result in results))
+        finally:
+            release.set()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await engine.dispose()
+
+    async def test_authenticated_wait_does_not_reserve_connection(self):
+        engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0, pool_timeout=0.3)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        entered, release = asyncio.Event(), asyncio.Event()
+        app = FastAPI()
+
+        async def database():
+            async with factory() as db:
+                yield db
+
+        app.dependency_overrides[get_db] = database
+
+        @app.get("/wait")
+        async def wait(user: CurrentUser):
+            entered.set()
+            await release.wait()
+            return {"id": str(user.id), "role": user.role}
+
+        task = None
+        try:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                task = asyncio.create_task(client.get("/wait", headers={"Authorization": "Bearer " + create_access_token(self.owner)}))
+                await asyncio.wait_for(entered.wait(), 3)
+                self.assertEqual(engine.pool.checkedout(), 0)
+                async with factory() as db:
+                    self.assertEqual(await db.scalar(text("SELECT 1")), 1)
+                release.set()
+                response = await asyncio.wait_for(task, 2)
+                self.assertEqual(response.json(), {"id": str(self.owner), "role": "recruiter"})
+        finally:
+            release.set()
+            if task is not None and not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            await engine.dispose()
 
     async def test_worker_failure_is_saved_after_rollback(self):
         async with SessionFactory() as db:

@@ -205,6 +205,9 @@ async def get_current_user(
                 or session.expires_at <= datetime.now(timezone.utc)):
             raise authentication_error()
 
+    # Authentication is read-only. Return the connection before the endpoint
+    # waits on a model, stream or another service; loaded user fields stay valid.
+    await db.commit()
     return user
 
 

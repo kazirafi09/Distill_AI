@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.db.session import SessionFactory
 from app.models.cv import Candidate, CandidateApplication
 from app.services.cv.indexing import digest
-from app.services.cv.screening import get_screening_results, valid_aggregate_score
+from app.services.cv.screening import get_screening_results, valid_aggregate_score, available_processing_versions
 
 
 class ShortlistRequest(BaseModel):
@@ -34,14 +34,15 @@ class ShortlistRequest(BaseModel):
         return self
 
 
-async def preview_shortlist(job_id, recruiter_id, filters: ShortlistRequest, *, db=None):
+async def preview_shortlist(job_id, recruiter_id, filters: ShortlistRequest, *, db=None, versions=None):
     if db is None:
+        versions = await available_processing_versions()
         async with SessionFactory() as session:
-            response = await preview_shortlist(job_id, recruiter_id, filters, db=session)
+            response = await preview_shortlist(job_id, recruiter_id, filters, db=session, versions=versions)
             await session.commit()
             return response
     # Existing code checks ownership, freshness, and ranking.
-    results = await get_screening_results(job_id, recruiter_id, db=db)
+    results = await get_screening_results(job_id, recruiter_id, db=db, versions=versions)
     roster = (await db.execute(
         select(CandidateApplication, Candidate).join(Candidate).where(
             CandidateApplication.job_description_id == job_id,
