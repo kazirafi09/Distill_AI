@@ -29,7 +29,7 @@ from app.services.wind_tunnel import storage
 from app.services.wind_tunnel.extraction import apply_extraction
 from app.services.wind_tunnel.policy import personas_for, repetitions_for
 
-VERSION = "grounded-suggestions-14"
+VERSION = "grounded-suggestions-15"
 TARGET_CATALOG_VERSION = "snapshot-targets-1"
 MAX_ATTEMPTS = 2
 TARGET_SUGGESTIONS = 3
@@ -66,6 +66,14 @@ Copy target_id from editable_targets and write the replacement for that target's
 entire current_value. The server supplies the previous value, source reference,
 location and existing editor patch. Never invent an ID, copy a source quote into
 another field, or emit kind/expected/criterion_id/source_references as edit fields.
+Every replacement must differ from that target's current_value. Copying the saved
+text unchanged is not an edit, even if the proposal title or reason describes an
+improvement. Before returning, compare EACH replacement with its target's
+current_value and write the actual improved wording in replacement. Do not include
+unchanged companion targets. If repair_details reports replacement_unchanged,
+correct that candidate's proposal.changes entry at patch_index in previous_draft
+by writing a supported text change. Candidate 0 is suggestion; candidate N > 0 is
+additional_suggestions[N - 1]. Do not just rewrite its title/reason or repeat the source.
 Description targets identify individual lines/bullets, including repeated text;
 keep their Markdown form. Group linked description and criterion edits in the same
 proposal's changes. Do not repeat a target or overlap proposals. Make the title a
@@ -506,6 +514,14 @@ def reconcile_candidates(batch, context, retained):
     for index, item in enumerate(batch.suggestions):
         if len(admitted) == TARGET_SUGGESTIONS:
             break
+        # Give bounded repair the exact problem instead of hiding no-op edits
+        # behind a generic source/patch failure. Never accept unchanged patches.
+        unchanged = [patch_index for patch_index, patch in enumerate(item.proposal.patches)
+                     if patch.expected == patch.proposed]
+        if unchanged:
+            details.extend({"candidate_index": index, "patch_index": patch_index,
+                            "issue": "replacement_unchanged"} for patch_index in unchanged)
+            continue
         try:
             proposed, _ = reconcile(ProposalBatch(suggestions=[*admitted, item]), context)
             if len(proposed) <= len(admitted):
@@ -515,7 +531,11 @@ def reconcile_candidates(batch, context, retained):
         except (ValueError, TypeError, KeyError, HTTPException) as exc:
             if isinstance(exc, HTTPException) and exc.status_code != 422:
                 raise
-            details.append({"candidate_index": index, "issue": "source_or_patch_validation_failed"})
+            detail = {"candidate_index": index, "issue": "source_or_patch_validation_failed"}
+            # Fixed public codes only; exception text may contain rejected prose.
+            if isinstance(exc, ValueError) and str(exc) in CODES:
+                detail["cause_code"] = str(exc)
+            details.append(detail)
     if not admitted:
         code = "SUGGESTION_NO_NEW_EDITS" if details and all(d["issue"] == "duplicate_or_previous_edit" for d in details) else "SUGGESTION_OUTPUT_INVALID"
         raise InvalidModelOutput(details, code=code)
