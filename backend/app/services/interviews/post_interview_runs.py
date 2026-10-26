@@ -74,6 +74,7 @@ def feature_inputs(base, parent, kind, options, policy, cv=None):
         inputs["cv"] = cv
     if kind == "interview_performance":
         inputs["scoring_settings"] = policy
+        inputs["performance_evidence_version"] = service.PERFORMANCE_EVIDENCE_VERSION
     inputs["source_key"] = analysis.digest({"kind": kind, "job_id": str(parent.job_id), **inputs})
     return inputs
 

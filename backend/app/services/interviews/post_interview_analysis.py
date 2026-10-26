@@ -11,7 +11,8 @@ from app.services.interviews import analysis, assessment_store as store
 from app.services.interviews import performance_rubric as rubric
 
 KINDS = ("cv_claim_review", "interview_performance", "interview_quality")
-PROMPT_VERSION = "interview-extensions-2"
+PROMPT_VERSION = "interview-extensions-3"
+PERFORMANCE_EVIDENCE_VERSION = "source-selection-2"
 VERSIONS = {"cv_claim_review": "cv-claim-review-3", "interview_performance": rubric.RUBRIC_VERSION, "interview_quality": "interview-quality-1"}
 Text = Annotated[str, Field(min_length=1, max_length=1400)]
 
@@ -170,6 +171,8 @@ def resolve_cv_selection(raw, inputs):
 
 def generation_schema(kind, inputs):
     contract = (ReferencedClaims if uses_interview_selection(inputs) else SelectedClaims) if kind == "cv_claim_review" and uses_cv_selection(inputs) else SCHEMAS[kind]
+    if kind == "interview_performance" and uses_performance_selection(inputs):
+        contract = ReferencedPerformance
     schema = deepcopy(contract.model_json_schema())
     if kind == "cv_claim_review" and uses_cv_selection(inputs):
         schema["$defs"]["CVSelection"]["properties"]["source_ref"]["enum"] = list(cv_sources(inputs))
@@ -181,6 +184,14 @@ def generation_schema(kind, inputs):
                 properties["interview_evidence"]["items"]["enum"] = refs
             else:
                 properties["interview_evidence"]["maxItems"] = 0
+    if kind == "interview_performance" and uses_performance_selection(inputs):
+        properties = schema["$defs"]["ReferencedDimensionResult"]["properties"]
+        for field, sources in (("evidence", candidate_excerpts(inputs)),
+                               ("reference_evidence", performance_references(inputs))):
+            if sources:
+                properties[field]["items"]["enum"] = list(sources)
+            else:
+                properties[field]["maxItems"] = 0
     return schema
 
 
@@ -194,7 +205,7 @@ class DimensionResult(Schema):
     score: Annotated[StrictInt, Field(ge=0, le=4)] | None
     reason: Literal["assessed", "insufficient_evidence", "unreliable_attribution", "not_elicited", "transcript_uncertain"]
     justification: Text
-    evidence: list[Quote] = Field(max_length=8)
+    evidence: list[Quote] = Field(max_length=200)
     basis: Literal["saved_reference_and_interview", "interview_only", "model_knowledge", "not_assessed"]
     reference_evidence: list[ReferenceQuote] = Field(max_length=6)
     uncertainty: Text | None
@@ -214,6 +225,50 @@ class DimensionResult(Schema):
 
 class Performance(Schema):
     dimensions: list[DimensionResult] = Field(min_length=6, max_length=6)
+
+
+class ReferencedDimensionResult(DimensionResult):
+    evidence: list[str] = Field(max_length=200)
+    reference_evidence: list[str] = Field(max_length=6)
+
+
+class ReferencedPerformance(Schema):
+    dimensions: list[ReferencedDimensionResult] = Field(min_length=6, max_length=6)
+
+
+def uses_performance_selection(inputs):
+    return inputs.get("performance_evidence_version") == PERFORMANCE_EVIDENCE_VERSION
+
+
+def performance_references(inputs):
+    """Only saved passages eligible as technical support can be selected."""
+    sources = {}
+    for reference in inputs.get("references", []):
+        if reference.get("document_type") == "question_bank":
+            continue
+        for start in range(0, len(reference["text"]), 1200):
+            quote = reference["text"][start:start + 1200]
+            if quote.strip():
+                sources[f"reference-source-{len(sources) + 1}"] = {
+                    "reference_id": reference["id"], "quote": quote}
+    return sources
+
+
+def resolve_performance_selection(raw, inputs):
+    result = ReferencedPerformance.model_validate(raw).model_dump()
+    candidates, references = candidate_excerpts(inputs), performance_references(inputs)
+    for dimension in result["dimensions"]:
+        for field, sources, fields in (("evidence", candidates, ("turn_id", "quote")),
+                                      ("reference_evidence", references, ("reference_id", "quote"))):
+            resolved = []
+            for index, ref in enumerate(dimension[field]):
+                if ref not in sources:
+                    code = "INTERVIEW_EVIDENCE_SOURCE_UNKNOWN" if field == "evidence" else "INTERVIEW_PERFORMANCE_REFERENCE_SOURCE_UNKNOWN"
+                    raise InterviewEvidenceError(code,
+                        f"dimensions.{dimension['dimension']}.{field}.{index}")
+                resolved.append({key: sources[ref][key] for key in fields})
+            dimension[field] = resolved
+    return result
 
 
 class QualityFinding(Schema):
@@ -286,6 +341,7 @@ judge personality, compare other candidates, or output a candidate score.""",
 
 
 VALIDATION_MESSAGES = {
+    "INTERVIEW_PERFORMANCE_REFERENCE_SOURCE_UNKNOWN": ("Select a source_ref from technical_reference_excerpts; do not invent a reference or select a question-bank passage.", "dimensions.reference_evidence"),
     "INTERVIEW_EVIDENCE_SOURCE_UNKNOWN": ("Select an interview_evidence reference from the supplied candidate excerpt list. Do not supply a turn ID or invent a reference.", "evidence"),
     "INTERVIEW_EVIDENCE_TURN_UNKNOWN": ("The interview turn ID does not belong to this saved transcript.", "evidence.turn_id"),
     "INTERVIEW_EVIDENCE_SPEAKER_INVALID": ("This finding requires candidate speech; the selected turn is spoken by the interviewer.", "evidence.turn_id"),
@@ -325,12 +381,15 @@ def validation_diagnostic(error):
         path = path.replace("claims.", f"claims.{error.index}.", 1)
     if isinstance(error, InterviewEvidenceError):
         path = error.path
+    schema_details = {}
     if isinstance(error, ValidationError):
         fields = {name for schema in (Claims, Claim, CVQuote, CVSelection, SelectedClaim, SelectedClaims, ReferencedClaim, ReferencedClaims, Quote, Performance, DimensionResult,
                                       ReferenceQuote, Quality, QualityFinding) for name in schema.model_fields}
-        location = error.errors(include_input=False, include_context=False, include_url=False)[0]["loc"]
+        first = error.errors(include_input=False, include_context=False, include_url=False)[0]
+        location = first["loc"]
         path = ".".join(str(part) if type(part) is int or part in fields else "field" for part in location[:8]) or "output"
-    return {"code": code, "field_path": path, "message": message}
+        schema_details = {"schema_error_type": first["type"]}
+    return {"code": code, "field_path": path, "message": message, **schema_details}
 
 
 def source_warnings(prepared):
@@ -390,6 +449,8 @@ def speaking_time(prepared):
 def materialize(kind, raw, inputs):
     if kind == "cv_claim_review" and uses_cv_selection(inputs):
         raw = resolve_cv_selection(raw, inputs)
+    if kind == "interview_performance" and uses_performance_selection(inputs):
+        raw = resolve_performance_selection(raw, inputs)
     result = SCHEMAS[kind].model_validate(raw).model_dump()
     turns = {t["id"]: t for t in inputs["prepared"]["turns"]}
     criteria = {c["id"] for c in inputs["criteria"]}
@@ -470,12 +531,51 @@ def materialize(kind, raw, inputs):
     return result
 
 
+def model_sources(inputs):
+    """Lossless source projection: send speech once and link saved F5 citations to it.
+
+    Storage identities, duplicated groups/references and derived display metadata
+    remain in the immutable snapshot, but need not be repeated in model context.
+    """
+    prepared = {key: value for key, value in inputs["prepared"].items() if key != "turns"}
+    turn_fields = ("id", "speaker_role", "text", "session_start_ms", "session_end_ms", "timing_basis", "quality_flags")
+    prepared["turns"] = [{key: turn[key] for key in turn_fields if key in turn}
+                         for turn in inputs["prepared"]["turns"]]
+    f5 = {key: value for key, value in inputs["f5"].items()
+          if key not in {"groups", "references", "criteria_snapshot", "results"}}
+    f5["results"] = []
+    for saved in inputs["f5"].get("results", []):
+        evaluations = {}
+        for dimension, evaluation in saved["evaluations"].items():
+            evaluations[dimension] = {**evaluation, "evidence": [
+                {key: excerpt[key] for key in ("turn_id", "start_char", "end_char")}
+                for excerpt in evaluation["evidence"]]}
+        f5["results"].append({"group": saved["group"], "evaluations": evaluations})
+    return prepared, f5
+
+
+def encode_payload(payload):
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
+def request_fits(system, text, schema, options):
+    # UTF-8 bytes are a conservative token upper bound. Include schema, system,
+    # reserved output and framing, including on a repair call.
+    budget = options["context_tokens"] - options.get("output_tokens", 4096) - 1024
+    return len((system + text + encode_payload(schema)).encode("utf-8")) <= budget
+
+
 async def execute(claim, version):
     kind, inputs = claim["kind"], claim["inputs"]
     output = await store.read_stage(claim, "extension-output")
     if output is None:
+        prepared, f5 = model_sources(inputs)
         payload = {"task": INSTRUCTIONS[kind], "criteria": inputs["criteria"],
-            "prepared": inputs["prepared"], "saved_f5": inputs["f5"], "references": inputs.get("references", [])}
+            "prepared": prepared, "saved_f5": f5, "references": inputs.get("references", [])}
+        payload["task"] += (" Saved F5 evidence entries link to prepared.turns by turn_id; "
+            "start_char/end_char identify the exact original substring (end exclusive). "
+            "Read the original text at these spans and the complete conversation, including later corrections. "
+            "The group definitions are supplied once in saved_f5.results; references and criteria are supplied at the top level.")
         if kind == "cv_claim_review":
             if uses_cv_selection(inputs):
                 payload["cv_sources"] = [{"source_ref": ref, "text": source["text"]}
@@ -500,11 +600,20 @@ async def execute(claim, version):
                 payload["cv_documents"] = inputs["cv"]["documents"]
         if kind == "interview_performance":
             payload.update(anchors=rubric.ANCHORS, dimension_guidance=rubric.DIMENSION_GUIDANCE)
-        text = json.dumps(payload, ensure_ascii=False)
-        # Do not silently truncate evidence and then make absence/completeness claims.
-        if len(text) > min(180000, inputs["model_options"]["context_tokens"] * 2):
-            await store.fail(claim, "EXTENSION_INPUT_TOO_LARGE")
-            return
+            if uses_performance_selection(inputs):
+                payload["candidate_interview_excerpts"] = [{"source_ref": ref, **excerpt}
+                    for ref, excerpt in candidate_excerpts(inputs).items()]
+                payload["technical_reference_excerpts"] = [{"source_ref": ref, **excerpt}
+                    for ref, excerpt in performance_references(inputs).items()]
+                payload["task"] += (" Return evidence as source_ref strings selected from candidate_interview_excerpts. "
+                    "Prefer up to eight representative excerpts per dimension; when speech is fragmented, "
+                    "you may cite up to 200 source excerpts. Do not repeat the same source reference. "
+                    "Return reference_evidence as source_ref strings from technical_reference_excerpts. "
+                    "Never generate quotations or turn/reference IDs. Python attaches exact original source text. "
+                    "Interviewer speech and question-bank passages are context only and cannot be selected as support. "
+                    "If no eligible passage establishes technical correctness, use model_knowledge or not_assessed "
+                    "as appropriate; never select an unrelated reference just to supply a citation.")
+        text = encode_payload(payload)
         attempts = await store.read_stage(claim, "extension-attempts") or {"count": 0}
         previous_response = None
         schema = generation_schema(kind, inputs)
@@ -512,6 +621,10 @@ async def execute(claim, version):
         if source_warnings(inputs["prepared"]):
             system += "\nSource limitations: " + " ".join(source_warnings(inputs["prepared"]))
             system += " Saved order is a reading aid, not proven chronology. Use speaker roles and conversational context; adjacency alone does not establish a pairing. Do not invent missing words or answers."
+        # Do not truncate source evidence to make a request fit.
+        if not request_fits(system, text, schema, inputs["model_options"]):
+            await store.fail(claim, "EXTENSION_INPUT_TOO_LARGE")
+            return
         while attempts["count"] < 2:
             if attempts.get("errors"):
                 repair = {**payload, "validation_error": attempts["errors"][-1],
@@ -519,9 +632,12 @@ async def execute(claim, version):
                 # Previous output is untrusted repair context, kept only in memory. Never persist rejected prose.
                 if previous_response is not None:
                     candidate = {**repair, "previous_response": previous_response}
-                    if len(json.dumps(candidate, ensure_ascii=False)) <= min(180000, inputs["model_options"]["context_tokens"] * 2):
+                    if request_fits(system, encode_payload(candidate), schema, inputs["model_options"]):
                         repair = candidate
-                text = json.dumps(repair, ensure_ascii=False)
+                text = encode_payload(repair)
+                if not request_fits(system, text, schema, inputs["model_options"]):
+                    await store.fail(claim, "EXTENSION_INPUT_TOO_LARGE")
+                    return
             # Persist budget before a call; process crashes cannot create unlimited repairs.
             attempts = {**attempts, "count": attempts["count"] + 1}
             await store.write_stage(claim, "extension-attempts", attempts)
