@@ -3,6 +3,7 @@ import { apiRequest } from '../../services/api'
 import { ActionButton, Notice, SectionTabs, StatusBadge } from '../../components/recruitment/RecruitmentUI'
 import { errorLabel, timeLabel } from './format'
 import { performanceDimensions } from './performanceDimensions'
+import AssessmentInfo from './AssessmentInfo'
 import type { Run } from './api'
 import type { InterviewPolicy, PerformanceDimension } from './InterviewScoringSettings'
 import './PostInterviewAssessment.css'
@@ -201,12 +202,13 @@ export default function PostInterviewAssessment({token, parentId, onEvidence, re
   const available = (Object.keys(names) as Kind[]).filter(value => actionFor(value).action !== 'none')
   const action = actionFor(kind)
   return <section ref={panel} className="post-interview-assessment">
-    <header className="pi-header"><div><h2>{embedded ? names[kind] : 'Post-interview insights'}</h2><p>{descriptions[kind]}</p></div></header>
+    <header className="pi-header"><div><h2>{embedded ? names[kind] : 'Post-interview insights'}</h2><p>{descriptions[kind]}</p></div>
+      {!!data?.source_warnings?.length && <AssessmentInfo label="Transcript limitations" warning>{data.source_warnings.map(warning => <p key={warning}>{warning}</p>)}</AssessmentInfo>}
+    </header>
     {!embedded && <SectionTabs tabs={Object.entries(names).map(([id,name]) => ({id,label:name}))} active={tab} onChange={setTab} />}
     {error && <p role="alert" className="assessment-error">{error}</p>}
     {!data && !error && <p role="status">Loading saved insights…</p>}
     {data && <>
-      {!!data.source_warnings?.length && <Notice title="Transcript limitations" tone="warning">{data.source_warnings.map(warning => <p key={warning}>{warning}</p>)}</Notice>}
       <div className="pi-result-toolbar">
         <div>{item && <StatusBadge tone={item.run.status === 'completed' ? 'success' : ['failed','needs_review'].includes(item.run.status) ? 'warning' : 'info'}>{label(item.run.status)}</StatusBadge>}</div>
         {item && (older.length ? <label className="post-interview-version">Saved analysis<select value={item.run.id} onChange={event => setSelectedRuns({...selectedRuns,[kind]:event.target.value})}>{data.items.filter(value => value.run.kind === kind).map((value,index,items) => <option key={value.run.id} value={value.run.id}>Result {items.length - index} · {shortDate(value.run.created_at)} · {label(value.run.status)}</option>)}</select></label> : <span className="pi-saved-at">Saved {shortDate(item.run.created_at)} · Bangladesh time</span>)}

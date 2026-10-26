@@ -7,6 +7,7 @@ import { candidateHistory, cvCoverage, findingLabels, findingsFor, findingSectio
 import type { FindingSection } from './assessmentView'
 import { errorLabel, scoreLabel, stageLabel, timeLabel } from './format'
 import FullReport from './FullReport'
+import AssessmentInfo from './AssessmentInfo'
 import PostInterviewAssessment from './PostInterviewAssessment'
 import type { Kind as InsightKind, Workspace as InsightWorkspace } from './PostInterviewAssessment'
 import './CandidateAssessment.css'
@@ -163,12 +164,14 @@ export default function CandidateAssessment({ data, token, jobTitle, jobNumber, 
   }
   return <div className="candidate-assessment">
     <header className="ca-header"><div><button type="button" className="ca-link ca-back" onClick={onBack}>← Assessments</button><div className="ca-title"><h1>{run.label}</h1><span className={`ca-status ${run.status}`}>{title(run.status)}</span>{run.synthetic && <span className="ca-demo">DEMO · sample data</span>}</div><p>{jobTitle} · JD{jobNumber} · criteria v{run.profile_version} · saved {date(run.created_at)} (Bangladesh time)</p></div>
-      <div className="ca-header-actions"><select aria-label="Saved candidate analysis" value={run.id} onChange={event => onSelect(event.target.value)}>{history.map(item => <option key={item.id} value={item.id}>{date(item.created_at)} · {item.kind === 'f6' ? 'Assessment' : 'Q&A'} · {title(item.status)}</option>)}</select></div>
+      <div className="ca-header-actions"><select aria-label="Saved candidate analysis" value={run.id} onChange={event => onSelect(event.target.value)}>{history.map(item => <option key={item.id} value={item.id}>{date(item.created_at)} · {item.kind === 'f6' ? 'Assessment' : 'Q&A'} · {title(item.status)}</option>)}</select>
+        <div className="ca-header-info"><AssessmentInfo label="Review notes" warning={textOnly}><p>{textOnly ? 'Transcript timing and speaker order are unverified. Missing discussion is not proof of inability or a CV contradiction.' : 'AI conclusions need human review. CV evidence and interview performance are shown separately.'}</p></AssessmentInfo>
+          {run.recovered_from && <AssessmentInfo label="Recovered run"><p>This recovery retains previously validated answers.</p><button type="button" className="ca-link" onClick={() => onSelect(run.recovered_from!)}>View original run</button></AssessmentInfo>}
+        </div>
+      </div>
     </header>
-    <div className="ca-care" role="note"><strong>! &nbsp;Read with care:</strong> {textOnly ? 'transcript timing and speaker order are unverified. Missing discussion is not proof of inability or a CV contradiction.' : 'AI conclusions need human review. CV evidence and interview performance are shown separately.'}</div>
     {run.synthetic && <p className="ca-source-note ca-muted">Synthetic transcript · authored test timing. Scores and durations describe sample data.</p>}
     {data.outdated && <p className="ca-care">Job criteria have changed. This saved analysis retains its original criteria.</p>}
-    {run.recovered_from && <p className="ca-care">This recovery retains previously validated answers. <button type="button" className="ca-link" onClick={() => onSelect(run.recovered_from!)}>View original run</button></p>}
     {run.error_code && <div className="assessment-error" role="alert"><p>{errorLabel(run.error_code, data.result?.validation_error)}</p>{run.can_retry && <button type="button" className="ca-button" onClick={onRetry}>Retry from saved work</button>}{run.can_recover && <button type="button" className="ca-button" disabled={busy} onClick={onRecover}>Resume from saved work</button>}</div>}
     {active && <div className="ca-progress" role="status"><strong>{stageLabel(run.stage)}</strong><span>{run.completed_groups} / {run.total_groups || '…'} {run.kind === 'f6' ? 'analysis branches' : 'question groups'} saved · attempt {run.attempt}/{run.max_attempts}</span>{run.heartbeat_at && <span>Last activity {date(run.heartbeat_at)} (Bangladesh time)</span>}{run.total_groups > 0 && <progress value={run.completed_groups} max={run.total_groups} />}</div>}
     <div className="ca-navigation"><nav className="redesign-tabs" aria-label="Candidate assessment sections">{tabs.map(item => <button type="button" key={item.id} aria-current={tab === item.id ? 'page' : undefined} onClick={() => ['cv_claim_review', 'interview_performance', 'interview_quality'].includes(item.id) ? showInsight(item.id as InsightKind) : setTab(item.id)}>{item.label}{item.count !== undefined && <span className="ca-count">{item.count}</span>}</button>)}</nav>
