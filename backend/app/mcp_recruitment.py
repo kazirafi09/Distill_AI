@@ -192,6 +192,8 @@ async def preview_interview_invitations(
     Show the job, sender, all recipients/actions, subject, body and link lifetime.
     Ask whether to send this exact preview. Only a later user reply can approve.
     Use retry_failed or reissue only on an explicit user request.
+    Uses interview times saved in the Invitations panel. New/reissued invitations
+    always include a calendar file. Saving times alone never sends email.
     """
     context = get_authorized_context("preview_interview_invitations")
     try:

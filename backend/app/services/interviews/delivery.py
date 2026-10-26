@@ -17,7 +17,7 @@ from app.integrations.email_mcp import signing_secret
 from app.models.cv import Candidate, CandidateApplication
 from app.models.interviews import (
     InterviewInvitation, InterviewShortlist, InterviewShortlistMember,
-    InvitationBatch, InvitationEmailJob, InterviewSession,
+    InvitationBatch, InvitationEmailJob, InterviewSession, InvitationScheduleDraft,
 )
 from app.models.jd import JobDescription, JDConversation
 from app.services.cv.screening import get_screening_results, lock_screening_job, owned_job, available_processing_versions
@@ -72,12 +72,51 @@ async def invitation_options(job_id, recruiter_id):
         recipients = []
         for application_id, name, email in rows:
             session = await application_session(db, application_id)
+            draft = await db.get(InvitationScheduleDraft, application_id)
             recipients.append({"application_id": str(application_id), "name": name, "email": email,
-                               "schedule": schedule_for_session(session)})
+                               "schedule": schedule_for_session(draft or session)})
         return {"join_early_minutes": JOIN_EARLY_MINUTES, "recipients": recipients}
 
 
+async def save_invitation_schedules(job_id, recruiter_id, schedules):
+    """Save all selected recipients' plans atomically, without issuing links or mail."""
+    checked = [item if isinstance(item, InvitationSchedule) else InvitationSchedule.model_validate(item)
+               for item in schedules]
+    requested = {item.application_id: item for item in checked}
+    if len(requested) != len(checked):
+        raise HTTPException(422, "Provide each candidate's schedule only once.")
+    if any(item.ends_at <= datetime.now(timezone.utc) for item in checked):
+        raise HTTPException(422, "Choose an end time in the future.")
+    async with SessionFactory() as db:
+        await lock_screening_job(db, job_id)
+        await owned_job(db, job_id, recruiter_id)
+        selected = set(await db.scalars(select(CandidateApplication.id)
+            .join(Candidate, Candidate.id == CandidateApplication.candidate_id)
+            .join(InterviewShortlistMember, InterviewShortlistMember.application_id == CandidateApplication.id)
+            .join(InterviewShortlist, InterviewShortlist.id == InterviewShortlistMember.shortlist_id)
+            .where(CandidateApplication.job_description_id == job_id, Candidate.recruiter_id == recruiter_id,
+                   InterviewShortlist.job_description_id == job_id, InterviewShortlist.recruiter_id == recruiter_id)))
+        if not selected or set(requested) != selected:
+            raise HTTPException(409, "The saved interviewees changed. Reload and set times for every recipient.")
+        for application_id, item in requested.items():
+            session = await application_session(db, application_id)
+            if session and session.status not in {"ready", "scheduled"}:
+                raise HTTPException(409, "An active or completed interview cannot be rescheduled through an invitation.")
+            draft = await db.get(InvitationScheduleDraft, application_id)
+            if draft is None:
+                draft = InvitationScheduleDraft(application_id=application_id)
+                db.add(draft)
+            draft.starts_at, draft.ends_at = item.starts_at, item.ends_at
+            draft.display_timezone = item.display_timezone
+        await db.commit()
+    return {"saved": len(requested), "message": "Interview times saved. You can edit them or ask the assistant to prepare invitations."}
+
+
 async def preview_data(db, job_id, recruiter_id, mode, schedules=None, include_calendar=True, *, versions=None):
+    # Calendar attachments are automatic for new/reissued mail. Retries retain
+    # the exact previously confirmed payload, including legacy calendar settings.
+    if mode != "retry_failed":
+        include_calendar = True
     # Must run before reading ORM rows: screening reloads the session's state.
     results = await get_screening_results(job_id, recruiter_id, db=db, versions=versions)
     job = await owned_job(db, job_id, recruiter_id)
@@ -126,7 +165,10 @@ async def preview_data(db, job_id, recruiter_id, mode, schedules=None, include_c
             InvitationEmailJob.invitation_id == invitation.id)) if invitation else None
         session = await application_session(db, member.application_id)
         current_schedule = schedule_for_session(session)
-        schedule = requested.get(str(member.application_id), current_schedule)
+        draft = await db.get(InvitationScheduleDraft, member.application_id)
+        planned_schedule = schedule_for_session(draft)
+        schedule = (current_schedule if mode == "retry_failed" else
+                    requested.get(str(member.application_id), planned_schedule or current_schedule))
         active = invitation is not None and invitation.revoked_at is None and invitation.expires_at > now
         action, reason = "skip", "Already invited; use retry or explicit reissue."
         if mode == "new" and invitation is None:
@@ -175,6 +217,7 @@ async def preview_data(db, job_id, recruiter_id, mode, schedules=None, include_c
             "subject": stored["subject"] if action == "retry" else subject,
             "include_calendar": calendar_enabled,
             "session_version": session.version if session else None, "saved_schedule": current_schedule,
+            "planned_schedule": planned_schedule if mode != "retry_failed" else None,
             "body": stored["body"].replace(link, "{interview_link}") if action == "retry" and not stored.get("schedule")
                 else invitation_body(job.title, candidate.full_name, schedule, include_calendar=calendar_enabled)})
     try:
@@ -272,6 +315,9 @@ async def confirm_invitations(job_id, recruiter_id, batch_id, preview_key):
                 session.starts_at = datetime.fromisoformat(schedule["starts_at"])
                 session.ends_at = datetime.fromisoformat(schedule["ends_at"])
                 session.display_timezone = schedule["display_timezone"]
+                draft = await db.get(InvitationScheduleDraft, UUID(recipient["application_id"]))
+                if draft is not None:
+                    await db.delete(draft)
                 invitation.expires_at = session.ends_at
                 send_job = await db.scalar(select(InvitationEmailJob).where(InvitationEmailJob.invitation_id == invitation.id))
                 if send_job is None:

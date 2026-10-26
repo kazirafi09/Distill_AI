@@ -106,6 +106,13 @@ export function loadInvitationOptions(token: string, jobId: string, signal?: Abo
   return apiRequest<InvitationOptions>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations/options`, { token, signal })
 }
 
+export function saveInvitationSchedules(token: string, jobId: string,
+  schedules: (InvitationSchedule & { application_id: string })[]) {
+  return apiRequest<{ saved: number; message: string }>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations/schedules`, {
+    method: 'PUT', token, body: { schedules },
+  })
+}
+
 export function prepareInvitations(token: string, jobId: string, mode: InvitationMode,
   schedules: (InvitationSchedule & { application_id: string })[] = [], includeCalendar = true) {
   return apiRequest<InvitationPreview>(`/interviews/jobs/${encodeURIComponent(jobId)}/invitations/preview`, {

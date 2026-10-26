@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, SecretStr, Field
 from app.services.interviews.delivery import (
     prepare_invitations, confirm_invitations, invitation_status, SendMode,
-    invitation_options,
+    invitation_options, save_invitation_schedules,
 )
 
 from app.auth import require_recruiter
@@ -55,6 +55,15 @@ class InvitationConfirmation(BaseModel):
     batch_id: UUID
     preview_key: str = Field(pattern=r"^[0-9a-f]{64}$")
     confirmed: Literal[True]
+
+
+class InvitationScheduleRequest(BaseModel):
+    schedules: list[InvitationSchedule] = Field(min_length=1, max_length=200)
+
+
+@router.put("/jobs/{job_id}/invitations/schedules")
+async def save_invitation_times(job_id: UUID, request: InvitationScheduleRequest, recruiter: Recruiter):
+    return await save_invitation_schedules(job_id, recruiter.id, request.schedules)
 
 
 @router.post("/jobs/{job_id}/invitations/preview")

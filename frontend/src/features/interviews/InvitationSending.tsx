@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../services/api'
-import { prepareInvitations, confirmInvitations, loadInvitations, revokeInvitation, loadInvitationOptions } from './api'
+import { prepareInvitations, confirmInvitations, loadInvitations, revokeInvitation, loadInvitationOptions, saveInvitationSchedules } from './api'
 import type { InvitationMode, InvitationPreview, InvitationStatus, InvitationOptions } from './api'
 import { localTimeInput, scheduleSummary, scheduleError } from './invitationScheduleView'
 import type { TimeInputs } from './invitationScheduleView'
@@ -18,7 +18,7 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
   const [preview, setPreview] = useState<InvitationPreview | null>(null)
   const [statuses, setStatuses] = useState<InvitationStatus[]>([])
   const [busy, setBusy] = useState(false)
-  const [operation, setOperation] = useState<'preview' | 'queue' | 'revoke' | null>(null)
+  const [operation, setOperation] = useState<'preview' | 'queue' | 'revoke' | 'schedule' | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [refresh, setRefresh] = useState(0)
@@ -32,7 +32,6 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
   const [sharedTime, setSharedTime] = useState({ start: '', end: '' })
   const [sharedTimeError, setSharedTimeError] = useState('')
   const [timeError, setTimeError] = useState('')
-  const [includeCalendar, setIncludeCalendar] = useState(true)
   const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const scheduledCount = options?.recipients.filter(item => times[item.application_id]?.start && times[item.application_id]?.end).length ?? 0
 
@@ -42,8 +41,8 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
       if (controller.signal.aborted) return
       setOptions(next)
       setOptionsError('')
-      setTimes(current => Object.fromEntries(next.recipients.map(item => [item.application_id,
-        current[item.application_id] ?? { start: localTimeInput(item.schedule?.starts_at), end: localTimeInput(item.schedule?.ends_at) }])))
+      setTimes(Object.fromEntries(next.recipients.map(item => [item.application_id,
+        { start: localTimeInput(item.schedule?.starts_at), end: localTimeInput(item.schedule?.ends_at) }])))
       setPreview(null)
     }).catch(caught => { if (!controller.signal.aborted) setOptionsError(caught instanceof Error ? caught.message : 'Could not load invitation settings.') })
     return () => controller.abort()
@@ -66,13 +65,32 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
     setTimeError('')
   }
 
-  function saveTimes() {
+  async function saveTimes() {
+    if (requestLock.current) return
     const invalid = scheduleError(draftTimes, options?.recipients.map(item => item.application_id) ?? [])
     if (invalid) { setTimeError(invalid); return }
-    setTimes(draftTimes)
-    setPreview(null)
-    setMessage('Interview times updated for review. They take effect when you confirm and queue the invitations.')
-    scheduleDialog.current?.close()
+    requestLock.current = true
+    setBusy(true)
+    setOperation('schedule')
+    setTimeError('')
+    try {
+      const schedules = (options?.recipients ?? []).map(item => ({ application_id: item.application_id,
+        starts_at: new Date(draftTimes[item.application_id].start).toISOString(),
+        ends_at: new Date(draftTimes[item.application_id].end).toISOString(), display_timezone: localTimezone }))
+      const result = await saveInvitationSchedules(token, jobId, schedules)
+      if (mounted.current) {
+        setTimes(draftTimes)
+        setPreview(null)
+        setError('')
+        setMessage(result.message)
+        scheduleDialog.current?.close()
+      }
+    } catch (caught) {
+      if (mounted.current) setTimeError(caught instanceof Error ? caught.message : 'Could not save interview times.')
+    } finally {
+      requestLock.current = false
+      if (mounted.current) { setBusy(false); setOperation(null) }
+    }
   }
 
   useEffect(() => {
@@ -132,7 +150,6 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
         <button type="button" className="button-secondary" disabled={busy || !options?.recipients.length || mode === 'retry_failed'} onClick={openTimes}>Set interview times</button>
         {mode === 'retry_failed' && <p className="interview-hint">Retries keep the original email and times. Choose “Reschedule / replace links and send again” to change them.</p>}
       </section>
-      {mode !== 'retry_failed' ? <label className="invitation-calendar-option"><input type="checkbox" checked={includeCalendar} disabled={busy} onChange={event => { setIncludeCalendar(event.target.checked); setPreview(null) }} /><span><strong>Attach calendar file</strong><small>Include interview.ics so candidates can save the interview to their calendar. Later changes require a new invitation.</small></span></label> : <p className="interview-hint">Retries keep each original email’s calendar settings.</p>}
     </div>
     <div className="invitation-send-controls">
       <label>Invitation action <select aria-label="Invitation action" value={mode} disabled={busy} onChange={event => {
@@ -147,7 +164,7 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
           const value = times[item.application_id]
           return value?.start && value?.end ? [{ application_id: item.application_id, starts_at: new Date(value.start).toISOString(), ends_at: new Date(value.end).toISOString(), display_timezone: localTimezone }] : []
         })
-        const next = await prepareInvitations(token, jobId, mode, schedules, includeCalendar)
+        const next = await prepareInvitations(token, jobId, mode, schedules)
         if (mounted.current) setPreview(next)
       }, 'preview')}>{operation === 'preview' ? 'Preparing preview…' : 'Review invitations'}</button>
     </div>
@@ -186,22 +203,22 @@ export default function InvitationSending({ token, jobId, canSend, shortlistRevi
       </tr>)}</tbody>
     </table></div>}
     <dialog className="invitation-time-dialog" ref={scheduleDialog} aria-labelledby="invitation-time-title">
-      <header><div><h3 id="invitation-time-title">Set interview times</h3><p>Times are entered in {localTimezone}. Apply one slot to all or edit each candidate.</p></div><button type="button" className="button-secondary" onClick={() => scheduleDialog.current?.close()}>Close</button></header>
-      <form onSubmit={event => { event.preventDefault(); saveTimes() }}>
+      <header><div><h3 id="invitation-time-title">Set interview times</h3><p>Times are entered in {localTimezone}. Apply one slot to all or edit each candidate.</p></div><button type="button" className="button-secondary" disabled={busy} onClick={() => scheduleDialog.current?.close()}>Close</button></header>
+      <form onSubmit={event => { event.preventDefault(); void saveTimes() }}>
         <div className="invitation-time-list">
-          <fieldset className="invitation-shared-time"><legend>Same time for everyone</legend>
+          <fieldset className="invitation-shared-time" disabled={busy}><legend>Same time for everyone</legend>
             <label>Start time<input aria-label="Start time for all candidates" type="datetime-local" value={sharedTime.start} onChange={event => { setSharedTime(current => ({ ...current, start: event.target.value })); setSharedTimeError('') }} /></label>
             <label>End time<input aria-label="End time for all candidates" type="datetime-local" value={sharedTime.end} onChange={event => { setSharedTime(current => ({ ...current, end: event.target.value })); setSharedTimeError('') }} /></label>
             <button type="button" className="button-secondary" disabled={!sharedTime.start || !sharedTime.end || !options?.recipients.length} onClick={applyTimeToAll}>Apply to all</button>
             {sharedTimeError && <p className="cv-error" role="alert">{sharedTimeError}</p>}
           </fieldset>
-          {options?.recipients.map(item => <fieldset key={item.application_id}>
+          {options?.recipients.map(item => <fieldset key={item.application_id} disabled={busy}>
           <legend>{item.name}<small>{item.email}</small></legend>
           <label>Start time<input aria-label={`Start time for ${item.name}`} type="datetime-local" required value={draftTimes[item.application_id]?.start ?? ''} onChange={event => setDraftTimes(current => ({ ...current, [item.application_id]: { ...current[item.application_id], start: event.target.value } }))} /></label>
           <label>End time<input aria-label={`End time for ${item.name}`} type="datetime-local" required value={draftTimes[item.application_id]?.end ?? ''} onChange={event => setDraftTimes(current => ({ ...current, [item.application_id]: { ...current[item.application_id], end: event.target.value } }))} /></label>
         </fieldset>)}</div>
         {timeError && <p className="cv-error" role="alert">{timeError}</p>}
-        <footer><p>Changing times clears the previous preview. Review and confirm the updated invitations to save and send them.</p><div><button type="button" className="button-secondary" onClick={() => scheduleDialog.current?.close()}>Cancel</button><button type="submit" className="button-primary">Use these times</button></div></footer>
+        <footer><p>Save these times to use here or in the assistant. You can edit them later. Sending invitations requires a separate review and confirmation.</p><div><button type="button" className="button-secondary" disabled={busy} onClick={() => scheduleDialog.current?.close()}>Cancel</button><button type="submit" className="button-primary" disabled={busy}>{operation === 'schedule' ? 'Saving times…' : 'Use these times'}</button></div></footer>
       </form>
     </dialog>
     <p className="interview-hint">Provider acceptance does not confirm delivery. For uncertain sends, check the sender's Sent folder before explicitly replacing the link and sending again.</p>

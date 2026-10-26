@@ -128,6 +128,18 @@ class InvitationEmailJob(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class InvitationScheduleDraft(Base):
+    """Editable plans shared by invitation UI and chat; not active room times."""
+    __tablename__ = "interview_invitation_schedule_drafts"
+    __table_args__ = (CheckConstraint("ends_at > starts_at", name="ck_invitation_draft_times"),)
+    application_id: Mapped[UUID] = mapped_column(
+        ForeignKey("candidate_applications.id", ondelete="CASCADE"), primary_key=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    display_timezone: Mapped[str] = mapped_column(String(100))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class InterviewSession(Base):
     """One human interview per application, with optional planned times."""
 
