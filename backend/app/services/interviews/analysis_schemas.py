@@ -72,7 +72,8 @@ class DimensionEvaluation(Contract):
     reason: Literal["ASSESSED", "EXPLICIT_NO_ANSWER", "NO_SUBSTANTIVE_ANSWER",
                     "TRANSCRIPT_UNCERTAIN", "NO_ACCURACY_BASIS", "SELF_REPORT_UNVERIFIED"]
     justification: str = Field(min_length=1, max_length=1500)
-    evidence: list[TranscriptExcerpt] = Field(max_length=8)
+    # One answer may span up to 200 saved speech fragments.
+    evidence: list[TranscriptExcerpt] = Field(max_length=200)
     accuracy_basis: Literal["reference_supported", "model_knowledge", "mixed", "not_assessable", "not_applicable"]
     reference_evidence: list[ReferenceExcerpt] = Field(default_factory=list, max_length=5)
 
@@ -94,3 +95,9 @@ class DimensionEvaluation(Contract):
         elif self.accuracy_basis != "not_applicable" or self.reference_evidence:
             raise ValueError("REFERENCE_BASIS_CONFLICT")
         return self
+
+
+class DimensionEvidenceSelection(DimensionEvaluation):
+    """The model selects supplied excerpts; Python copies their exact source text."""
+
+    evidence: list[str] = Field(max_length=200)

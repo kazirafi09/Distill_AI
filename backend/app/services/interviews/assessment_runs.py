@@ -168,8 +168,26 @@ def public_run(run):
 
 def can_recover(run):
     return (run.kind == "f5" and run.status == "needs_review" and run.error_code == "ANALYSIS_OUTPUT_NEEDS_REVIEW"
-        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", "interview-analysis-12", PROMPT_VERSION}
+        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", "interview-analysis-12", "interview-analysis-13", PROMPT_VERSION}
         and run.inputs.get("rubric_version") == RUBRIC_VERSION)
+
+
+def recovery_policy(name, payload):
+    """Only known repairable failures can receive a single recovery budget."""
+    code = payload.get("last_error")
+    if name == "mapping-attempts" and code in {"MAPPING_CRITERION_INVALID", "MAPPING_COVERAGE_INVALID"}:
+        return "mapping-id-recovery-1"
+    if not name.startswith("evaluation-") or not name.endswith("-attempts"):
+        return None
+    if code == "EVIDENCE_QUOTE_INVALID":
+        return "evidence-selection-recovery-1"
+    errors = payload.get("last_details", {}).get("validation_errors", [])
+    if code == "SCHEMA_INVALID" and errors:
+        if all(e.get("code") == "SCORE_REASON_CONFLICT" for e in errors):
+            return "score-reason-recovery-1"
+        if all(e.get("field") == ["evidence"] and e.get("type") == "too_long" for e in errors):
+            return "evidence-selection-recovery-1"
+    return None
 
 
 async def recover_run(run_id, recruiter_id):
@@ -179,21 +197,27 @@ async def recover_run(run_id, recruiter_id):
         await lock_job(db, source.job_id)
         if not can_recover(source):
             raise HTTPException(409, "This run is not eligible for bounded schema recovery.")
+        existing = await db.scalar(select(AssessmentRun).where(
+            AssessmentRun.parent_run_id == source.id, AssessmentRun.recruiter_id == recruiter_id,
+            AssessmentRun.kind == "f5",
+            AssessmentRun.inputs["recovery"]["source_run_id"].astext == str(source.id)))
+        if existing:
+            return public_run(existing)
         stages = list(await db.scalars(select(AssessmentStage).where(AssessmentStage.run_id == source.id)))
-        failed = [s for s in stages if s.payload.get("count", 0) >= 2 and (
-            (s.name == "mapping-attempts" and s.payload.get("last_error") in {
-                "MAPPING_CRITERION_INVALID", "MAPPING_COVERAGE_INVALID"})
-            or (s.name.startswith("evaluation-") and s.name.endswith("-attempts")
-                and s.payload.get("last_error") == "SCHEMA_INVALID"
-                and any(e.get("code") == "SCORE_REASON_CONFLICT"
-                        for e in s.payload.get("last_details", {}).get("validation_errors", []))))]
-        if len(failed) != 1 or any(s.name == failed[0].name.removesuffix("-attempts") for s in stages):
-            raise HTTPException(409, "Recovery requires one exhausted criterion-mapping or score/reason conflict with no accepted output.")
-        recovery = {"policy": "mapping-id-recovery-1" if failed[0].name == "mapping-attempts" else "score-reason-recovery-1", "source_run_id": str(source.id),
+        failed = sorted([s for s in stages if s.name.endswith("-attempts")
+                         and s.payload.get("count", 0) >= 2
+                         and not any(t.name == s.name.removesuffix("-attempts") for t in stages)], key=lambda s: s.name)
+        policies = [recovery_policy(s.name, s.payload) for s in failed]
+        if (not failed or None in policies or len(set(policies)) != 1
+                or (len(failed) > 1 and (policies[0] != "evidence-selection-recovery-1"
+                    or len({s.name.split("-")[1] for s in failed}) != 1))):
+            raise HTTPException(409, "Recovery requires an exhausted supported validation failure with no accepted output.")
+        recovery = {"policy": policies[0], "source_run_id": str(source.id),
             "inherited_prompt_version": source.inputs["prompt_version"], "target_prompt_version": PROMPT_VERSION,
             "retry_stage": failed[0].name.removesuffix("-attempts"),
+            "retry_stages": [s.name.removesuffix("-attempts") for s in failed],
             "inherited_completed_groups": source.completed_groups,
-            "source_attempts_sha256": digest(failed[0].payload)}
+            "source_attempts_sha256": digest({s.name: s.payload for s in failed})}
         inputs = {**deepcopy(source.inputs), "prompt_version": PROMPT_VERSION, "recovery": recovery}
         key = digest(inputs)
         child = await db.scalar(select(AssessmentRun).where(AssessmentRun.recruiter_id == recruiter_id, AssessmentRun.input_key == key))
@@ -204,9 +228,10 @@ async def recover_run(run_id, recruiter_id):
             db.add(child)
             await db.flush()
             for stage in stages:
-                if stage.name != failed[0].name:
+                if stage.name not in {s.name for s in failed}:
                     db.add(AssessmentStage(run_id=child.id, name=stage.name, payload=deepcopy(stage.payload)))
-            db.add(AssessmentStage(run_id=child.id, name="recovery-source-diagnostics", payload=deepcopy(failed[0].payload)))
+            db.add(AssessmentStage(run_id=child.id, name="recovery-source-diagnostics",
+                payload=deepcopy(failed[0].payload if len(failed) == 1 else {s.name: s.payload for s in failed})))
         await db.commit()
         return public_run(child)
 
