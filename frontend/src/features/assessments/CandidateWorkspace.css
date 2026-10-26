@@ -83,7 +83,7 @@
   .candidate-table tbody tr { display: grid; grid-template-columns: minmax(0, 1fr); border: 1px solid #dce2eb; border-radius: 12px; overflow: hidden; }
   .candidate-table tbody td, .candidate-table tbody th { min-width: 0; max-width: none; border-bottom: 0; padding: 8px 12px; }
   .candidate-table .candidate-check { width: 36px; grid-column: 1; grid-row: 1; z-index: 1; padding-right: 0; padding-top: 13px; }
-  .candidate-table .candidate-name { min-width: 0; grid-column: 1; grid-row: 1; padding-top: 12px; padding-left: 42px; }
+  .candidate-table .candidate-name { min-width: 0; grid-column: 1; grid-row: 1; padding-top: 12px; padding-left: 12px; }
   .candidate-table td[data-label] { display: flex; justify-content: space-between; align-items: start; gap: 12px; grid-column: 1 / -1; border-top: 1px solid #edf0f3; }
   .candidate-table td[data-label]::before { content: attr(data-label); flex-shrink: 0; color: #526075; font-weight: 500; }
   .candidate-table td.candidate-versions { display: block; }

@@ -6,6 +6,7 @@ import { loadResult, loadWorkspace, retryF5, recoverF5, startF5, startF6 } from 
 import CandidateAssessment from './CandidateAssessment'
 import InterviewScoringSettings from './InterviewScoringSettings'
 import CandidateWorkspace from './CandidateWorkspace'
+import AssessmentDecisionActions from './AssessmentDecisionActions'
 import { DemoBanner } from '../../components/recruitment/RecruitmentUI'
 import type { Result, Run, Workspace } from './api'
 import { stageLabel } from './format'
@@ -108,7 +109,7 @@ function AssessmentWorkspace({ token, jobId, jobTitle, jobNumber }: { token: str
 export default function Assessments({ token }: { token: string }) {
   const picker = useRecruitmentJob(token)
   return <section className="recruitment-page assessments-page">
-    <RecruitmentHeader title="Assessments" description="Pick a job, then open a candidate’s assessment." jobs={picker.jobs} job={picker.job} onSelect={id => { picker.selectJob(id) }} />
+    <RecruitmentHeader title="Assessments" description="Pick a job, then open a candidate’s assessment." jobs={picker.jobs} job={picker.job} onSelect={id => { picker.selectJob(id) }} actions={picker.job && <AssessmentDecisionActions key={picker.job.id} token={token} jobId={picker.job.id} jobTitle={picker.job.title} />} />
     {picker.loading && <p role="status">Loading jobs…</p>}
     {picker.error && <div role="alert"><p>{picker.error}</p><button className="button-secondary" onClick={picker.retry}>Try again</button></div>}
     {!picker.loading && !picker.error && !picker.job && <p>No jobs yet. <Link to="/recruiter/job-descriptions">Create a job description</Link> to get started.</p>}

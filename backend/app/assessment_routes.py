@@ -8,10 +8,22 @@ from app.services.interviews import consolidation_runs
 from app.services.interviews import full_report
 from app.services.interviews import scoring_settings
 from app.services.interviews import post_interview_runs
+from app.services.interviews import final_candidates
 from starlette.concurrency import run_in_threadpool
 
 router = APIRouter(prefix="/assessments", tags=["Assessments"])
 Recruiter = Annotated[User, Depends(require_recruiter)]
+
+
+@router.get("/jobs/{job_id}/final-candidates")
+async def final_candidate_workspace(job_id: UUID, recruiter: Recruiter, response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return await final_candidates.workspace(job_id, recruiter.id)
+
+
+@router.put("/jobs/{job_id}/final-candidates")
+async def confirm_final_candidates(job_id: UUID, request: final_candidates.SaveFinalCandidates, recruiter: Recruiter):
+    return await final_candidates.save(job_id, recruiter.id, request)
 
 
 @router.get("/jobs/{job_id}/scoring-settings")

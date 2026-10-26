@@ -46,6 +46,15 @@ class AssessmentRun(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class FinalCandidateSelection(Base):
+    """Recruiter-confirmed hiring selection and the reviewed score snapshots."""
+    __tablename__ = "final_candidate_selections"
+    job_id: Mapped[UUID] = mapped_column(ForeignKey("job_descriptions.id", ondelete="CASCADE"), primary_key=True)
+    recruiter_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    candidates: Mapped[list] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class AssessmentStage(Base):
     __tablename__ = "assessment_stages"
     run_id: Mapped[UUID] = mapped_column(ForeignKey("assessment_runs.id", ondelete="CASCADE"), primary_key=True)

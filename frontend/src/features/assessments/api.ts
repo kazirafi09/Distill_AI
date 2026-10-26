@@ -67,6 +67,31 @@ export type Result = {
 
 export const loadWorkspace = (token: string, jobId: string, offset: number, signal?: AbortSignal) =>
   apiRequest<Workspace>(`/assessments/jobs/${jobId}?offset=${offset}`, { token, signal, cache: 'no-store' })
+
+export type DecisionCandidate = {
+  application_id: string; name: string; run_id: string | null; version: string
+  comparable: boolean; eligible: boolean; blocker: string | null; outdated: boolean
+  profile_version: number | null; rubric_version: string | null
+  scores: Result['final_score'] | null
+  suitability: { position?: string | null; rationale?: string | null }
+  findings: Record<'strengths' | 'weaknesses' | 'evidence_gaps' | 'recommended_areas', string[]>
+  qa_scores: Record<string, string | number | null>
+  performance: Record<string, { score: number | null; justification: string }>
+  claim_review: { status: string; claim: string; explanation: string; follow_up: string; uncertainty?: string | null; review_action?: string; review_note?: string }[]
+  quality_summary: string | null
+  quality_findings: { category: string; observation: string; improvement: string; uncertainty?: string | null }[]
+  feature_statuses: Record<string, string>
+  scoring_policy: { revision: number; policy_sha256: string } | null
+}
+export type DecisionWorkspace = { candidates: DecisionCandidate[]; selection: DecisionCandidate[];
+  selection_version: string; selection_outdated: boolean; updated_at: string | null }
+export const loadDecisionCandidates = (token: string, jobId: string, signal?: AbortSignal) =>
+  apiRequest<DecisionWorkspace>(`/assessments/jobs/${jobId}/final-candidates`, { token, signal, cache: 'no-store' })
+export const saveFinalCandidates = (token: string, jobId: string, data: DecisionWorkspace, ids: string[]) =>
+  apiRequest<DecisionWorkspace>(`/assessments/jobs/${jobId}/final-candidates`, { token, method: 'PUT', body: {
+    candidates: ids.map(id => ({ application_id: id, version: data.candidates.find(item => item.application_id === id)!.version })),
+    selection_version: data.selection_version, confirmed: true,
+  } })
 export const loadResult = (token: string, id: string, signal?: AbortSignal) =>
   apiRequest<Result>(`/assessments/runs/${id}/result`, { token, signal, cache: 'no-store' })
 export const startF5 = (token: string, jobId: string, applicationId?: string) =>
