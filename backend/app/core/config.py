@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     cv_mcp_url: str = "http://127.0.0.1:8000/mcp/"
     cv_model_timeout_seconds: int = Field(default=300, ge=10, le=900)
     cv_model_context_tokens: int = Field(default=16384, ge=4096, le=32768)
-    cv_model_output_tokens: int = Field(default=4096, ge=1024, le=8192)
+    cv_model_output_tokens: int = Field(default=4096, ge=1024, le=16384)
     # Interview analysis is explicit: never inherit CV provider auto-selection.
     f5_model_provider: Literal["ollama", "gemini"] = "gemini"
     f5_model_name: str = Field(default="gemini-3.5-flash-lite", min_length=1)

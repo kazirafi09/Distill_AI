@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { apiRequest } from '../../services/api'
 import { ActionButton, Notice, SectionTabs, StatusBadge } from '../../components/recruitment/RecruitmentUI'
 import { errorLabel, timeLabel } from './format'
@@ -42,6 +42,7 @@ function questionText(text: string, questions: QuestionTopic[]) {
 }
 
 function PerformanceResults({result, currentPolicy, onEvidence}: {result: Artifact; currentPolicy: PolicySnapshot; onEvidence: (id: string) => void}) {
+  const [expanded, setExpanded] = useState('')
   if (!result.dimensions || !result.summary) return null
   const summary = result.summary
   return <>
@@ -51,14 +52,17 @@ function PerformanceResults({result, currentPolicy, onEvidence}: {result: Artifa
     </div>
     {(summary.missing_weight > 0 || summary.overall_score_100 === null) && <Notice title="Some skills could not be assessed" tone="warning">{summary.missing_weight}% of scoring weight has insufficient evidence. Missing evidence does not count as a zero score.</Notice>}
     <div className="pi-section-heading"><h3>Performance by dimension</h3><span>Open a row for the explanation and evidence</span></div>
-    <div className="post-interview-dimensions">{performanceDimensions.filter(name => result.dimensions?.[name]).map(name => {
+    <div className="ca-table-scroll ca-table-card"><table className="pi-results-table pi-performance-table"><thead><tr><th>Dimension</th><th>Score</th><th>Weight</th><th>Assessment</th><th>Evidence</th></tr></thead><tbody>{performanceDimensions.filter(name => result.dimensions?.[name]).map(name => {
       const dimension = result.dimensions![name]
       const weight = result.scoring_settings?.policy.weights[name]
-      return <article key={name}><details className="pi-dimension"><summary>
-        <span className="pi-dimension-name"><strong>{label(name)}</strong><small>{weight == null ? 'Weight unavailable' : `${weight}% of interview score`}</small></span>
-        <span className="pi-dimension-score">{dimension.score === null ? <span className="pi-not-assessed">Not assessed</span> : <><strong>{dimension.score * 25}<small> / 100</small></strong><progress aria-label={`${label(name)} score`} max={100} value={dimension.score * 25} /></>}</span>
-        <span className="pi-disclosure-icon" aria-hidden="true">⌄</span>
-      </summary><div className="pi-dimension-body"><h4>Why this score</h4><p>{dimension.justification}</p>
+      const open = expanded === name
+      return <Fragment key={name}><tr className={open ? 'expanded' : ''}>
+        <th scope="row">{label(name)}</th>
+        <td><span className="pi-table-score">{dimension.score === null ? 'Not assessed' : `${dimension.score * 25} / 100`}</span></td>
+        <td>{weight == null ? '—' : `${weight}%`}</td>
+        <td><button type="button" className="ca-row-trigger" aria-expanded={open} onClick={() => setExpanded(open ? '' : name)}>{dimension.justification}</button></td>
+        <td><button type="button" className="ca-citation" aria-label={`Evidence for ${label(name)}`} aria-expanded={open} onClick={() => setExpanded(open ? '' : name)}>{dimension.evidence.length + dimension.reference_evidence.length} SOURCES {open ? '⌄' : '›'}</button></td>
+      </tr>{open && <tr className="expanded"><td colSpan={5}><div className="pi-row-detail"><h4>Why this score</h4><p>{dimension.justification}</p>
         {dimension.score === null && <p className="pi-evidence-basis">{label(dimension.reason)}</p>}
         <p className="pi-evidence-basis">{dimension.score === null ? 'No rating assigned' : `Saved rating: ${dimension.score} of 4`}{dimension.basis === 'interview_only' ? ' · Based on interview excerpts' : dimension.basis === 'saved_reference_and_interview' ? ' · Interview and saved technical references' : ''}</p>
         {dimension.uncertainty && <Notice title="Evidence needs verification" tone="warning">{dimension.uncertainty}</Notice>}
@@ -67,28 +71,29 @@ function PerformanceResults({result, currentPolicy, onEvidence}: {result: Artifa
         {!dimension.evidence.length && <p className="assessment-muted">No usable interview excerpt was saved for this dimension.</p>}
         <Evidence quotes={dimension.evidence} onEvidence={onEvidence} />
         {dimension.reference_evidence.map((reference,index) => <blockquote key={`${reference.reference_id}-${index}`}><small>{reference.filename ?? reference.reference_id}{reference.version && ` · version ${reference.version}`}{reference.location && ` · ${reference.location}`}</small>{reference.url && /^https?:\/\//i.test(reference.url) && <a href={reference.url} target="_blank" rel="noreferrer">Open reference</a>}<p>“{reference.quote}”</p></blockquote>)}
-      </div></details></article>
-    })}</div>
+      </div></td></tr>}</Fragment>
+    })}</tbody></table></div>
     {result.scoring_settings && <details className="pi-method"><summary>How this score is calculated</summary><p>Six dimensions are weighted using the saved job settings. Each rating runs from 0 to 4 and is displayed out of 100. These ratings are separate from the four answer-level Q&amp;A scores.</p><p>Scoring revision {result.scoring_settings.revision} · minimum {result.scoring_settings.policy.minimum_assessed_dimensions} assessed dimensions · required: {result.scoring_settings.policy.essential_dimensions.map(label).join(', ') || 'None'}.</p>{result.scoring_settings.policy_sha256 !== currentPolicy.policy_sha256 && <p className="pi-knowledge-note">Job settings have changed. This saved result keeps its original scoring policy.</p>}</details>}
   </>
 }
 
 function QualityResults({result, synthetic, onEvidence, questions, onQuestion}: {result: Artifact; synthetic: boolean; onEvidence: (id: string) => void; questions: QuestionTopic[]; onQuestion?: (id: string) => void}) {
+  const [expanded, setExpanded] = useState<number | null>(null)
   const coverage = result.coverage ?? []
   const explored = coverage.filter(item => item.group_ids.length > 0).length
   const findings = result.findings ?? []
   return <>
-    <section className="pi-process-overview"><h3>Interview overview</h3><p>{questionText(result.process_summary ?? '', questions)}</p><p className="assessment-muted">This reviews the interview process, not the candidate’s ability.</p></section>
+    <section className="ca-card ca-rationale ca-table-note"><h3>Interview overview</h3><p className="ca-muted">This reviews the interview process, not the candidate’s ability.</p><p>{questionText(result.process_summary ?? '', questions)}</p></section>
     {coverage.length > 0 && <section className="pi-coverage-overview"><div className="pi-section-heading"><h3>Job criteria discussed</h3><strong>{explored} / {coverage.length}</strong></div><p>{coverage.length - explored === 0 ? 'Every saved job criterion was discussed.' : `${coverage.length - explored} criteria were not discussed.`} Discussion does not establish proficiency.</p>
       <details className="pi-method"><summary>View coverage of {coverage.length} job criteria</summary><div className="pi-quality-coverage">{coverage.map(item => <div key={item.criterion_id}><span>{item.text}</span><strong className={item.group_ids.length ? 'pi-covered' : 'pi-not-assessed'}>{item.group_ids.length ? `${item.group_ids.length} ${item.group_ids.length === 1 ? 'question' : 'questions'}` : 'Not discussed'}</strong></div>)}</div></details></section>}
     <div className="pi-section-heading"><h3>Observations &amp; next steps</h3><span>{findings.length} saved {findings.length === 1 ? 'observation' : 'observations'}</span></div>
-    <div className="pi-quality-findings">{findings.map((finding, index) => <article className="post-interview-finding" key={index}><div className="pi-finding-heading"><span className="pi-finding-index">{index + 1}</span><h4>{label(finding.category)}</h4></div><p className="pi-observation">{questionText(finding.observation, questions)}</p>
+    <div className="ca-table-scroll ca-table-card"><table className="pi-results-table pi-quality-table"><thead><tr><th>Category</th><th>Observation</th><th>Next step</th><th>Evidence</th></tr></thead><tbody>{findings.map((finding, index) => <Fragment key={index}><tr className={expanded === index ? 'expanded' : ''}><th scope="row"><span className="ca-finding-badge unknown">{label(finding.category)}</span></th><td><button type="button" className="ca-row-trigger" aria-expanded={expanded === index} onClick={() => setExpanded(expanded === index ? null : index)}>{questionText(finding.observation, questions)}</button></td><td>{questionText(finding.improvement, questions)}</td><td><button type="button" className="ca-citation" aria-label={`Evidence for observation ${index + 1}`} aria-expanded={expanded === index} onClick={() => setExpanded(expanded === index ? null : index)}>{finding.evidence.length} SOURCES {expanded === index ? '⌄' : '›'}</button></td></tr>{expanded === index && <tr className="expanded"><td colSpan={4}><div className="pi-row-detail">
       {finding.uncertainty && <Notice title="Evidence needs verification" tone="warning">{finding.uncertainty}</Notice>}
       <div className="pi-next-step"><strong>For the next interview</strong><p>{questionText(finding.improvement, questions)}</p></div>
-      <details className="pi-evidence-disclosure"><summary>View evidence · {finding.evidence.length} {finding.evidence.length === 1 ? 'excerpt' : 'excerpts'}</summary>
+      <h4>Supporting evidence</h4>
         <div className="pi-question-links"><h5>Related questions</h5>{finding.group_ids.map(id => {const index = questions.findIndex(question => question.id === id); const question = questions[index]; return onQuestion && question ? <button type="button" key={id} onClick={() => onQuestion(id)}>Q{index + 1} · {question.topic} →</button> : <span key={id}>{question?.topic ?? 'Saved interview question'}</span>})}</div>
         <Evidence quotes={finding.evidence} onEvidence={onEvidence} />
-      </details></article>)}</div>
+      </div></td></tr>}</Fragment>)}</tbody></table></div>
     {!findings.length && <p className="assessment-muted">No process observations were saved.</p>}
     {result.speaking_time && <details className="pi-method pi-timing"><summary>{synthetic || result.speaking_time.status === 'synthetic' ? 'Authored synthetic timing' : 'Speaking time'}</summary>{['measured','synthetic'].includes(result.speaking_time.status) ? <><dl><div><dt>Candidate</dt><dd>{((result.speaking_time.candidate_ms ?? 0)/60000).toFixed(1)} minutes</dd></div><div><dt>Interviewer</dt><dd>{((result.speaking_time.recruiter_ms ?? 0)/60000).toFixed(1)} minutes</dd></div></dl><p>{synthetic ? 'Authored test intervals, not recorded speech or microphone measurements.' : result.speaking_time.note}</p></> : <p>{result.speaking_time.reason}</p>}</details>}
   </>
@@ -100,6 +105,7 @@ function Evidence({quotes, onEvidence}: {quotes: Quote[]; onEvidence: (id: strin
 
 function ClaimReview({item, token, onRefresh, onEvidence, criteria}: {criteria: {id: string; text: string}[]; item: Item; token: string; onRefresh: () => void; onEvidence: (id: string) => void}) {
   const [filter, setFilter] = useState<'all' | 'follow_up'>('all')
+  const [expanded, setExpanded] = useState('')
   const [notes, setNotes] = useState<Record<string,string>>({})
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
@@ -115,15 +121,13 @@ function ClaimReview({item, token, onRefresh, onEvidence, criteria}: {criteria: 
   }
   const claims = item.result?.claims ?? []
   const followUp = claims.filter(claim => claim.status !== 'supported_in_interview')
-  return <><p className="assessment-muted">{item.result?.selection_note}</p><div className="pi-claim-filters" role="group" aria-label="Filter CV claims"><button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All claims · {claims.length}</button><button type="button" aria-pressed={filter === 'follow_up'} onClick={() => setFilter('follow_up')}>Follow up · {followUp.length}</button></div>
-    <Notice title="Prompts for human follow-up" tone="info">Interview support remains self-report. Potential contradictions need contextual review and never trigger an automatic rejection.</Notice>
+  return <><section className="ca-card ca-rationale ca-table-note"><h3>CV claim review rationale</h3><p className="ca-muted">Saved findings for human review · interview support remains self-report</p><p>{item.result?.selection_note || 'Compare saved CV statements with the candidate’s interview evidence.'}</p><p className="ca-muted">Potential contradictions need contextual review and never trigger an automatic rejection.</p></section><div className="ca-findings-toolbar"><div className="ca-filters" role="group" aria-label="Filter CV claims"><button type="button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>All claims {claims.length}</button><button type="button" aria-pressed={filter === 'follow_up'} onClick={() => setFilter('follow_up')}>Follow up {followUp.length}</button></div><p className="ca-muted">Select a claim to review its context, evidence and recruiter notes.</p></div>
     {error && <p role="alert" className="assessment-error">{error}</p>}
-    {(filter === 'all' ? claims : followUp).map(claim => <article className="post-interview-finding" key={claim.id}>
-      <StatusBadge tone={claim.status === 'supported_in_interview' ? 'success' : claim.status === 'potential_contradiction' ? 'warning' : 'neutral'}>{claimLabels[claim.status] ?? label(claim.status)}</StatusBadge>
-      <h4>{claim.claim}</h4>{!!claim.criterion_ids?.length && <p className="assessment-muted">Criteria: {claim.criterion_ids.map(id => criteria.find(criterion => criterion.id === id)?.text ?? id).join('; ')}</p>}<p>{claim.explanation}</p><p className="assessment-muted">Context: {claim.scope_comparison}</p>
+    <div className="ca-table-scroll ca-table-card"><table className="pi-results-table pi-claims-table"><thead><tr><th>Status</th><th>CV claim</th><th>Finding</th><th>Evidence &amp; review</th></tr></thead><tbody>{(filter === 'all' ? claims : followUp).map(claim => <Fragment key={claim.id}><tr className={expanded === claim.id ? 'expanded' : ''}><td><span className={`ca-finding-badge ${claim.status === 'supported_in_interview' ? 'strengths' : claim.status === 'potential_contradiction' ? 'evidence_gaps' : 'unknown'}`}>{claimLabels[claim.status] ?? label(claim.status)}</span></td><th scope="row">{claim.claim}</th><td><button type="button" className="ca-row-trigger" aria-expanded={expanded === claim.id} onClick={() => setExpanded(expanded === claim.id ? '' : claim.id)}>{claim.explanation}</button></td><td><button type="button" className="ca-citation" aria-label={`Evidence and review for ${claim.claim}`} aria-expanded={expanded === claim.id} onClick={() => setExpanded(expanded === claim.id ? '' : claim.id)}>{1 + claim.interview_evidence.length} SOURCES {expanded === claim.id ? '⌄' : '›'}</button><small className="pi-review-count">{item.reviews.filter(review => review.finding_id === claim.id).length} reviews saved</small></td></tr>{expanded === claim.id && <tr className="expanded"><td colSpan={4}><div className="pi-row-detail">
+      {!!claim.criterion_ids?.length && <p className="assessment-muted">Criteria: {claim.criterion_ids.map(id => criteria.find(criterion => criterion.id === id)?.text ?? id).join('; ')}</p>}<p className="assessment-muted">Context: {claim.scope_comparison}</p>
       {claim.uncertainty && <Notice title="Evidence needs verification" tone="warning">{claim.uncertainty}</Notice>}
-      <details><summary>CV and interview evidence</summary><blockquote><small>CV · {claim.cv_evidence.source_id}</small><p>“{claim.cv_evidence.quote}”</p>{claim.cv_evidence.start !== undefined && <small>Characters {claim.cv_evidence.start}–{claim.cv_evidence.end}</small>}</blockquote><p className="assessment-muted">{claim.same_context === true ? 'Same context established.' : claim.same_context === false ? 'Same context not established.' : 'Context comparison unavailable.'} {claim.search_basis?.complete_saved_transcript && `Reviewed all ${claim.search_basis.turn_count} saved transcript turns.`}</p>
-        <Evidence quotes={claim.interview_evidence} onEvidence={onEvidence} />{!claim.interview_evidence.length && <p className="assessment-muted">No supporting quote asserted. The complete saved transcript was supplied for review; missing discussion is not a failed claim.</p>}</details>
+      <h4>CV and interview evidence</h4><blockquote><small>CV · {claim.cv_evidence.source_id}</small><p>“{claim.cv_evidence.quote}”</p>{claim.cv_evidence.start !== undefined && <small>Characters {claim.cv_evidence.start}–{claim.cv_evidence.end}</small>}</blockquote><p className="assessment-muted">{claim.same_context === true ? 'Same context established.' : claim.same_context === false ? 'Same context not established.' : 'Context comparison unavailable.'} {claim.search_basis?.complete_saved_transcript && `Reviewed all ${claim.search_basis.turn_count} saved transcript turns.`}</p>
+        <Evidence quotes={claim.interview_evidence} onEvidence={onEvidence} />{!claim.interview_evidence.length && <p className="assessment-muted">No supporting quote asserted. The complete saved transcript was supplied for review; missing discussion is not a failed claim.</p>}
       <p><strong>Follow up:</strong> {claim.follow_up}</p>
       <details><summary>Recruiter review · {item.reviews.filter(review => review.finding_id === claim.id).length} saved</summary>
         {item.reviews.filter(review => review.finding_id === claim.id).map(review => <div className="post-interview-review" key={review.id}><strong>{label(review.action)}</strong><small>{date(review.created_at)}</small><p>{review.note || 'Reviewed without clarification.'}</p></div>)}
@@ -131,7 +135,7 @@ function ClaimReview({item, token, onRefresh, onEvidence, criteria}: {criteria: 
         <div className="post-interview-actions"><ActionButton disabled={!!busy} onClick={() => void review(claim.id,'reviewed')}>{busy === claim.id ? 'Saving…' : 'Mark reviewed'}</ActionButton>
           <ActionButton disabled={!!busy || !notes[claim.id]?.trim()} onClick={() => void review(claim.id,'clarification')}>Add clarification</ActionButton></div>
       </details>
-    </article>)}
+    </div></td></tr>}</Fragment>)}</tbody></table></div>
     {filter === 'follow_up' && !followUp.length && <p>No claims were flagged for follow-up in this saved result.</p>}
     {item.result?.claims?.length === 0 && <p>No substantive role-relevant CV claims were selected for review.</p>}
   </>

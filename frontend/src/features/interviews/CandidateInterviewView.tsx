@@ -37,9 +37,9 @@ export default function CandidateInterviewView({ waitingVideoRef, ...props }: Pr
       <span className={`candidate-status${phase === 'ready' || inCall ? ' is-ready' : ''}`} role="status"><i aria-hidden="true" />{props.statusText}</span>
     </header>
     <div className="candidate-page-content">
-      <header className="candidate-heading"><div><p className="workspace-eyebrow">Your interview</p>
-        <h1>{inCall ? 'Live interview' : terminal ? phase === 'finished' ? 'Interview complete' : phase === 'ending' ? 'Interview ending' : 'Check your invitation' : 'Join your interview'}</h1>
-        <p>{props.jobTitle ?? 'Recruitment interview'}</p></div>
+      <header className="candidate-heading"><div>
+        <div className="candidate-heading-line"><h1>{inCall ? 'Live interview' : terminal ? phase === 'finished' ? 'Interview complete' : phase === 'ending' ? 'Interview ending' : 'Check your invitation' : 'Join your interview'}</h1>
+        </div></div>
         {!terminal && !inCall && <ol className="candidate-steps" aria-label="Joining steps">{['Check devices', 'Waiting room', 'Interview'].map((label, index) =>
           <li key={label} className={index === step ? 'is-current' : index < step ? 'is-done' : ''} aria-current={index === step ? 'step' : undefined}>
             <button type="button" onClick={index === 0 ? props.onRecheck : index === 1 ? props.onWaiting : props.onJoin}
@@ -67,6 +67,13 @@ export default function CandidateInterviewView({ waitingVideoRef, ...props }: Pr
           </div>}
         </section>
         <aside className="candidate-info">
+          {!inCall && (phase === 'waiting' || phase === 'ready') && <section className="candidate-card candidate-join-card">
+            <span className={`candidate-join-indicator${phase === 'ready' ? ' is-ready' : ''}`} aria-hidden="true">{phase === 'ready' ? '✓' : '…'}</span>
+            <h2>{phase === 'ready' ? 'You can join now' : 'Waiting for your interviewer'}</h2>
+            <p role="status">{props.statusText}</p>
+            <button className="button-primary" disabled={props.busy || phase !== 'ready'} onClick={props.onJoin}>{props.busy ? 'Joining…' : 'Join interview'}</button>
+            <button className="button-secondary" disabled={props.busy} onClick={props.onRecheck}>Check devices again</button>
+          </section>}
           {props.schedule && !inCall && <section className="candidate-card"><p className="candidate-card-kicker">Your scheduled time</p><p>{scheduleSummary(props.schedule)}</p><p>Joining opens 10 minutes before the start. Please wait for your interviewer to admit you.</p></section>}
           {props.verification}
           <section className="candidate-card"><p className="candidate-card-kicker">{inCall ? 'In this interview' : 'Before you join'}</p>
@@ -77,13 +84,6 @@ export default function CandidateInterviewView({ waitingVideoRef, ...props }: Pr
           </section>
           {props.instructions && !inCall && <section className="candidate-card candidate-instructions"><h2>From your recruiter</h2><p>{props.instructions}</p>
             {props.expiresAt && <p className="candidate-expiry">Invitation valid until {new Date(props.expiresAt).toLocaleString()}.</p>}
-          </section>}
-          {!inCall && (phase === 'waiting' || phase === 'ready') && <section className="candidate-card candidate-join-card">
-            <span className={`candidate-join-indicator${phase === 'ready' ? ' is-ready' : ''}`} aria-hidden="true">{phase === 'ready' ? '✓' : '…'}</span>
-            <h2>{phase === 'ready' ? 'You can join now' : 'Waiting for your interviewer'}</h2>
-            <p role="status">{props.statusText}</p>
-            <button className="button-primary" disabled={props.busy || phase !== 'ready'} onClick={props.onJoin}>{props.busy ? 'Joining…' : 'Join interview'}</button>
-            <button className="button-secondary" disabled={props.busy} onClick={props.onRecheck}>Check devices again</button>
           </section>}
           <p className="candidate-footnote">Leave exits your call. Your interviewer controls when the interview ends.</p>
         </aside>

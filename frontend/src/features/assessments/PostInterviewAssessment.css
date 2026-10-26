@@ -1,5 +1,5 @@
 .post-interview-assessment { min-width: 0; color: #172033; font-size: 14px; line-height: 1.6; }
-.candidate-assessment .ca-insights-panel .post-interview-assessment { max-width: 1180px; margin: 0 auto; padding: 24px; }
+.candidate-assessment .ca-insights-panel .post-interview-assessment { width: 100%; max-width: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 12px; }
 .candidate-assessment .post-interview-assessment h2, .post-interview-assessment h2 { font-size: 22px; font-weight: 700; line-height: 1.3; }
 .candidate-assessment .post-interview-assessment h3, .post-interview-assessment h3 { font-size: 16px; font-weight: 650; line-height: 1.4; margin: 0; }
 .candidate-assessment .post-interview-assessment h4, .post-interview-assessment h4 { font-size: 14px; font-weight: 650; text-transform: none; letter-spacing: normal; color: #172033; margin: 0 0 8px; }
@@ -105,3 +105,32 @@
 @media (max-width: 600px) { .candidate-assessment .ca-insights-panel .post-interview-assessment { padding: 16px; } .post-interview-assessment h2 { font-size: 20px; } .pi-result-toolbar { display: grid; gap: 12px; } .post-interview-version select { width: 100%; } .candidate-assessment .pi-dimension > summary { grid-template-columns: minmax(0, 1fr) 92px 16px; gap: 10px; padding: 14px 12px; } .pi-dimension-name > strong { font-size: 14px; } .pi-dimension-name > small { font-size: 11px; } .pi-dimension-score > strong { font-size: 18px; } .pi-dimension-body { padding: 16px; } .pi-score-overview, .post-interview-finding, .pi-unavailable { padding: 16px; } .pi-quality-findings > article { gap: 12px; } .pi-retained-results { margin-left: 0 !important; } .pi-unavailable .post-interview-actions { margin-left: 0; } .post-interview-actions > button { flex: 1; min-width: 130px; } .pi-quality-coverage > div { grid-template-columns: minmax(0, 1fr) 85px; gap: 12px; } }
 
 .candidate-assessment .ca-question-detail:focus-visible { outline: 2px solid #147d65; outline-offset: 3px; }
+
+/* Share the assessment tab's compact, full-width reading surface. */
+.candidate-assessment .ca-insights-panel .post-interview-assessment { padding: 0; }
+.candidate-assessment .post-interview-assessment h2 { font-size: 16px; }
+.candidate-assessment .post-interview-assessment h3 { font-size: 13px; }
+.candidate-assessment .post-interview-assessment h4 { font-size: 11px; font-weight: 650; color: #526075; text-transform: uppercase; letter-spacing: .02em; margin: 8px 0; }
+.candidate-assessment .post-interview-assessment .assessment-muted, .candidate-assessment .post-interview-assessment .ca-muted { font-size: 12px; }
+.candidate-assessment .post-interview-assessment .ca-card { max-width: none; }
+.candidate-assessment .pi-header { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.candidate-assessment .pi-header > div > p { max-width: none; font-size: 12px; }
+.candidate-assessment .pi-result-toolbar { margin-bottom: 12px; padding: 8px 0; }
+.candidate-assessment .pi-score-overview { background: white; border-color: #dce2eb; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+.candidate-assessment .pi-score-overview > div > strong { font-size: 28px; }
+.candidate-assessment .pi-section-heading { margin: 12px 0 8px; }
+.candidate-assessment .pi-section-heading > span { font-size: 12px; }
+.candidate-assessment .pi-coverage-overview { background: white; border-radius: 14px; padding: 16px; }
+.pi-results-table { min-width: 740px; }
+.pi-results-table th[scope=row] { width: 22%; overflow-wrap: anywhere; }
+.pi-results-table td:last-child { width: 140px; }
+.pi-results-table .ca-finding-badge { white-space: normal; }
+.pi-claims-table td:first-child, .pi-quality-table th[scope=row] { width: 170px; }
+.pi-performance-table th[scope=row] { width: 17%; }
+.pi-performance-table td:nth-child(2), .pi-performance-table td:nth-child(3) { width: 90px; }
+.pi-table-score { font-weight: 700; white-space: nowrap; }
+.pi-row-detail { padding: 6px 8px; line-height: 1.6; }
+.pi-review-count { display: block; margin-top: 5px; color: #526075; font-size: 11px; }
+.candidate-assessment .pi-row-detail .pi-next-step { margin: 10px 0; }
+.candidate-assessment .pi-row-detail .post-interview-actions > button { min-height: 36px; font-size: 12px; }
+.candidate-assessment .post-interview-assessment .ca-citation { font-size: 10px; }

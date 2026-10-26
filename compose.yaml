@@ -227,7 +227,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    profiles: ["remote-test"]
+    restart: unless-stopped
     command:
       - tunnel
       - --no-autoupdate
