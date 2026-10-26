@@ -1,6 +1,7 @@
 """Single durable F11 dispatcher with leases, recovery and cancellation."""
 import asyncio
 import logging
+from app.core.logging import setup_logging
 from contextlib import suppress
 
 from sqlalchemy import select, text
@@ -84,7 +85,7 @@ async def run_once():
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    setup_logging("wind-tunnel-worker")
     while True:
         try:
             worked = await run_once()

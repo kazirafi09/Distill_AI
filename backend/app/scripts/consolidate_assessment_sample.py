@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.db.session import SessionFactory, engine
 from app.models.assessments import AssessmentRun
-from app.scripts.assessment_worker import run_once
+from app.workers.assessment_worker import run_once
 from app.services.interviews.consolidation_runs import start, StartConsolidation
 from app.services.interviews.assessment_runs import run_result
 

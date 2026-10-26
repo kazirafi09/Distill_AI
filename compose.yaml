@@ -112,6 +112,7 @@ services:
       - ./backend/app:/workspace/backend/app
       - ./backend/migrations:/workspace/backend/migrations
       - ./backend/alembic.ini:/workspace/backend/alembic.ini:ro
+      - ./backend/logs:/workspace/backend/logs
       - ./storage/cvs:/workspace/storage/cvs
       - ./storage/wind_tunnel:/workspace/storage/wind_tunnel
       - ./storage/face_models:/workspace/storage/face_models:ro
@@ -141,7 +142,7 @@ services:
 
   cv-worker:
     <<: *backend_runtime
-    command: ["python", "-m", "app.scripts.cv_screening_worker"]
+    command: ["python", "-m", "app.workers.cv_screening_worker"]
     ports: []
     healthcheck:
       disable: true
@@ -151,7 +152,7 @@ services:
 
   wind-tunnel-worker:
     <<: *backend_runtime
-    command: ["python", "-m", "app.scripts.wind_tunnel_worker"]
+    command: ["python", "-m", "app.workers.wind_tunnel_worker"]
     ports: []
     healthcheck:
       disable: true
@@ -161,7 +162,7 @@ services:
 
   assessment-worker:
     <<: *backend_runtime
-    command: ["python", "-m", "app.scripts.assessment_worker"]
+    command: ["python", "-m", "app.workers.assessment_worker"]
     ports: []
     healthcheck:
       disable: true
@@ -171,7 +172,7 @@ services:
 
   cv-source-check-worker:
     <<: *backend_runtime
-    command: ["python", "-m", "app.scripts.cv_source_check_worker"]
+    command: ["python", "-m", "app.workers.cv_source_check_worker"]
     ports: []
     healthcheck:
       disable: true
@@ -197,7 +198,7 @@ services:
 
   invitation-worker:
     <<: *backend_runtime
-    command: ["python", "-m", "app.scripts.invitation_worker"]
+    command: ["python", "-m", "app.workers.invitation_worker"]
     ports: []
     healthcheck:
       disable: true

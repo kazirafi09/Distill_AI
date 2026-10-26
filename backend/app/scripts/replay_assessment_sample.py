@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import UUID
 
 from app.db.session import engine
-from app.scripts.assessment_worker import process
+from app.workers.assessment_worker import process
 from app.services.interviews import assessment_store as store, assessment_runs as runs, analysis
 from app.services.interviews.rubric import DIMENSIONS, RUBRIC_VERSION
 

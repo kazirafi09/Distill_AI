@@ -1,6 +1,7 @@
 """PostgreSQL-backed worker. Running rows/checkpoints recover after restart."""
 import asyncio
 import logging
+from app.core.logging import setup_logging
 from uuid import UUID
 from sqlalchemy import select, text
 from app.db.session import SessionFactory, engine
@@ -76,7 +77,7 @@ async def run_once():
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    setup_logging("cv-worker")
     while True:
         worked = await run_once()
         if not worked:

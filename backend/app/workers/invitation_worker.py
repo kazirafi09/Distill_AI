@@ -1,5 +1,7 @@
 """Durable invitation sender. Interrupted sends become uncertain, never retried blindly."""
 import asyncio
+import logging
+from app.core.logging import setup_logging
 from datetime import datetime, timezone
 from uuid import uuid4
 from pydantic import EmailStr, TypeAdapter
@@ -109,4 +111,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    setup_logging("invitation-worker")
+    try:
+        asyncio.run(main())
+    except Exception as error:
+        logging.getLogger("distill_ai.invitation_worker").error(
+            "Invitation worker stopped | error_type=%s", type(error).__name__)
+        raise

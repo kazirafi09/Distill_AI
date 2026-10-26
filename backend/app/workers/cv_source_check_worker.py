@@ -1,12 +1,13 @@
 """Check and import Drive/Sheet applications every one minute without a browser."""
 import asyncio
 import logging
+from app.core.logging import setup_logging
 import app.models.user  # Register the users table referenced by candidate/identity writes.
 from app.services.cv.source_checks import run_due_checks
 
 
 async def main():
-    logging.basicConfig(level=logging.INFO)
+    setup_logging("cv-source-check-worker")
     while True:
         try:
             checked = await run_due_checks()

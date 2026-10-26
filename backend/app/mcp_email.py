@@ -1,6 +1,7 @@
 """Authenticated MCP server for individual email jobs."""
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
+from app.core.logging import setup_logging
 
 import jwt
 from mcp.server.fastmcp import FastMCP
@@ -80,6 +81,7 @@ class EmailAuth:
 
 @asynccontextmanager
 async def lifespan(app):
+    setup_logging("email-mcp")
     async with mcp.session_manager.run():
         yield
 
