@@ -1,0 +1,79 @@
+.assessment-print-root { display: none; }
+.assessment-print-frame { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; color: #172033; background: #fff; }
+.assessment-print-frame > thead > tr > td, .assessment-print-frame > tbody > tr > td, .assessment-print-frame > tfoot > tr > td { padding: 0; border: 0; }
+.report-running-header, .report-running-footer { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 0; color: #526075; font-size: 10px; border-bottom: 1px solid #cbd5e1; overflow-wrap: anywhere; }
+.report-running-header > strong { color: #006747; }
+.report-running-header > span:last-child { flex-basis: 100%; }
+.report-running-footer { border-bottom: 0; border-top: 1px solid #cbd5e1; margin-top: 14px; }
+.assessment-report-document { padding: 18px 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; }
+.report-document-heading h1 { font-size: 24px; font-weight: 700; }
+.report-document-heading h2 { font-size: 20px; font-weight: 650; margin-top: 3px; }
+.report-classification { padding: 8px 10px; margin: 10px 0; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: 600; }
+.report-version { color: #526075; font-size: 11px; }
+.report-document-contents { display: grid; gap: 4px; margin: 18px 0; }
+.report-document-contents a, .report-citation { color: #006747; text-decoration: underline; }
+.assessment-report-document > section { margin-top: 24px; padding-top: 14px; border-top: 1px solid #cbd5e1; scroll-margin-top: 20px; }
+.assessment-report-document h3 { margin-bottom: 12px; font-size: 18px; font-weight: 700; }
+.assessment-report-document h4 { margin: 14px 0 5px; color: #006747; font-size: 14px; font-weight: 650; scroll-margin-top: 20px; }
+.assessment-report-document p { white-space: pre-wrap; margin: 6px 0; }
+.assessment-report-document blockquote { padding: 8px 12px; margin: 8px 0; border-left: 3px solid #07815f; background: #f2f8f5; }
+.assessment-report-document .report-note { font-size: 11px; color: #526075; }
+.assessment-report-document .report-warning { padding: 8px 10px; border-left: 3px solid #b45309; color: #794800; background: #fff9ed; }
+.report-citation { font-size: 11px; font-weight: 700; }
+.report-table-wrap { overflow-x: auto; }
+.report-coverage-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11px; }
+.report-coverage-table caption { text-align: left; margin: 8px 0; font-weight: 650; }
+.report-coverage-table th, .report-coverage-table td { padding: 7px; border: 1px solid #cbd5e1; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.report-coverage-table thead { background: #f0f3f6; }
+.report-coverage-table th:first-child { width: 36%; }
+.report-coverage-table tbody th { font-weight: 500; }
+.assessment-report-options { display: flex; align-items: end; flex-wrap: wrap; gap: 12px 20px; margin-top: 12px; }
+.assessment-report-options label { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.assessment-report-options select { padding: 6px 10px; border: 1px solid #94a3b8; border-radius: 8px; background: white; }
+.assessment-report-options input { accent-color: #07815f; }
+.report-recruiter .report-document-contents { display: none; }
+.report-recruiter .report-coverage-table th:first-child { width: auto; }
+@media (max-width: 640px) { .report-coverage-table { min-width: 560px; } }
+@page assessment-report {
+  size: A4;
+  margin: 12mm 14mm 17mm;
+  @bottom-right { content: "Page " counter(page); font: 8pt Arial, sans-serif; color: #526075; }
+}
+@media print {
+  body:has(> .assessment-print-root) { margin: 0 !important; min-width: 0 !important; background: #fff !important; }
+  body:has(> .assessment-print-root) > :not(.assessment-print-root) { display: none !important; }
+  .assessment-print-root { display: block !important; page: assessment-report; font-family: Arial, sans-serif; }
+  .assessment-print-root *, .assessment-print-root *::before, .assessment-print-root *::after { box-sizing: border-box; max-height: none !important; overflow: visible !important; }
+  .assessment-print-frame { width: 100%; min-width: 0; }
+  .assessment-print-frame > thead { display: table-header-group; }
+  .assessment-print-frame > tfoot { display: table-footer-group; }
+  .assessment-report-document { padding: 3mm 0; font-size: 9pt; line-height: 1.45; }
+  .report-document-heading h1 { font-size: 17pt; }
+  .report-document-heading h2 { font-size: 14pt; }
+  .assessment-report-document h3 { font-size: 12pt; break-after: avoid; }
+  .assessment-report-document h4 { font-size: 10pt; break-after: avoid; }
+  .assessment-report-document .report-note, .report-version, .report-running-header, .report-running-footer { font-size: 7.5pt; }
+  .assessment-report-document p { orphans: 3; widows: 3; }
+  .report-document-contents { display: none; }
+  .report-coverage-table { min-width: 0; width: 100%; font-size: 7.5pt; }
+  .report-coverage-table thead { display: table-header-group; }
+  .report-coverage-table tr { break-inside: avoid; }
+  .report-coverage-table th, .report-coverage-table td { padding: 1.5mm; }
+  .report-evidence-appendix { break-before: page; }
+  .report-page-break { break-before: page; }
+  .report-recruiter .assessment-report-document { font-size: 8.5pt; line-height: 1.3; }
+  .report-recruiter .report-document-heading h1 { font-size: 16pt; }
+  .report-recruiter .report-document-heading h2 { font-size: 12pt; }
+  .report-recruiter .assessment-report-document > section { margin-top: 3mm; padding-top: 2mm; }
+  .report-recruiter .assessment-report-document h3 { margin-bottom: 2mm; font-size: 11pt; }
+  .report-recruiter .assessment-report-document h4 { margin: 1mm 0; font-size: 9pt; }
+  .report-recruiter .assessment-report-document p { margin: 1mm 0; }
+  .report-recruiter .report-coverage-table { font-size: 7.5pt; }
+  .report-recruiter .report-classification { padding: 1.5mm; margin: 2mm 0; }
+  .report-recruiter .report-document-heading .report-classification,
+  .report-recruiter .report-document-heading .report-version,
+  .report-recruiter .report-coverage-table caption { display: none; }
+  .report-recruiter .report-coverage-table th, .report-recruiter .report-coverage-table td { padding: 1mm; }
+  .report-citation { color: #172033; font-size: 8pt; }
+  .report-classification { border-radius: 0; }
+}

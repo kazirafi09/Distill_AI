@@ -25,3 +25,12 @@ logs/
 
 *.sqlite3
 *.db
+
+backend/logs/
+
+backend/.data/
+
+/storage/cvs/
+/storage/
+/output/
+/tmp/

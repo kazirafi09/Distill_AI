@@ -1,0 +1,68 @@
+.interviews-page { max-width: 1400px; margin: 0 auto; }
+.interview-description { margin-top: 8px; color: #64748b; font-size: 14px; }
+.interview-job-picker { display: grid; gap: 8px; max-width: 560px; margin: 24px 0; font-size: 13px; font-weight: 600; color: #334155; }
+.interviews-page select, .interview-filter-fields input { width: 100%; min-width: 0; border: 1px solid #cbd5e1; border-radius: 8px; padding: 11px 12px; background: #fff; color: #334155; font-size: 14px; }
+.interview-workspace { border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; overflow: hidden; }
+.interview-job-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 24px; border-bottom: 1px solid #e2e8f0; }
+.interview-job-heading h2 { margin-top: 6px; font-size: 21px; font-weight: 650; color: #172033; overflow-wrap: anywhere; }
+.interview-eyebrow { color: #047857; font-size: 12px; font-weight: 700; }
+.interview-filter-panel { display: grid; gap: 20px; margin: 24px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; }
+.interview-filter-panel h3 { font-size: 16px; font-weight: 650; }
+.interview-filter-panel p { margin-top: 6px; color: #64748b; font-size: 13px; }
+.interview-filter-fields { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; }
+.interview-filter-fields label { display: grid; flex: 1; min-width: 160px; gap: 8px; font-size: 12px; font-weight: 600; color: #334155; }
+.interview-filter-fields button { min-height: 42px; }
+.interview-notice { margin: 20px 24px; padding: 12px 16px; border: 1px solid #a7f3d0; border-radius: 10px; background: #ecfdf5; color: #065f46; font-size: 13px; overflow-wrap: anywhere; }
+.interview-notice.is-error { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.interview-notice.is-warning { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+.interview-selection-bar { display: flex; gap: 16px; justify-content: space-between; align-items: center; padding: 20px 24px; }
+.interview-selection-bar strong { display: block; color: #172033; font-size: 18px; }
+.interview-selection-bar span { display: block; margin-top: 6px; color: #64748b; font-size: 12px; }
+.interview-selection-actions { display: flex; gap: 10px; }
+.interview-saved-panel { margin: 24px; padding: 20px; border: 1px solid #a7f3d0; border-radius: 12px; background: #f0fdf4; }
+.interview-saved-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.interview-saved-heading h3 { color: #172033; font-size: 16px; font-weight: 650; }
+.interview-saved-heading > span { border-radius: 999px; padding: 4px 10px; background: #d1fae5; color: #065f46; font-size: 12px; font-weight: 600; }
+.interview-saved-list { display: grid; gap: 12px; margin-top: 16px; padding: 0; list-style: none; }
+.interview-saved-list li { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-top: 1px solid #d1fae5; padding-top: 12px; font-size: 13px; }
+.interview-saved-list li > div:first-child { min-width: 0; }
+.interview-saved-score { flex-shrink: 0; text-align: right; }
+.interview-saved-score span { display: block; margin-top: 6px; color: #64748b; font-size: 12px; }
+.interview-unsaved { margin-top: 12px; color: #92400e; font-size: 12px; }
+.interview-table-scroll { overflow-x: auto; }
+.interview-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
+.interview-table > thead > tr > th { padding: 14px 20px; background: #f8fafc; color: #64748b; font-size: 12px; white-space: nowrap; }
+.interview-table > tbody > tr > td { padding: 18px 20px; border-top: 1px solid #e2e8f0; vertical-align: top; }
+.interview-table > tbody > tr.is-selected { background: #f0fdf4; }
+.interview-table > tbody > tr > td:nth-child(2) { min-width: 200px; }
+.interview-table > tbody > tr > td:last-child { min-width: 300px; max-width: 650px; }
+.interview-table input[type=checkbox] { width: 18px; height: 18px; accent-color: #059669; cursor: pointer; }
+.interview-table input:disabled { cursor: not-allowed; }
+.interview-email { display: block; margin-top: 6px; color: #64748b; font-size: 12px; overflow-wrap: anywhere; }
+.interview-badge { display: inline-block; margin-top: 10px; padding: 4px 8px; border-radius: 6px; background: #f1f5f9; color: #475569; font-size: 11px; }
+.interview-badge.is-proposed { background: #d1fae5; color: #065f46; }
+.interview-hint { color: #64748b; font-size: 12px; line-height: 1.6; }
+.interview-workspace > .interview-hint { margin: 16px 24px; }
+.interview-cv-link { display: block; margin-top: 8px; color: #047857; font-size: 12px; }
+.interview-cv-link:hover, .interview-footer a:hover { text-decoration: underline; }
+.interview-pagination, .interview-footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 24px; border-top: 1px solid #e2e8f0; }
+.interview-pagination { color: #64748b; font-size: 12px; }
+.interview-pagination > div { display: flex; gap: 8px; }
+.interview-footer a, .interview-empty a { color: #047857; font-size: 13px; font-weight: 600; }
+.interview-footer > div { text-align: right; }
+.interview-footer .interview-hint { margin-top: 6px; }
+.interview-empty { padding: 32px 24px; color: #64748b; font-size: 14px; }
+.interview-empty h2, .interview-empty h3 { margin-bottom: 8px; color: #334155; font-weight: 650; }
+.interview-empty a { display: inline-block; margin-top: 16px; }
+@media (max-width: 800px) {
+  .interview-job-heading, .interview-selection-bar, .interview-footer { align-items: flex-start; flex-direction: column; }
+  .interview-footer > div { text-align: left; }
+}
+@media (max-width: 520px) {
+  .interview-filter-panel { margin: 16px; padding: 16px; }
+  .interview-filter-fields { flex-direction: column; align-items: stretch; }
+  .interview-job-heading, .interview-selection-bar, .interview-pagination, .interview-footer { padding: 16px; }
+  .interview-notice { margin: 16px; }
+  .interview-saved-panel { margin: 16px; padding: 16px; }
+  .interview-selection-actions { flex-wrap: wrap; }
+}

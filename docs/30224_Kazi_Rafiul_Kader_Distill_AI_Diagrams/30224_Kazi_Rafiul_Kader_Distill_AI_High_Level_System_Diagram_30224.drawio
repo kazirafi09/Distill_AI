@@ -1,0 +1,115 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="High Level Architecture" id="distill-ai-architecture">
+    <mxGraphModel dx="1720" dy="862" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2020" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" style="" />
+        <mxCell id="1" parent="0" style="" />
+        <mxCell id="c1" parent="1" style="container=1;collapsible=0;recursiveResize=0;rounded=1;arcSize=4;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=28;spacingTop=18;fontFamily=Helvetica;fillColor=#F8FAFC;strokeColor=#CBD5E1;strokeWidth=2;" value="&lt;b style=&quot;font-size:28px;color:#0F172A&quot;&gt;1  BEFORE THE INTERVIEW&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#475569&quot;&gt;Find and shortlist the right people&lt;/span&gt;" vertex="1">
+          <mxGeometry height="830" width="560" x="40" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="s1" parent="c1" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#FFF1D6;strokeColor=#B45309;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#92400E&quot;&gt;&lt;b&gt;YOU DO THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;📝 Create and post the job&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Enter the job details and publish the job post. Candidates start sending their CVs.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="s2" parent="c1" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#DDF3F0;strokeColor=#0F766E;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#0F766E&quot;&gt;&lt;b&gt;AI DOES THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;📄 Collect and read CVs&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Every CV is saved and its key details (skills, experience) are picked out automatically.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" parent="c1" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#DDF3F0;strokeColor=#0F766E;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#0F766E&quot;&gt;&lt;b&gt;AI DOES THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;📊 Score and rank candidates&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Each CV is compared with the job requirements, then ranked from best to least fit.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="470" as="geometry" />
+        </mxCell>
+        <mxCell id="s4" parent="c1" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#FFF1D6;strokeColor=#B45309;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#92400E&quot;&gt;&lt;b&gt;YOU DECIDE&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;✅ Choose who to interview&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Look at the ranked list and pick the candidates you want to meet.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="650" as="geometry" />
+        </mxCell>
+        <mxCell id="b1" parent="c1" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;1&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="b2" parent="c1" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;2&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="276" as="geometry" />
+        </mxCell>
+        <mxCell id="b3" parent="c1" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;3&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="456" as="geometry" />
+        </mxCell>
+        <mxCell id="b4" parent="c1" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;4&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="636" as="geometry" />
+        </mxCell>
+        <mxCell id="c2" parent="1" style="container=1;collapsible=0;recursiveResize=0;rounded=1;arcSize=4;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=28;spacingTop=18;fontFamily=Helvetica;fillColor=#F8FAFC;strokeColor=#CBD5E1;strokeWidth=2;" value="&lt;b style=&quot;font-size:28px;color:#0F172A&quot;&gt;2  DURING THE INTERVIEW&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#475569&quot;&gt;Invite, meet and understand the candidate&lt;/span&gt;" vertex="1">
+          <mxGeometry height="830" width="560" x="720" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="s5" parent="c2" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=2;dashed=1;dashPattern=8 5;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#475569&quot;&gt;&lt;b&gt;EMAIL SERVICE (OUTSIDE SYSTEM)&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;✉️ Send interview invitations&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;An email service sends an invitation to each chosen candidate.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="s6" parent="c2" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#FFF1D6;strokeColor=#B45309;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#92400E&quot;&gt;&lt;b&gt;YOU DO THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;🎥 Hold the interview&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;You meet the candidate. The conversation is saved as a written transcript.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="s7" parent="c2" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#DDF3F0;strokeColor=#0F766E;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#0F766E&quot;&gt;&lt;b&gt;AI DOES THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;🔍 Understand the interview&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;The AI reads the transcript to see what the candidate actually said.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="650" as="geometry" />
+        </mxCell>
+        <mxCell id="b5" parent="c2" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;5&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="b6" parent="c2" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;6&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="366" as="geometry" />
+        </mxCell>
+        <mxCell id="b7" parent="c2" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;7&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="636" as="geometry" />
+        </mxCell>
+        <mxCell id="c3" parent="1" style="container=1;collapsible=0;recursiveResize=0;rounded=1;arcSize=4;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=28;spacingTop=18;fontFamily=Helvetica;fillColor=#F8FAFC;strokeColor=#CBD5E1;strokeWidth=2;" value="&lt;b style=&quot;font-size:28px;color:#0F172A&quot;&gt;3  AFTER THE INTERVIEW&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#475569&quot;&gt;Check the facts and get the result&lt;/span&gt;" vertex="1">
+          <mxGeometry height="830" width="560" x="1400" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="s8" parent="c3" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#DDF3F0;strokeColor=#0F766E;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#0F766E&quot;&gt;&lt;b&gt;AI DOES THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:22px;color:#0F172A&quot;&gt;🔎 Check CV claims&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Does what the CV says match what was said in the interview?&lt;/span&gt;" vertex="1">
+          <mxGeometry height="190" width="250" x="20" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="s9" parent="c3" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#DDF3F0;strokeColor=#0F766E;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#0F766E&quot;&gt;&lt;b&gt;AI DOES THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:22px;color:#0F172A&quot;&gt;⭐ Score the interview&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Rates how well the candidate answered.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="190" width="250" x="290" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="s10" parent="c3" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#DDF3F0;strokeColor=#0F766E;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#0F766E&quot;&gt;&lt;b&gt;AI DOES THIS&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;🧩 Build the full picture&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;The CV checks and the interview score are combined into one assessment.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="395" as="geometry" />
+        </mxCell>
+        <mxCell id="s11" parent="c3" style="rounded=1;arcSize=8;absoluteArcSize=0;whiteSpace=wrap;html=1;align=left;verticalAlign=middle;spacingLeft=22;spacingRight=16;spacingTop=4;spacingBottom=4;fontFamily=Helvetica;fillColor=#FFF1D6;strokeColor=#B45309;strokeWidth=2;" value="&lt;span style=&quot;font-size:14px;letter-spacing:1.5px;color:#92400E&quot;&gt;&lt;b&gt;YOU DECIDE&lt;/b&gt;&lt;/span&gt;&lt;br&gt;&lt;b style=&quot;font-size:24px;color:#0F172A&quot;&gt;📈 See the results&lt;/b&gt;&lt;br&gt;&lt;span style=&quot;font-size:20px;color:#334155&quot;&gt;Review every candidate's results on one dashboard and make your hiring decision.&lt;/span&gt;" vertex="1">
+          <mxGeometry height="140" width="520" x="20" y="650" as="geometry" />
+        </mxCell>
+        <mxCell id="b8" parent="c3" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;8&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="b9" parent="c3" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;9&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="276" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="b10" parent="c3" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;10&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="381" as="geometry" />
+        </mxCell>
+        <mxCell id="b11" parent="c3" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;fontFamily=Helvetica;fontSize=20;fontColor=#FFFFFF;fillColor=#1E293B;strokeColor=#FFFFFF;strokeWidth=2;align=center;verticalAlign=middle;" value="&lt;b&gt;11&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="40" x="6" y="636" as="geometry" />
+        </mxCell>
+        <mxCell id="e1_2" edge="1" parent="1" source="s1" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s2" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2_3" edge="1" parent="1" source="s2" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s3" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3_4" edge="1" parent="1" source="s3" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s4" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5_6" edge="1" parent="1" source="s5" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s6" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6_7" edge="1" parent="1" source="s6" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s7" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10_11" edge="1" parent="1" source="s10" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s11" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e8_10" edge="1" parent="1" source="s8" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.2404;entryY=0;entryDx=0;entryDy=0;" target="s10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9_10" edge="1" parent="1" source="s9" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=3;strokeColor=#475569;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.7596;entryY=0;entryDx=0;entryDy=0;" target="s10" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1" edge="1" parent="1" source="c1" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=4;strokeColor=#1E293B;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;html=1;fontSize=18;fontStyle=1;fontColor=#1E293B;verticalAlign=bottom;fontFamily=Helvetica;" target="c2" value="Shortlisted&lt;br&gt;candidates">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2" edge="1" parent="1" source="c2" style="edgeStyle=none;endArrow=block;endFill=1;strokeWidth=4;strokeColor=#1E293B;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;html=1;fontSize=18;fontStyle=1;fontColor=#1E293B;verticalAlign=bottom;fontFamily=Helvetica;" target="c3" value="Interview&lt;br&gt;findings">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

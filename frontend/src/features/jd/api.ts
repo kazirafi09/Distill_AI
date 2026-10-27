@@ -1,0 +1,271 @@
+import { apiRequest } from '../../services/api'
+
+export type JDAction = 'reply' | 'revise' | 'approve' | 'cancel'
+
+export type ScreeningProfile = {
+  criteria: {
+    id: string
+    dimension: string
+    text: string
+    priority: 'Must have' | 'Preferred' | null
+    source?: 'recruiter' | 'suggested'
+    priority_source?: 'recruiter' | 'suggested'
+  }[]
+  dimension_weights: Record<string, number>
+  weights_confirmed: boolean
+  weights_source?: 'recruiter' | 'suggested'
+  minimum_years_experience: string | null
+  fresher_eligibility: string | null
+  google_form_url: string | null
+}
+
+export type JDConversation = {
+  editable_content?: string
+  edit_version?: string | null
+  editing_locked?: boolean
+  posting_status?: string | null
+  conversation_id: string
+  created_at: string
+  checkpoint_id: string | null
+  status: string
+  messages: {
+    id: string | null
+    role: 'user' | 'assistant'
+    content: string
+    draft_revision?: number
+    jd_after_message_id?: string
+  }[]
+  interrupt: {
+    id: string
+    payload: {
+      type?: 'requirements'
+      question?: string
+      draft_jd?: string
+      revision_count?: number
+      allowed_actions: JDAction[]
+    }
+  } | null
+  draft_jd: string | null
+  approved_jd: string | null
+  revision_count: number
+  screening_profile: ScreeningProfile | null
+  profile_version: number | null
+  acceptance_errors: string[]
+  screening_warnings?: string[]
+  error_code: string | null
+  job_description?: {
+    id: string
+    number: number
+    title: string
+    created_at: string
+  } | null
+
+  rag_status?: string
+  reference_sources?: {
+    reference_id: string
+    filename: string
+    document_type: ReferenceDocumentType
+    chunk_index: number
+    distance: number
+  }[]
+}
+
+export function createConversation(token: string, message: string) {
+  return apiRequest<JDConversation>('/jd/conversations', {
+    method: 'POST',
+    token,
+    body: { message },
+  })
+}
+
+export function getConversation(
+  token: string,
+  conversationId: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<JDConversation>(
+    `/jd/conversations/${conversationId}`,
+    { token, signal },
+  )
+}
+
+export function sendConversationAction(
+  token: string,
+  conversation: JDConversation,
+  action: JDAction,
+  message?: string,
+) {
+  if (!conversation.checkpoint_id || !conversation.interrupt) {
+    throw new Error('Reload the conversation before continuing.')
+  }
+
+  return apiRequest<JDConversation>(
+    `/jd/conversations/${conversation.conversation_id}/actions`,
+    {
+      method: 'POST',
+      token,
+      body: {
+        checkpoint_id: conversation.checkpoint_id,
+        interrupt_id: conversation.interrupt.id,
+        action,
+        ...(message !== undefined ? { message } : {}),
+      },
+    },
+  )
+}
+
+
+export type JobDescriptionSummary = {
+  id: string
+  number: number
+  conversation_id: string
+  title: string
+  created_at: string
+}
+
+export type SavedJobDescription = JobDescriptionSummary & {
+  editable_content?: string
+  edit_version?: string
+  editing_locked?: boolean
+  posting_status?: string | null
+  content: string
+  screening_profile: ScreeningProfile | null
+  profile_version: number | null
+  google_form_url: string | null
+}
+
+export type EditableProfile = Pick<ScreeningProfile,
+  'dimension_weights' | 'minimum_years_experience' | 'fresher_eligibility' | 'google_form_url'> & {
+  criteria: Pick<ScreeningProfile['criteria'][number], 'id' | 'text' | 'dimension' | 'priority'>[]
+}
+
+export type JobEdit = {
+  edit_version: string
+  content: string
+  screening_profile: EditableProfile
+  criteria_reviewed: boolean
+}
+
+export function suggestJobEdits(token: string, conversationId: string, edit: JobEdit,
+  changedSection: 'description' | 'criteria', signal?: AbortSignal) {
+  return apiRequest<{ content: string; screening_profile: EditableProfile }>(
+    `/jd/conversations/${conversationId}/edit-preview`, {
+      method: 'POST', token, signal, body: { ...edit, changed_section: changedSection },
+    },
+  )
+}
+
+export function saveJobEdits(token: string, conversationId: string, edit: JobEdit, signal?: AbortSignal) {
+  return apiRequest<JDConversation>(`/jd/conversations/${conversationId}/edits`, {
+    method: 'PUT', token, signal, body: edit,
+  })
+}
+
+export function listJobDescriptions(
+  token: string,
+  offset = 0,
+  signal?: AbortSignal,
+) {
+  return apiRequest<{
+    items: JobDescriptionSummary[]
+    limit: number
+    offset: number
+  }>(`/jd/descriptions?limit=10&offset=${offset}`, {
+    token,
+    signal,
+  })
+}
+
+export function getJobDescription(
+  token: string,
+  descriptionId: string,
+  signal?: AbortSignal,
+) {
+  return apiRequest<SavedJobDescription>(
+    `/jd/descriptions/${descriptionId}`,
+    { token, signal },
+  )
+}
+
+export type ReferenceDocumentType = 'prior_jd' | 'company_policy' | 'technical_reference'
+
+export type JDReference = {
+  id: string
+  filename: string
+  file_type: string
+  file_size_bytes: number
+  document_type: ReferenceDocumentType
+  index_status: 'pending' | 'indexing' | 'indexed' | 'failed'
+  error_code: string | null
+  created_at: string
+  updated_at: string
+}
+
+export function listReferences(
+  token: string,
+  offset = 0,
+  signal?: AbortSignal,
+) {
+  return apiRequest<JDReference[]>(
+    `/jd/references?limit=10&offset=${offset}`,
+    { token, signal },
+  )
+}
+
+export function uploadReference(
+  token: string,
+  file: File,
+  documentType: ReferenceDocumentType,
+) {
+  const body = new FormData()
+  body.append('file', file)
+  body.append('document_type', documentType)
+
+  return apiRequest<JDReference>('/jd/references', {
+    method: 'POST',
+    token,
+    body,
+  })
+}
+
+export function retryReferenceIndex(
+  token: string,
+  referenceId: string,
+) {
+  return apiRequest<JDReference>(
+    `/jd/references/${referenceId}/index`,
+    { method: 'POST', token },
+  )
+}
+
+export type QuestionBank = {
+  id: string
+  filename: string
+  file_type: string
+  file_size_bytes: number
+  status: 'pending' | 'processing' | 'ready' | 'failed'
+  error_code: string | null
+  warnings: string[]
+  chunk_count: number
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+export function listQuestionBanks(token: string, offset = 0, signal?: AbortSignal) {
+  return apiRequest<QuestionBank[]>(`/question-banks?limit=10&offset=${offset}`, { token, signal })
+}
+
+export function uploadQuestionBank(token: string, file: File) {
+  const body = new FormData()
+  body.append('file', file)
+  return apiRequest<QuestionBank>('/question-banks', { method: 'POST', token, body })
+}
+
+export function retryQuestionBankIndex(token: string, id: string) {
+  return apiRequest<QuestionBank>(`/question-banks/${id}/index`, { method: 'POST', token })
+}
+
+export function archiveQuestionBank(token: string, id: string) {
+  return apiRequest<QuestionBank>(`/question-banks/${id}/archive`, { method: 'POST', token })
+}

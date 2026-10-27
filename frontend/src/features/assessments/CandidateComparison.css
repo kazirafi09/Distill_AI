@@ -1,0 +1,34 @@
+.candidate-comparison.ca-modal { width: min(1240px, 100%); }
+.comparison-intro { color: #526075; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
+.comparison-warnings { margin: 12px 0; padding: 10px 14px; border: 1px solid #e6ce94; border-radius: 10px; background: #fffbeb; font-size: 12px; }
+.comparison-warnings ul { padding-left: 20px; color: #775114; line-height: 1.6; }
+.comparison-warnings li + li { margin-top: 6px; }
+.comparison-scroll-hint { font-size: 12px; margin: 12px 0; }
+.comparison-table-scroll { overflow: auto; max-height: 62dvh; border: 1px solid #dce2eb; border-radius: 10px; }
+.comparison-table { width: 100%; min-width: 780px; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; line-height: 1.65; }
+.comparison-table th, .comparison-table td { padding: 14px; text-align: left; vertical-align: top; border-bottom: 1px solid #dce2eb; border-right: 1px solid #dce2eb; overflow-wrap: anywhere; }
+.comparison-table tr > :last-child { border-right: 0; }
+.comparison-table tbody tr:last-child > * { border-bottom: 0; }
+.comparison-table thead th { position: sticky; top: 0; z-index: 2; background: #edf8f2; width: 37%; }
+.comparison-table thead th:first-child { width: 26%; }
+.comparison-table thead strong { display: block; font-size: 16px; }
+.comparison-table small, .comparison-table a { display: block; margin-top: 5px; }
+.comparison-table a { color: #006747; text-decoration: underline; }
+.comparison-table tbody th { background: #fafbfc; font-weight: 650; }
+.comparison-table p + p { margin-top: 6px; }
+.comparison-table .comparison-section th { background: #e7f4ed; color: #006747; }
+.comparison-table .comparison-total { font-size: 22px; }
+.comparison-findings { list-style: none; padding: 0; margin: 0; }
+.comparison-findings li + li { border-top: 1px solid #e2e8f0; padding-top: 12px; margin-top: 12px; }
+.comparison-hash { word-break: break-all; }
+.comparison-source { margin-top: 16px; padding: 16px; border: 2px solid #07815f; border-radius: 12px; scroll-margin: 12px; }
+.comparison-source header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.comparison-source:focus-visible, .comparison-table-scroll:focus-visible { outline: 2px solid #147d65; outline-offset: 2px; }
+.candidate-check-label { display: flex; align-items: center; gap: 6px; color: #526075; }
+@media (max-width: 700px) {
+  .ca-modal-overlay:has(.candidate-comparison) { padding: 0; }
+  .candidate-comparison.ca-modal { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: 14px; }
+  .candidate-comparison .comparison-table-scroll { max-height: 64dvh; }
+  .comparison-table { min-width: 720px; }
+  .comparison-source header { align-items: start; flex-direction: column; }
+}

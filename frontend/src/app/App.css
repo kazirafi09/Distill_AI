@@ -4,10 +4,415 @@
   padding: 48px 24px;
 }
 
-.app h1 {
+.sidebar-menu { display: none; }
+.mobile-page-label { display: none; }
+.sidebar-link.has-notification { gap: 6px; padding-inline: 8px; }
+.sidebar-notification { display: inline-flex; justify-content: center; min-width: 18px; margin-left: auto; padding: 1px 4px; border-radius: 12px; background: #07815f; color: white; font-size: 10px; font-weight: 700; }
+
+.app > h1 {
   margin: 0 0 16px;
 }
 
-.app p {
+.app > p {
   margin: 0 0 12px;
 }
+
+.workspace-shell {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 187px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.workspace-sidebar {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: clip;
+  padding: 20px 12px;
+  border-right: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.sidebar-brand {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  color: #172033;
+  font-size: 20px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  background: #6ee7b7;
+  color: #064e3b;
+  font-size: 20px;
+}
+
+.sidebar-caption {
+  flex-shrink: 0;
+  margin: 28px 8px 12px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sidebar-navigation {
+  display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  gap: 6px;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 150ms, color 150ms;
+}
+
+.sidebar-link:hover {
+  background: #f8fafc;
+}
+
+.sidebar-link.is-active {
+  border-color: #a7f3d0;
+  background: #ecfdf5;
+  color: #065f46;
+  font-weight: 650;
+}
+
+.navigation-mark {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.sidebar-account {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding: 24px 10px 0;
+  font-size: 13px;
+}
+
+.account-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: #d1fae5;
+  color: #065f46;
+  font-weight: 700;
+}
+
+.account-details {
+  min-width: 0;
+}
+
+.account-email {
+  overflow: hidden;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-signout {
+  grid-column: 1 / -1;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  color: #475569;
+  cursor: pointer;
+}
+
+.sidebar-signout:hover {
+  background: #f1f5f9;
+}
+
+.workspace-main {
+  background: var(--workspace-background);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: var(--workspace-page-padding);
+}
+
+.jd-page {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.workspace-eyebrow {
+  margin-bottom: 6px;
+  color: #047857;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.jd-workspace {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.jd-library {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.jd-chat {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.conversation-history {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.conversation-picker {
+  position: relative;
+  width: 320px;
+  max-width: 100%;
+  min-width: 0;
+  color: #64748b;
+}
+
+.conversation-picker select {
+  width: 100%;
+  height: 38px;
+  appearance: none;
+  overflow: hidden;
+  padding: 0 34px 0 38px;
+  border: 1px solid #dbe4ee;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.conversation-picker select:hover:not(:disabled) {
+  border-color: #80bfae;
+  background: #f0fdf7;
+}
+
+.conversation-pagination button:focus-visible {
+  outline: 2px solid #059669;
+  outline-offset: 2px;
+}
+
+.conversation-picker select:disabled {
+  color: #94a3b8;
+  cursor: default;
+}
+
+.conversation-picker-icon,
+.conversation-picker-chevron {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.conversation-picker-icon { left: 12px; }
+.conversation-picker-chevron { right: 12px; }
+
+.conversation-pagination {
+  display: flex;
+  height: 38px;
+  align-items: center;
+  gap: 2px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.conversation-pagination span {
+  min-width: 20px;
+  text-align: center;
+}
+
+.conversation-pagination button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.conversation-pagination button:hover:not(:disabled) {
+  border-color: #dbe4ee;
+  background: #f1f5f9;
+  color: #047857;
+}
+
+.conversation-pagination button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.jd-detail-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(860px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  overflow-y: auto;
+  padding: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 24px 80px rgb(15 23 42 / 20%);
+}
+
+.jd-detail-dialog::backdrop {
+  background: rgb(15 23 42 / 45%);
+}
+
+.feature-placeholder {
+  padding: 28px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #fff;
+}
+
+@media (max-width: 1100px) {
+  .workspace-shell {
+    grid-template-columns: 187px minmax(0, 1fr);
+  }
+
+  .jd-workspace {
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 14px;
+  }
+}
+
+@media (max-width: 900px) {
+  .jd-page {
+    height: auto;
+  }
+
+  .jd-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .jd-library {
+    max-height: 400px;
+  }
+
+  .jd-chat {
+    height: 70dvh;
+    min-height: 480px;
+  }
+
+}
+
+@media (max-width: 900px) {
+  .workspace-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .workspace-sidebar {
+    position: relative;
+    padding: 14px 16px;
+    border-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .sidebar-menu { display: block; position: absolute; top: 8px; left: 14px; min-height: 44px; width: 44px; border: 1px solid #94a3b8; border-radius: 10px; background: white; cursor: pointer; }
+  .workspace-sidebar:not(.is-open) .sidebar-caption,
+  .workspace-sidebar:not(.is-open) .sidebar-navigation,
+  .workspace-sidebar:not(.is-open) .sidebar-account { display: none; }
+  .workspace-sidebar .sidebar-brand { padding: 0; margin-left: 52px; font-size: 18px; width: fit-content; }
+  .mobile-page-label { display: block; position: absolute; top: 23px; right: 14px; color: #526075; font-size: 12px; }
+  .workspace-sidebar.is-open { max-height: 75dvh; overflow-y: auto; }
+
+  .sidebar-caption {
+    margin-top: 20px;
+  }
+
+  .sidebar-navigation {
+    display: grid;
+    overflow-y: auto;
+    padding-bottom: 6px;
+  }
+
+  .sidebar-link {
+    flex-shrink: 0;
+  }
+
+  .sidebar-account {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .sidebar-signout {
+    grid-column: auto;
+  }
+
+  .jd-detail-dialog {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 380px) { .mobile-page-label { display: none; } }
