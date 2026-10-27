@@ -10,7 +10,8 @@
 .candidate-page-content { flex: 1; width: 100%; max-width: 1120px; margin: 0 auto; padding: 24px; }
 .candidate-heading { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; margin-bottom: 20px; }
 .candidate-heading h1 { font-size: 25px; line-height: 1.25; font-weight: 750; }
-.candidate-heading > div > p:last-child { margin-top: 5px; font-size: 14px; color: #526075; }
+.candidate-heading-line { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 14px; row-gap: 4px; }
+.candidate-heading-line > p { font-size: 14px; color: #526075; overflow-wrap: anywhere; }
 .candidate-interview-page p { margin: 0; }
 .candidate-interview-page h2 { margin: 0; font-size: 17px; font-weight: 700; }
 .candidate-steps { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
@@ -40,7 +41,7 @@
 .candidate-waiting-content .stage-person { width: 96px; height: 96px; margin-bottom: 8px; }
 .candidate-waiting-content > p { color: #b6c6d6; max-width: 380px; line-height: 1.6; }
 .candidate-preview-controls { display: flex; justify-content: center; gap: 12px; padding: 24px; }
-.candidate-preview-controls span { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 12px; background: #293544; color: #cbd5e1; }
+.candidate-preview-controls span { display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 12px; background: #293544; color: #cbd5e1; cursor: default; user-select: none; }
 .candidate-join-card { text-align: center; }
 .candidate-join-indicator { display: grid; place-items: center; width: 38px; height: 38px; margin: 0 auto 12px; border-radius: 50%; background: #edf1f5; color: #526075; font-weight: 700; font-size: 20px; }
 .candidate-join-indicator.is-ready { color: #047857; background: #e1f7ef; }
@@ -50,7 +51,8 @@
 .candidate-alert, .candidate-notice { border: 1px solid #fecaca; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px !important; background: #fff5f4; color: #991b1b; overflow-wrap: anywhere; }
 .candidate-notice { background: white; border-color: #dfe4ec; color: #526075; }
 .candidate-page-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 24px; color: #637086; font-size: 11px; }
-.candidate-interview-page button { transition: background-color var(--motion-control), transform var(--motion-control); }
+.candidate-interview-page button { cursor: pointer; user-select: none; transition: background-color var(--motion-control), transform var(--motion-control); }
+.candidate-interview-page button:disabled { cursor: not-allowed; }
 .candidate-interview-page button:not(:disabled):active { transform: scale(.98); }
 .candidate-interview-page .interview-device-check { padding: 20px; border-radius: 0; background: white; color: #172033; --lk-bg: #101728; --lk-bg2: #1f2937; --lk-control-bg: #e8f6ef; --lk-control-active-bg: #07815f; --lk-control-active-hover-bg: #066d50; --lk-accent-bg: #07815f; }
 .candidate-interview-page .interview-device-check > p { color: #526075; font-size: 12px; padding-bottom: 14px; }
@@ -132,7 +134,7 @@
   .candidate-brand strong { font-size: 17px; }
   .candidate-status { max-width: 45%; overflow-wrap: anywhere; }
   .candidate-heading h1 { font-size: 21px; }
-  .candidate-heading > div > p:last-child { font-size: 13px; overflow-wrap: anywhere; }
+  .candidate-heading-line > p { font-size: 13px; }
   .candidate-card { padding: 16px; }
   .candidate-waiting-video { min-height: 0; }
   .candidate-waiting-content { padding: 16px; gap: 12px; }
@@ -143,7 +145,7 @@
   .is-in-call .candidate-page-content { padding: 8px; }
   .is-in-call .candidate-heading { margin-bottom: 8px; }
   .is-in-call .candidate-heading h1 { font-size: 16px; }
-  .is-in-call .candidate-heading > div > p:last-child { margin-top: 2px; font-size: 12px; }
+  .is-in-call .candidate-heading-line > p { font-size: 12px; }
   .is-in-call .candidate-video-panel { border-radius: 12px; }
   .candidate-steps li { min-width: 0; }
   .candidate-steps button { min-height: 44px; }
@@ -162,7 +164,8 @@
   .is-in-call .candidate-heading { margin-bottom: 6px; }
   .is-in-call .candidate-heading > div { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
   .is-in-call .candidate-heading h1 { flex-shrink: 0; font-size: 14px; }
-  .is-in-call .candidate-heading > div > p:last-child { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .is-in-call .candidate-heading-line { min-width: 0; flex-wrap: nowrap; }
+  .is-in-call .candidate-heading-line > p { margin: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .is-in-call .candidate-layout { grid-template-columns: minmax(0, 1fr); }
   .is-in-call .candidate-info { display: none; }
   .candidate-interview-page .stage-dock { min-height: 52px; padding-top: 4px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }

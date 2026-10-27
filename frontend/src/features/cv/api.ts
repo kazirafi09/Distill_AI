@@ -61,27 +61,6 @@ export function getCVProfile(token: string, id: string, signal?: AbortSignal) {
   return apiRequest<ParseResult>(`/cv/versions/${encodeURIComponent(id)}/profile`, { token, signal })
 }
 
-export function parseJobCVs(token: string, jobId: string, offset: number) {
-  return apiRequest<{ results: ParseResult[]; next_offset: number | null }>(
-    `/cv/jobs/${encodeURIComponent(jobId)}/parse?offset=${offset}&limit=1`, { method: 'POST', token })
-}
-
-export type FetchResult = {
-  downloaded: number
-  skipped: number
-  failed: number
-  errors: { filename?: string; error_code: string }[]
-  sheet: {
-    rows_imported: number
-    rows_skipped: number
-    rows_failed: number
-    candidates_created: number
-    applications_created: number
-    cvs_linked: number
-    errors: { row_number?: number; error_code: string }[]
-  } | null
-}
-
 export async function listSources(token: string, signal?: AbortSignal) {
   const sources: CVSource[] = []
   for (let offset = 0; ; offset += 100) {
@@ -121,10 +100,6 @@ export function linkSheet(token: string, sourceId: string, spreadsheetId: string
     method: 'PUT', token,
     body: { spreadsheet_id: spreadsheetId, sheet_tab_id: tabId },
   })
-}
-
-export function fetchSource(token: string, sourceId: string) {
-  return apiRequest<FetchResult>(`/cv/sources/${sourceId}/fetch`, { method: 'POST', token })
 }
 
 export function parseFolder(value: string) {

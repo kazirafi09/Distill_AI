@@ -1,5 +1,7 @@
 """Durable invitation sender. Interrupted sends become uncertain, never retried blindly."""
 import asyncio
+import logging
+from app.core.logging import setup_logging
 from datetime import datetime, timezone
 from uuid import uuid4
 from pydantic import EmailStr, TypeAdapter
@@ -15,6 +17,8 @@ from app.models.user import User
 from app.services.cv.screening import lock_screening_job
 from app.services.interviews.delivery import decrypt_message
 from app.services.interviews.invitations import token_hash
+from app.services.interviews.invitation_content import private_interview_link
+from app.services.interviews.scheduling import application_session, schedule_for_session
 
 WORKER_LOCK = 73101984024
 
@@ -41,7 +45,8 @@ async def send_one():
         send_id = send_job.id
         try:
             payload = decrypt_message(send_job.encrypted_message)
-            raw_token = payload["body"].rsplit("#", 1)[1]
+            link = private_interview_link(payload)
+            raw_token = link.rsplit("#", 1)[1]
             if (invitation.revoked_at or invitation.expires_at <= datetime.now(timezone.utc)
                 or token_hash(raw_token) != invitation.token_hash
                 or candidate.recruiter_id != recruiter.id
@@ -50,9 +55,18 @@ async def send_one():
                 or payload["recipient"] != invitation.recipient_email
                 or payload["sender"] != str(TypeAdapter(EmailStr).validate_python(get_settings().smtp_username))):
                 raise ValueError("Invitation no longer matches the authorized email")
+            session = None
+            if payload.get("schedule") is not None:
+                session = await application_session(db, invitation.application_id)
+                if payload["schedule"] != schedule_for_session(session):
+                    raise ValueError("Interview schedule changed after review")
             # Each attempt gets a distinct transport ID while reusing the durable job/link.
             message = EmailJob(job_id=uuid4(), recipient=payload["recipient"],
-                subject=payload["subject"], body=payload["body"])
+                subject=payload["subject"], body=payload["body"], calendar_event=payload.get("calendar_event"))
+            if message.calendar_event and (session is None or str(message.calendar_event.link) != link
+                or message.calendar_event.uid != invitation.id
+                or message.calendar_event.starts_at != session.starts_at or message.calendar_event.ends_at != session.ends_at):
+                raise ValueError("Calendar event differs from the reviewed interview")
         except Exception:
             send_job.status, send_job.error_code = "failed", "INVITATION_REVIEW_REQUIRED"
             await db.commit()
@@ -97,4 +111,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    setup_logging("invitation-worker")
+    try:
+        asyncio.run(main())
+    except Exception as error:
+        logging.getLogger("distill_ai.invitation_worker").error(
+            "Invitation worker stopped | error_type=%s", type(error).__name__)
+        raise

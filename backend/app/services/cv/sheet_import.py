@@ -127,12 +127,17 @@ async def import_response_rows(
     validation_errors: list[dict],
 ) -> dict:
     source_id, job_id = source.id, source.job_description_id
+    from app.services.cv.deletion import excluded_files, file_key
+    excluded = await excluded_files(db, source_id)
     result = {
         "rows_imported": 0, "rows_skipped": 0, "rows_failed": len(validation_errors),
         "candidates_created": 0, "applications_created": 0, "cvs_linked": 0,
         "errors": list(validation_errors),
     }
     for row in rows:
+        if any(file_key(file_id) in excluded for file_id in row["drive_file_ids"]):
+            result["rows_skipped"] += 1
+            continue
         try:
             # Each row commits independently, so a restart safely resumes imports.
             async with db.begin_nested():

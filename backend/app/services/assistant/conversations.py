@@ -108,10 +108,15 @@ async def create_assistant_conversation(db, user_id):
     return conversation
 
 
-async def list_assistant_conversations(db, graph, user_id, *, limit=20, offset=0):
-    conversations = list(await db.scalars(select(AssistantConversation).where(
+async def list_assistant_conversations(db, graph, user_id, *, limit=20, offset=0, jd_only=False):
+    query = select(AssistantConversation).where(
         AssistantConversation.user_id == user_id,
-    ).order_by(AssistantConversation.created_at.desc(), AssistantConversation.id.desc()).limit(limit).offset(offset)))
+    )
+    if jd_only:
+        query = query.where(AssistantConversation.jd_conversation_id.is_not(None))
+    conversations = list(await db.scalars(query.order_by(
+        AssistantConversation.created_at.desc(), AssistantConversation.id.desc(),
+    ).limit(limit).offset(offset)))
     items = []
     for conversation in conversations:
         snapshot = await run_in_threadpool(graph.get_state, assistant_config(conversation.id, user_id))

@@ -37,7 +37,7 @@ from app.services.interviews.identification import recruiter_identity
 class SessionRouteTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.user = SimpleNamespace(id=uuid4(), role="recruiter", is_active=True)
-        self.db = SimpleNamespace(get=AsyncMock(return_value=self.user))
+        self.db = SimpleNamespace(get=AsyncMock(return_value=self.user), commit=AsyncMock())
         self.app = FastAPI()
         self.app.include_router(router)
 

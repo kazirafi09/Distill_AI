@@ -8,12 +8,14 @@ from pydantic import BaseModel, EmailStr, Field, TypeAdapter, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
+from app.integrations.calendar_event import CalendarEvent, calendar_ics
 
 
 class EmailMessageRequest(BaseModel):
     recipient: EmailStr = Field(repr=False)
     subject: str = Field(min_length=1, max_length=250, repr=False)
     body: str = Field(min_length=1, max_length=100_000, repr=False)
+    calendar_event: CalendarEvent | None = Field(default=None, repr=False)
 
     @field_validator("subject")
     @classmethod
@@ -77,6 +79,10 @@ async def send_email(message: EmailMessageRequest) -> EmailSendResult:
         email["To"] = str(message.recipient)
         email["Subject"] = message.subject
         email.set_content(message.body)
+        if message.calendar_event is not None:
+            email.add_attachment(calendar_ics(message.calendar_event).encode("utf-8"),
+                maintype="text", subtype="calendar", filename="interview.ics",
+                params={"charset": "utf-8", "method": "PUBLISH"})
     except ValueError:
         return EmailSendResult(status="failed", error_code="EMAIL_CONFIGURATION_INVALID")
     # smtplib is synchronous; keep blocking SMTP operations off the async loop.

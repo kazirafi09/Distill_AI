@@ -23,7 +23,7 @@ export type Turn = { id: string; speaker_role: 'candidate' | 'recruiter'; text: 
 export type Evidence = { turn_id: string; quote: string; session_start_ms: number | null; session_end_ms: number | null }
 export type Evaluation = {
   score: number | null; score_100: number | null; reason: string; justification: string; evidence: Evidence[]
-  accuracy_warning: string | null; reference_evidence: { reference_id: string; quote: string; url: string; version: string; filename?: string; location?: string }[]
+  accuracy_basis?: string; accuracy_warning: string | null; reference_evidence: { reference_id: string; quote: string; url: string; version: string; filename?: string; location?: string }[]
 }
 export type Answer = { group: {
   id: string; topic: string; question_turn_ids: string[]; answer_turn_ids: string[]; follow_up_turn_ids: string[]
@@ -32,7 +32,7 @@ export type Answer = { group: {
 export type Summary = { score_100: string | null; assessed_count: number; total_groups: number; not_assessable_count: number }
 export type Finding = { criterion_id: string; text: string; source_ids: string[] }
 export type F6Source = { id: string; kind: 'cv' | 'interview' | 'coverage'; criterion_ids: string[];
-  decision?: string; justification?: string; dimension?: string; score_100?: number | null; exploration?: string
+  unsupported_requirement_parts?: string[]; decision?: string; justification?: string; dimension?: string; score_100?: number | null; exploration?: string
   evidence?: { quote: string; turn_id?: string; session_start_ms?: number | null; parse_id?: string; file_version_id?: string; source_id?: string; start?: number; end?: number }[] }
 export type F6Report = { findings: Record<'strengths' | 'weaknesses' | 'evidence_gaps' | 'recommended_areas', Finding[]> & {
   suitability: { position: string; rationale: string; source_ids: string[] } }
@@ -49,19 +49,49 @@ export type PostInterviewSnapshot = { items: {run: Omit<Run, 'kind'> & {kind: st
 export const loadPostInterviewSnapshot = (token: string, parentId: string, signal?: AbortSignal) =>
   apiRequest<PostInterviewSnapshot>(`/assessments/runs/${parentId}/post-interview`, { token, signal, cache: 'no-store' })
 export type Result = {
+  pinned_cv?: {id: string; run_id?: string; score: {aggregate?: string; must_have_review_flags?: string[]}; matches: {
+    requirement_id: string; decision: string; justification: string; unsupported_requirement_parts?: string[]; evidence: NonNullable<F6Source['evidence']>
+  }[]} | null
+  consolidation?: Run | null
+  source_metadata?: {synthetic: boolean; transcript_version?: number; text_only: boolean; quality_flags: string[]; timing_basis: string}
   final_score?: {status: 'provisional' | 'incomplete'; score_100: string | null; cv_score_100: string | null; interview_score_100: string | null;
     cv_contribution?: string; interview_contribution?: string; reason: string; warnings: string[];
-    policy: {version: string; cv_weight: number; interview_weight: number}; interview_created_at?: string; interview_run_id?: string}
+    policy: {version: string; cv_weight: number; interview_weight: number}; interview_created_at?: string; interview_run_id?: string; interview_status?: string}
   run: Run; result: null | { publishable: boolean; f6_ready: boolean; warnings: string[];
     validation_error?: string | null;
     coverage?: { criterion_id: string; group_ids: string[]; exploration: string; performance_score: number | null }[];
     findings?: F6Report['findings']; component_scores?: F6Report['component_scores']; source_registry?: F6Source[]; provenance?: F6Report['provenance'] }
-  answers: Answer[]; dimension_summaries: Record<Dimension, Summary>; criteria: { id: string; text: string }[]
+  answers: Answer[]; dimension_summaries: Record<Dimension, Summary>; criteria: { id: string; text: string; priority?: string }[]
   source_turns: Turn[]; outdated: boolean; f6: null | { ready: boolean; blocker: string | null; review_required: boolean }
 }
 
 export const loadWorkspace = (token: string, jobId: string, offset: number, signal?: AbortSignal) =>
   apiRequest<Workspace>(`/assessments/jobs/${jobId}?offset=${offset}`, { token, signal, cache: 'no-store' })
+
+export type DecisionCandidate = {
+  application_id: string; name: string; run_id: string | null; version: string
+  comparable: boolean; eligible: boolean; blocker: string | null; outdated: boolean
+  profile_version: number | null; rubric_version: string | null
+  scores: Result['final_score'] | null
+  suitability: { position?: string | null; rationale?: string | null }
+  findings: Record<'strengths' | 'weaknesses' | 'evidence_gaps' | 'recommended_areas', string[]>
+  qa_scores: Record<string, string | number | null>
+  performance: Record<string, { score: number | null; justification: string }>
+  claim_review: { status: string; claim: string; explanation: string; follow_up: string; uncertainty?: string | null; review_action?: string; review_note?: string }[]
+  quality_summary: string | null
+  quality_findings: { category: string; observation: string; improvement: string; uncertainty?: string | null }[]
+  feature_statuses: Record<string, string>
+  scoring_policy: { revision: number; policy_sha256: string } | null
+}
+export type DecisionWorkspace = { candidates: DecisionCandidate[]; selection: DecisionCandidate[];
+  selection_version: string; selection_outdated: boolean; updated_at: string | null }
+export const loadDecisionCandidates = (token: string, jobId: string, signal?: AbortSignal) =>
+  apiRequest<DecisionWorkspace>(`/assessments/jobs/${jobId}/final-candidates`, { token, signal, cache: 'no-store' })
+export const saveFinalCandidates = (token: string, jobId: string, data: DecisionWorkspace, ids: string[]) =>
+  apiRequest<DecisionWorkspace>(`/assessments/jobs/${jobId}/final-candidates`, { token, method: 'PUT', body: {
+    candidates: ids.map(id => ({ application_id: id, version: data.candidates.find(item => item.application_id === id)!.version })),
+    selection_version: data.selection_version, confirmed: true,
+  } })
 export const loadResult = (token: string, id: string, signal?: AbortSignal) =>
   apiRequest<Result>(`/assessments/runs/${id}/result`, { token, signal, cache: 'no-store' })
 export const startF5 = (token: string, jobId: string, applicationId?: string) =>
@@ -69,6 +99,8 @@ export const startF5 = (token: string, jobId: string, applicationId?: string) =>
     ? { source: 'interview', application_id: applicationId } : { source: 'synthetic_demo' } })
 export const retryF5 = (token: string, id: string) =>
   apiRequest<Run>(`/assessments/runs/${id}/retry`, { token, method: 'POST' })
+export const rerunF5 = (token: string, id: string) =>
+  apiRequest<Run>(`/assessments/runs/${id}/rerun`, { token, method: 'POST' })
 export const recoverF5 = (token: string, id: string) =>
   apiRequest<Run>(`/assessments/runs/${id}/recover`, { token, method: 'POST' })
 export const startF6 = (token: string, id: string, confirmReview: boolean) =>

@@ -32,7 +32,8 @@ from app.dashboard import router as dashboard_router
 from app.mcp_cv import mcp as cv_mcp, transport_app as cv_mcp_app
 from app.mcp_recruitment import mcp as recruitment_mcp, transport_app as recruitment_mcp_app
 from app.integrations.assistant_mcp import configure_mcp_loop
-from app.services.interviews.live_transcription import shutdown_transcriptions, resume_active_transcriptions
+from app.services.interviews.live_transcription import shutdown_transcriptions
+from app.services.interviews.session_cleanup import cleanup_interview_sessions
 
 setup_logging()
 logger = logging.getLogger("distill_ai.api")
@@ -42,6 +43,7 @@ logger = logging.getLogger("distill_ai.api")
 async def lifespan(app: FastAPI):
     configure_mcp_loop(asyncio.get_running_loop())
     resources = ExitStack()
+    interview_cleanup = None
 
     try:
         jd_graph, assistant_graph = await run_in_threadpool(
@@ -57,11 +59,14 @@ async def lifespan(app: FastAPI):
         )
         async with cv_mcp.session_manager.run():
             async with recruitment_mcp.session_manager.run():
-                await resume_active_transcriptions()
+                interview_cleanup = asyncio.create_task(cleanup_interview_sessions())
                 yield
 
     finally:
         configure_mcp_loop(None)
+        if interview_cleanup is not None:
+            interview_cleanup.cancel()
+            await asyncio.gather(interview_cleanup, return_exceptions=True)
         try:
             try:
                 await shutdown_transcriptions()

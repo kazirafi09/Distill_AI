@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import RecruitmentHeader from '../interviews/RecruitmentHeader'
 import { useRecruitmentJob } from '../interviews/useRecruitmentJob'
-import { loadResult, loadWorkspace, retryF5, recoverF5, startF5, startF6 } from './api'
+import { loadResult, loadWorkspace, retryF5, rerunF5, recoverF5, startF5, startF6 } from './api'
 import CandidateAssessment from './CandidateAssessment'
 import InterviewScoringSettings from './InterviewScoringSettings'
 import CandidateWorkspace from './CandidateWorkspace'
+import AssessmentDecisionActions from './AssessmentDecisionActions'
 import { DemoBanner } from '../../components/recruitment/RecruitmentUI'
 import type { Result, Run, Workspace } from './api'
 import { stageLabel } from './format'
@@ -13,9 +14,9 @@ import '../interviews/InterviewLobby.css'
 import './Assessments.css'
 
 const activeRun = (run: Run) => ['queued', 'running'].includes(run.status)
-function RunDetails({ token, jobId, jobTitle, jobNumber, runs, runId, onBack, onRetry, onRecover, onConsolidate, onSelect, busy }: {
+function RunDetails({ token, jobId, jobTitle, jobNumber, runs, runId, onBack, onRetry, onRecover, onRerun, onConsolidate, onSelect, busy }: {
   token: string; jobId: string; jobTitle: string; jobNumber: number; runs: Run[]; runId: string; busy: boolean
-  onBack: () => void; onRetry: () => void; onRecover: () => void; onConsolidate: (confirm: boolean) => void; onSelect: (id: string) => void
+  onBack: () => void; onRetry: () => void; onRecover: () => void; onRerun: () => void; onConsolidate: (confirm: boolean) => void; onSelect: (id: string) => void
 }) {
   const [data, setData] = useState<Result | null>(null)
   const [error, setError] = useState('')
@@ -37,7 +38,7 @@ function RunDetails({ token, jobId, jobTitle, jobNumber, runs, runId, onBack, on
     return () => { controller.abort(); clearTimeout(timer) }
   }, [token, jobId, runId])
   if (!data) return <div className="assessment-empty" role={error ? 'alert' : 'status'}>{error || 'Loading assessment…'}<button type="button" className="button-secondary" onClick={onBack}>Back to assessments</button></div>
-  return <>{error && <p role="alert" className="assessment-error">{error}</p>}<CandidateAssessment data={data} token={token} jobTitle={jobTitle} jobNumber={jobNumber} runs={runs} busy={busy} onBack={onBack} onSelect={onSelect} onRetry={onRetry} onRecover={onRecover} onConsolidate={onConsolidate} /></>
+  return <>{error && <p role="alert" className="assessment-error">{error}</p>}<CandidateAssessment data={data} token={token} jobTitle={jobTitle} jobNumber={jobNumber} runs={runs} busy={busy} onBack={onBack} onSelect={onSelect} onRetry={onRetry} onRecover={onRecover} onRerun={onRerun} onConsolidate={onConsolidate} /></>
 }
 
 function AssessmentWorkspace({ token, jobId, jobTitle, jobNumber }: { token: string; jobId: string; jobTitle: string; jobNumber: number }) {
@@ -67,11 +68,11 @@ function AssessmentWorkspace({ token, jobId, jobTitle, jobNumber }: { token: str
   }, [token, jobId, revision, offset])
   const runId = params.get('run') ?? undefined
   function selectRun(id: string) { setParams(current => { current.set('run', id); return current }) }
-  async function act(retry = false, recover = false, applicationId?: string) {
-    if (lock.current || (retry && !runId)) return
+  async function act(retry = false, recover = false, applicationId?: string, rerun = false) {
+    if (lock.current || ((retry || rerun) && !runId)) return
     lock.current = true; setBusy(true); setError('')
     try {
-      const run = recover ? await recoverF5(token, runId!) : retry ? await retryF5(token, runId!) : await startF5(token, jobId, applicationId)
+      const run = rerun ? await rerunF5(token, runId!) : recover ? await recoverF5(token, runId!) : retry ? await retryF5(token, runId!) : await startF5(token, jobId, applicationId)
       if (mounted.current) { selectRun(run.id); setRevision(value => value + 1) }
     } catch (caught) { if (mounted.current) setError(caught instanceof Error ? caught.message : 'Could not save the request.') }
     finally { lock.current = false; if (mounted.current) setBusy(false) }
@@ -90,7 +91,7 @@ function AssessmentWorkspace({ token, jobId, jobTitle, jobNumber }: { token: str
     <CandidateWorkspace hidden={!!runId} token={token} jobTitle={jobTitle} data={data} error={error} jobId={jobId} busy={busy} onRetry={() => setRevision(value => value + 1)} onOpen={selectRun} onStart={id => void act(false, false, id)} onPage={next => { setData(null); setOffset(next) }} />
     {runId && <>
       {error && <p className="assessment-error" role="alert">{error}</p>}
-      <RunDetails key={`${runId}:${revision}`} token={token} jobId={jobId} jobTitle={jobTitle} jobNumber={jobNumber} runs={data?.runs ?? []} runId={runId} busy={busy} onBack={() => setParams(current => { current.delete('run'); return current })} onConsolidate={confirm => void consolidate(confirm)} onSelect={selectRun} onRecover={() => { if (!busy) void act(true, true) }} onRetry={() => { if (!busy) void act(true) }} />
+      <RunDetails key={`${runId}:${revision}`} token={token} jobId={jobId} jobTitle={jobTitle} jobNumber={jobNumber} runs={data?.runs ?? []} runId={runId} busy={busy} onBack={() => setParams(current => { current.delete('run'); return current })} onConsolidate={confirm => void consolidate(confirm)} onSelect={selectRun} onRerun={() => { if (!busy) void act(false, false, undefined, true) }} onRecover={() => { if (!busy) void act(true, true) }} onRetry={() => { if (!busy) void act(true) }} />
     </>}
     {data && !runId && <details className="assessment-tools"><summary>Sample analysis and saved run history</summary>
     {data.synthetic_demo_available && <section className="assessment-controls"><div><h2>Analyze a synthetic sample</h2><p>Use an invented interview to explore the analysis workflow.</p></div>
@@ -108,7 +109,7 @@ function AssessmentWorkspace({ token, jobId, jobTitle, jobNumber }: { token: str
 export default function Assessments({ token }: { token: string }) {
   const picker = useRecruitmentJob(token)
   return <section className="recruitment-page assessments-page">
-    <RecruitmentHeader title="Assessments" description="Pick a job, then open a candidate’s assessment." jobs={picker.jobs} job={picker.job} onSelect={id => { picker.selectJob(id) }} />
+    <RecruitmentHeader title="Assessments" description="Pick a job, then open a candidate’s assessment." jobs={picker.jobs} job={picker.job} onSelect={id => { picker.selectJob(id) }} actions={picker.job && <AssessmentDecisionActions key={picker.job.id} token={token} jobId={picker.job.id} jobTitle={picker.job.title} />} />
     {picker.loading && <p role="status">Loading jobs…</p>}
     {picker.error && <div role="alert"><p>{picker.error}</p><button className="button-secondary" onClick={picker.retry}>Try again</button></div>}
     {!picker.loading && !picker.error && !picker.job && <p>No jobs yet. <Link to="/recruiter/job-descriptions">Create a job description</Link> to get started.</p>}

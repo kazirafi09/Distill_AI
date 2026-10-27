@@ -115,6 +115,14 @@ class SelectionDatabaseTests(unittest.IsolatedAsyncioTestCase):
             mocked.start()
             self.screening_patches.append(mocked)
             self.addCleanup(mocked.stop)
+        for target in (
+            "app.services.interviews.shortlisting.available_processing_versions",
+            "app.services.interviews.selections.available_processing_versions",
+        ):
+            mocked = patch(target, AsyncMock(return_value={"synthetic": "v1"}))
+            mocked.start()
+            self.screening_patches.append(mocked)
+            self.addCleanup(mocked.stop)
 
     async def cleanup_records(self):
         try:

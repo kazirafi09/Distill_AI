@@ -1,4 +1,5 @@
 """Regression checks for screening results without live models or PostgreSQL."""
+import asyncio
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -62,6 +63,7 @@ class ScreeningResultsTests(unittest.IsolatedAsyncioTestCase):
         context.__aenter__.return_value = db
         with patch.object(screening, "SessionFactory", return_value=context), \
              patch.object(screening, "owned_job", AsyncMock(return_value=self.job)), \
+             patch.object(screening, "available_processing_versions", AsyncMock(return_value={"model": "test"})), \
              patch.object(screening, "inputs_for", AsyncMock(return_value=self.inputs, side_effect=inputs_error)), \
              patch.object(screening, "verify_integrity", side_effect=integrity_error):
             result = await screening.get_screening_results(self.job_id, self.recruiter_id)
@@ -114,6 +116,28 @@ class ScreeningResultsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["incomplete"]), 2)
         self.assertEqual(self.run.status, "completed_with_issues")
         self.assertEqual(result["warnings"], ["CURRENT_MODEL_VERSIONS_UNAVAILABLE_RANKING_WITHHELD"])
+
+    async def test_provider_cooldown_is_bounded_and_cancellation_propagates(self):
+        async def blocked():
+            await asyncio.Event().wait()
+
+        with patch.object(screening, "processing_versions", blocked), \
+             patch.object(screening, "VERSION_DISCOVERY_TIMEOUT_SECONDS", 0.01):
+            self.assertIsNone(await screening.available_processing_versions())
+        with patch.object(screening, "processing_versions", AsyncMock(side_effect=asyncio.CancelledError)):
+            with self.assertRaises(asyncio.CancelledError):
+                await screening.available_processing_versions()
+
+    async def test_existing_transaction_never_discovers_provider_versions(self):
+        db = AsyncMock()
+        db.no_autoflush = MagicMock()
+        db.expire_all = MagicMock()
+        with patch.object(screening, "cached_processing_versions", return_value=None), \
+             patch.object(screening, "processing_versions", AsyncMock()) as discover, \
+             patch.object(screening, "_screening_results_in_session", AsyncMock(return_value={})) as read:
+            await screening.get_screening_results(self.job_id, self.recruiter_id, db=db)
+        discover.assert_not_awaited()
+        read.assert_awaited_once_with(db, self.job_id, self.recruiter_id, None)
 
     async def test_missing_or_incomplete_parse_marks_run_outdated(self):
         self.assessments[0].parse_result_ids = [str(uuid4())]

@@ -68,18 +68,6 @@
   .cv-job-footer { justify-content: flex-start; padding: 16px; }
   .cv-jobs-pagination { flex-wrap: wrap; }
 }
-.cv-parsing { min-width: 220px; max-width: 440px; overflow-wrap: anywhere; }
-.cv-parsing p { margin: .5rem 0; }
-.cv-parsing dl { margin: .5rem 0; }
-.cv-parsing dt { font-weight: 600; text-transform: capitalize; }
-.cv-parsing dd { margin: .25rem 0 .75rem .75rem; }
-.cv-parsing blockquote { margin: .75rem 0; padding-left: .75rem; border-left: 3px solid #64748b; }
-.cv-parsing-filename { display: block; margin-bottom: .5rem; }
-.cv-parsing + .cv-parsing { margin-top: 1rem; }
-.cv-parsing ul { padding-left: 1rem; list-style: disc; }
-.cv-parsing details { max-height: 480px; overflow-y: auto; padding-right: .5rem; }
-.cv-batch-parsing { margin: 16px 24px; max-width: none; }
-.cv-batch-parsing button + button { margin-left: .5rem; }
 .cv-screening-results { margin: 20px 24px; padding: 20px; border: 1px solid #d8e6e1; border-radius: 12px; }
 .cv-screening-results h3, .cv-screening-results h4 { margin: 0 0 12px; }
 .cv-screening-results p { margin: 10px 0; }

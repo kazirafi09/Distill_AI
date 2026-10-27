@@ -1,5 +1,8 @@
 import { ApiError, apiResponse } from './api.ts'
 
+const DISPLAY_CHARACTERS_PER_TICK = 3
+const DISPLAY_TICK_MS = 15
+
 type ChatEvent<T> =
   | { type: 'started' | 'reset' }
   | { type: 'delta'; text: string }
@@ -55,8 +58,21 @@ export async function streamChat<T>(
         onText?.(text)
         break
       case 'delta':
-        text += event.text
-        onText?.(text)
+        if (!onText) {
+          text += event.text
+          break
+        }
+        // Pace even buffered network bursts, and finish displaying before
+        // accepting the final conversation. Preserve Unicode code points.
+        {
+          const characters = Array.from(event.text)
+          for (let offset = 0; offset < characters.length; offset += DISPLAY_CHARACTERS_PER_TICK) {
+            await new Promise(resolve => setTimeout(resolve, DISPLAY_TICK_MS))
+            signal?.throwIfAborted()
+            text += characters.slice(offset, offset + DISPLAY_CHARACTERS_PER_TICK).join('')
+            onText(text)
+          }
+        }
         break
       case 'complete':
         return event.conversation

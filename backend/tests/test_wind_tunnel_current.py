@@ -43,6 +43,97 @@ def verdict(payload, rejected=()):
         rejection_reasons=['unsupported_source'] if i in rejected else []) for i, p in enumerate(payload['candidates'])])
 
 
+class CrossRoleSuggestionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_role_specific_sources_stay_in_request_and_exact_edits(self):
+        cases = [
+            ('Ward Nurse', 'Nursing registration', [
+                ('Provide patient care and maintain patient records and coordinate handovers.',
+                 'Provide patient care and maintain patient records. Coordinate handovers.'),
+                ('Maintain accurate and accurate care notes.', 'Maintain accurate care notes.'),
+                ('Communicate with patients in a clear manner.', 'Communicate clearly with patients.')]),
+            ('Retail Associate', 'Customer service skills', [
+                ('Assist customers and process purchases and arrange merchandise.',
+                 'Assist customers and process purchases. Arrange merchandise.'),
+                ('Keep displays tidy and tidy.', 'Keep displays tidy.'),
+                ('Respond to customer questions in a clear manner.', 'Respond clearly to customer questions.')]),
+            ('Operations Director', 'Operational leadership experience', [
+                ('Lead operations and manage budgets and report to the board.',
+                 'Lead operations and manage budgets. Report to the board.'),
+                ('Review monthly and monthly performance reports.', 'Review monthly performance reports.'),
+                ('Communicate priorities in a clear manner.', 'Communicate priorities clearly.')]),
+        ]
+        for title, criterion, edits in cases:
+            with self.subTest(role=title):
+                base = context()
+                snapshot = deepcopy(base.snapshot)
+                snapshot['content'] = '# ' + title + '\n\n' + '\n'.join(old for old, _ in edits)
+                saved_criterion = snapshot['screening_profile']['criteria'][0]
+                saved_criterion.update(text=criterion, source_quote=criterion,
+                                       priority_quote='Preferred: ' + criterion)
+                ctx = s.Context(snapshot, document_edit_version(s.storage.JobSnapshot(**snapshot)),
+                                base.evaluation_id, base.report, {}, {}, base.versions)
+                candidates = [generated(ctx, old, new) for old, new in edits]
+                raw = dict(suggestion=candidates[0], additional_suggestions=candidates[1:])
+                model = AsyncMock(return_value=raw)
+                with patch.object(s, 'model_call', model):
+                    result = await s.generate_proposal_batch(ctx, None, {})
+                payload = model.await_args.args[1]
+                self.assertEqual(payload['saved_job']['content'], snapshot['content'])
+                self.assertEqual(payload['saved_job']['screening_profile'], snapshot['screening_profile'])
+                proposals, preview = s.reconcile(result, ctx)
+                self.assertEqual(len(proposals), 3)
+                # Preview exposes editable fields rather than storage provenance.
+                for key, value in preview['screening_profile'].items():
+                    if key == 'criteria':
+                        self.assertEqual(value, [{field: c[field] for field in
+                            ('id', 'dimension', 'text', 'priority')} for c in snapshot['screening_profile']['criteria']])
+                    else:
+                        self.assertEqual(value, snapshot['screening_profile'][key])
+                for proposal, (old, new) in zip(proposals, edits):
+                    self.assertEqual(proposal.source_references[0].quote, old)
+                    self.assertIn(new, preview['content'])
+
+
+class ReviewRepairFeedbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_repair_pairs_reviewed_edit_when_generation_order_differs(self):
+        ctx = context()
+        raw = batch(ctx)
+        reviewed = s.resolve_generated_proposals(s.GeneratedEditResponse.model_validate(raw), ctx)
+        drafts = [p.model_dump(mode='json') for p in reviewed.suggestions]
+        # Retaining an accepted proposal changes the next reviewed candidate order.
+        drafts = [drafts[2], drafts[0], drafts[1]]
+        detail = dict(candidate_index=1, failed_checks=['evidence_supported'],
+                      rejection_reasons=['adds_requirement'])
+        state = dict(draft=dict(suggestions=drafts), generation_draft=raw,
+                     validation_details=[detail], error_code='SUGGESTION_SEMANTIC_REVIEW_FAILED')
+        call = AsyncMock(return_value=raw)
+        with patch.object(s, 'model_call', call):
+            await s.generate_proposal_batch(ctx, None, state)
+        payload = call.await_args.args[1]
+        self.assertEqual(payload['rejected_edits'][0]['reviewed_edit'], drafts[1])
+        self.assertEqual(payload['rejected_edits'][0]['rejection_reasons'], ['adds_requirement'])
+        self.assertEqual(payload['previous_draft'], raw)
+        payload['rejected_edits'][0]['reviewed_edit']['proposal']['title'] = 'Changed'
+        self.assertNotEqual(state['draft']['suggestions'][1]['proposal']['title'], 'Changed')
+
+    def test_feedback_ignores_generation_errors_and_invalid_review_indexes(self):
+        state = dict(draft=dict(suggestions=[dict(proposal={})]), validation_details=[
+            dict(candidate_index=0, issue='replacement_unchanged'),
+            dict(candidate_index=-1, failed_checks=['evidence_supported']),
+            dict(candidate_index=2, failed_checks=['evidence_supported']),
+            dict(candidate_index=True, failed_checks=['evidence_supported'])])
+        self.assertEqual(s.rejected_edits(state), [])
+
+    def test_requirement_additions_still_fail_review(self):
+        ctx = context()
+        proposals = s.resolve_generated_proposals(s.GeneratedEditResponse.model_validate(batch(ctx)), ctx).suggestions
+        result = verdict(dict(candidates=[dict(candidate_id=s.candidate_id(p)) for p in proposals]))
+        result['candidates'][0].update(evidence_supported=False, rejection_reasons=['adds_requirement'])
+        with self.assertRaises(s.InvalidModelOutput) as caught:
+            s.validate_review(result, proposals)
+        self.assertEqual(caught.exception.details[0]['rejection_reasons'], ['adds_requirement'])
+
+
 class TargetResolverTests(unittest.TestCase):
     def test_resolver_derives_description_reference_and_old_value(self):
         ctx = context()

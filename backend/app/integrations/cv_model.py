@@ -106,7 +106,9 @@ async def gemini_request(client, method, url, *, timeout_seconds=None, **kwargs)
         # Queue and cooldown waiting do not consume the network timeout.
         async with asyncio.timeout(timeout_seconds or settings.cv_model_timeout_seconds):
             response = await client.request(method, url, headers=headers(), **kwargs)
-        if response.status_code == 429:
+        if response.status_code == 429 or response.status_code in {500, 502, 503, 504}:
+            # Temporary provider failures share the same bounded backoff and
+            # global pacing as rate limits. Never retry auth or invalid input.
             await pause_gemini_requests(retry_delay(response, attempt))
             if attempt < settings.gemini_max_retries:
                 continue

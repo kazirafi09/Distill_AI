@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import jwt
@@ -27,10 +27,10 @@ from app.workflows.assistant.nodes import assistant_turn, execute_assistant_tool
 
 class AssistantMCPUnitTests(unittest.TestCase):
     def test_discovery_failure_stops_model_invocation(self):
-        settings = SimpleNamespace(groq_api_key=SimpleNamespace(get_secret_value=lambda: "test"))
+        settings = SimpleNamespace(gemini_api_key=SimpleNamespace(get_secret_value=lambda: "test"))
         with patch("app.workflows.assistant.nodes.get_settings", return_value=settings), \
              patch("app.workflows.assistant.nodes.discover_assistant_tools", side_effect=OSError()), \
-             patch("app.workflows.assistant.nodes.ChatGroq") as model:
+             patch("app.workflows.assistant.nodes.make_assistant_model") as model:
             result = assistant_turn({"messages": [HumanMessage(content="Hello")]}, {})
         self.assertEqual(result["error_code"], "ASSISTANT_MCP_UNAVAILABLE")
         model.assert_not_called()
@@ -56,6 +56,7 @@ class AssistantMCPUnitTests(unittest.TestCase):
         self.assertLessEqual(claims["exp"] - claims["iat"], 120)
 
 
+@patch("app.workflows.assistant.nodes.check_scope", new=lambda *_: True)
 class AssistantMCPHTTPTests(unittest.IsolatedAsyncioTestCase):
     async def test_discovery_execution_graph_and_access_guards(self):
         owner, conversation_id, session_id = uuid4(), uuid4(), uuid4()
@@ -105,7 +106,9 @@ class AssistantMCPHTTPTests(unittest.IsolatedAsyncioTestCase):
 
                 # Discovery comes from the server; filtering comes from conversation policy.
                 tools = await asyncio.to_thread(client.discover_assistant_tools, {}, config)
-                self.assertEqual(len(tools), 4)
+                self.assertEqual(len(tools), 6)
+                self.assertIn("find_jobs", [tool.name for tool in tools])
+                self.assertIn("get_screening_results", [tool.name for tool in tools])
                 self.assertNotIn("confirm_interview_invitations", [tool.name for tool in tools])
                 self.assertNotIn("send_email", [tool.name for tool in tools])
                 self.assertTrue(all("recruiter_id" not in tool.args for tool in tools))
@@ -114,9 +117,40 @@ class AssistantMCPHTTPTests(unittest.IsolatedAsyncioTestCase):
                 denied = await start_tool.ainvoke({"type": "tool_call", "id": "denied", "name": start_tool.name, "args": {}})
                 self.assertEqual(denied.status, "error")
 
+                # Job lookup travels through MCP and returns data in this chat,
+                # without attaching a JD workflow or changing the selected job.
+                lookup = {"status": "found", "jobs": [{"number": 139, "title": "Python developer",
+                    "content": "Build Python APIs.", "screening_profile": None}], "has_more": False, "next_offset": None}
+                with patch.object(server, "find_owned_jobs", new=AsyncMock(return_value=lookup)) as find:
+                    with patch("app.workflows.assistant.nodes.make_assistant_model") as model:
+                        model.return_value.bind_tools.return_value.invoke.return_value = AIMessage(content="", tool_calls=[{
+                            "id": "lookup", "name": "find_jobs", "args": {"job_number": 139}}])
+                        model.return_value.invoke.return_value = AIMessage(content="JD 139 — Python developer\n\nBuild Python APIs.")
+                        result = await asyncio.to_thread(graph.invoke, {"messages": [HumanMessage(content="Show JD 139")]}, config)
+                    find.assert_awaited_once_with(owner, job_number=139, title=None, limit=5, offset=0)
+                self.assertIn("Build Python APIs.", result["messages"][-1].content)
+                self.assertFalse(result.get("jd_start_requested"))
+                self.assertFalse(result.get("jd_conversation_id"))
+                self.assertFalse(result.get("job_description_id"))
+
+                saved = {"job_id": str(uuid4()), "status": "available", "screening_started": False,
+                    "candidates": [{"name": "Ada", "rank": 1, "score": "90", "score_status": "current"}]}
+                with patch.object(server.delivery, "resolve_job", new=AsyncMock(return_value=UUID(saved["job_id"]))), \
+                     patch.object(server, "read_screening_results", new=AsyncMock(return_value=saved)) as read:
+                    with patch("app.workflows.assistant.nodes.make_assistant_model") as model:
+                        model.return_value.bind_tools.return_value.invoke.return_value = AIMessage(content="", tool_calls=[{
+                            "id": "results", "name": "get_screening_results", "args": {"job_number": 139}}])
+                        model.return_value.invoke.return_value = AIMessage(content="JD 139: Ada is ranked 1 with a saved score of 90.")
+                        result = await asyncio.to_thread(graph.invoke, {"messages": [HumanMessage(content="Show screening results for JD 139")]}, config)
+                    read.assert_awaited_once_with(owner, conversation_id, UUID(saved["job_id"]),
+                        session_id=session_id, limit=5, offset=0, view="ranked")
+                self.assertIn("Ada", result["messages"][-1].content)
+                self.assertFalse(result.get("jd_start_requested"))
+                self.assertFalse(result.get("job_description_id"))
+
                 # Exercise the real graph → client → HTTP MCP → tool → graph path.
                 jd_call = AIMessage(content="", tool_calls=[{"id": "jd", "name": "start_jd_creation", "args": {}}])
-                with patch("app.workflows.assistant.nodes.ChatGroq") as model:
+                with patch("app.workflows.assistant.nodes.make_assistant_model") as model:
                     model.return_value.bind_tools.return_value.invoke.return_value = jd_call
                     result = await asyncio.to_thread(graph.invoke, {"messages": [HumanMessage(content="Create a JD")]}, config)
                 self.assertTrue(result["jd_start_requested"])
@@ -129,7 +163,7 @@ class AssistantMCPHTTPTests(unittest.IsolatedAsyncioTestCase):
                 with patch.object(server.delivery, "resolve_job", new_callable=AsyncMock, return_value=job_id), \
                      patch.object(server.delivery, "prepare_invitations", new_callable=AsyncMock, return_value=review):
                     preview = AIMessage(content="", tool_calls=[{"id": "preview", "name": "preview_interview_invitations", "args": {"job_number": 180}}])
-                    with patch("app.workflows.assistant.nodes.ChatGroq") as model:
+                    with patch("app.workflows.assistant.nodes.make_assistant_model") as model:
                         model.return_value.bind_tools.return_value.invoke.return_value = preview
                         model.return_value.invoke.return_value = AIMessage(content="Here is the preview. Would you like me to send it?")
                         result = await asyncio.to_thread(graph.invoke, {"messages": [HumanMessage(content="Preview invitations")]}, config)
@@ -137,7 +171,7 @@ class AssistantMCPHTTPTests(unittest.IsolatedAsyncioTestCase):
 
                 with patch.object(server.delivery, "confirm_invitations", new_callable=AsyncMock, return_value={"queued": 1}) as confirm:
                     confirmation = AIMessage(content="", tool_calls=[{"id": "confirm", "name": "confirm_interview_invitations", "args": {"approval_message": "Yes, send them"}}])
-                    with patch("app.workflows.assistant.nodes.ChatGroq") as model:
+                    with patch("app.workflows.assistant.nodes.make_assistant_model") as model:
                         model.return_value.bind_tools.return_value.invoke.return_value = confirmation
                         model.return_value.invoke.return_value = AIMessage(content="One invitation queued.")
                         result = await asyncio.to_thread(graph.invoke, {"messages": [HumanMessage(content="Yes, send them")]}, config)

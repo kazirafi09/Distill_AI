@@ -17,6 +17,7 @@ from app.services.cv.screening import lock_screening_job, owned_application
 from app.services.interviews.invitations import valid_invitation
 from app.services.interviews.livekit import create_join_token, close_room
 from app.services.interviews.identification import identity_row, admission_ready, is_admitted
+from app.services.interviews.scheduling import join_window, require_join_window
 
 
 def session_details(session):
@@ -26,6 +27,8 @@ def session_details(session):
         "status": session.status,
         "started_at": session.started_at,
         "completed_at": session.completed_at,
+        "starts_at": session.starts_at, "ends_at": session.ends_at,
+        "display_timezone": session.display_timezone,
     }
 
 
@@ -121,6 +124,7 @@ async def admit_candidate(job_id, application_id, recruiter_id):
     async with SessionFactory() as db:
         session = await owned_session(db, job_id, application_id, recruiter_id)
         require_active(session)
+        require_join_window(session)
         invitation = await active_invitation(db, job_id, application_id, recruiter_id)
         identity = await identity_row(db, application_id)
         if not admission_ready(identity):
@@ -152,6 +156,9 @@ async def candidate_session(db, token):
 async def candidate_status(token):
     async with SessionFactory() as db:
         invitation, session = await candidate_session(db, token)
+        window = join_window(session)
+        if window and not window["join_window_open"]:
+            return {"status": "scheduled", "can_join": False, **window}
         if session is None or session.status == "ready":
             return {"status": "waiting_for_recruiter", "can_join": False}
         identity = await identity_row(db, invitation.application_id)
@@ -167,10 +174,11 @@ async def candidate_join(token):
     async with SessionFactory() as db:
         invitation, session = await candidate_session(db, token)
         require_active(session)
+        require_join_window(session)
         identity = await identity_row(db, invitation.application_id)
         if not is_admitted(session, invitation, identity):
             raise HTTPException(403, "Wait for the recruiter to admit you.")
-        credentials = create_join_token(session.room_name, f"candidate-{invitation.application_id}")
+        credentials = create_join_token(session.room_name, f"candidate-{invitation.application_id}", expires_at=session.ends_at)
         session_id = session.id
     from app.services.interviews.live_transcription import start_transcription
     start_transcription(session_id)

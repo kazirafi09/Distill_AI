@@ -16,16 +16,37 @@ import './JobDescriptions.css'
 
 type Tab = 'description' | 'criteria' | 'assistant' | 'suggestions'
 
+const dimensionDetails: Record<string, { label: string; description: string }> = {
+  technical_skills: { label: 'Technical skills', description: 'Tools, technologies and practical capabilities' },
+  work_experience: { label: 'Work experience', description: 'Relevant roles, responsibilities and experience' },
+  qualifications: { label: 'Qualifications', description: 'Education, certifications and credentials' },
+  additional_criteria: { label: 'Additional criteria', description: 'Other requirements defined for this role' },
+}
+
 function Criteria({ profile }: { profile: ScreeningProfile | null }) {
   if (!profile) return <div className="ui-state"><h3>Screening criteria are not set up</h3><p>Ask the assistant to define the requirements and weights for this job.</p></div>
   const total = Object.values(profile.dimension_weights).reduce((sum, weight) => sum + weight, 0)
+  const validTotal = Math.abs(total - 100) < 0.001
   return <div className="jd-criteria">
     <h3>Screening criteria</h3><p className="muted">Essential criteria are shown for recruiter review. Nobody is rejected automatically.</p>
     <div className="criteria-table-scroll"><table className="criteria-table"><thead><tr><th>Criterion</th><th>Dimension</th><th>Priority</th></tr></thead>
       <tbody>{profile.criteria.map(criterion => <tr key={criterion.id}><td><strong>{criterion.text}</strong>{criterion.source === 'suggested' && <small>AI suggested · review before approving</small>}</td><td>{criterion.dimension.replaceAll('_', ' ')}</td><td><span className={`ui-badge ${criterion.priority === 'Preferred' ? 'is-warning' : 'is-info'}`}>{criterion.priority === 'Must have' ? 'Essential' : criterion.priority ?? 'Unconfirmed'}</span></td></tr>)}</tbody></table></div>
-    <h3>Dimension weights <small className="muted">· must total 100%</small></h3>
-    {Object.entries(profile.dimension_weights).map(([dimension, weight]) => <div className="jd-weight" key={dimension}><span>{dimension.replaceAll('_', ' ')}</span><progress max="100" value={weight} aria-label={`${dimension.replaceAll('_', ' ')} weight`} /><strong>{weight}%</strong></div>)}
-    <p className={Math.abs(total - 100) < 0.001 ? 'muted' : 'ui-error'}>Total: {total}%{Math.abs(total - 100) >= 0.001 && '. Ask the assistant to adjust the weights before approving.'}</p>
+    <section className="jd-weights" aria-label="Dimension weights">
+      <header className="jd-weights-heading"><div><h3>Dimension weights</h3><p>How each area contributes to the overall candidate score.</p></div>
+        <span className={`jd-weights-total${validTotal ? '' : ' is-invalid'}`}><span aria-hidden="true">{validTotal ? '✓' : '!'}</span> {total}% <span>of 100% allocated</span></span>
+      </header>
+      <div className="jd-weights-grid">{Object.entries(profile.dimension_weights).map(([dimension, weight]) => {
+        const details = dimensionDetails[dimension] ?? { label: dimension.replaceAll('_', ' '), description: 'Requirements defined for this role' }
+        const count = profile.criteria.filter(criterion => criterion.dimension === dimension).length
+        return <div className={`jd-weight-card${weight === 0 ? ' is-zero' : ''}`} data-dimension={dimension} key={dimension}>
+          <div className="jd-weight-top"><h4><span className="jd-weight-dot" aria-hidden="true" />{details.label}</h4><strong>{weight}<span>%</span></strong></div>
+          <p className="jd-weight-description">{details.description}</p>
+          <progress max="100" value={weight} aria-label={`${details.label} weight`} />
+          <div className="jd-weight-meta"><span>{count} {count === 1 ? 'criterion' : 'criteria'}</span><span>{weight === 0 ? 'No score contribution' : `${weight}% of overall score`}</span></div>
+        </div>
+      })}</div>
+      {!validTotal && <p className="ui-error">Weights must total 100%. Adjust them before approving.</p>}
+    </section>
   </div>
 }
 
@@ -152,15 +173,15 @@ export default function JobDescriptions({ token, userId }: { token: string; user
         {tab !== 'assistant' && <header className="jd-detail-header"><div><h2>{title ?? 'Select or create a job'}</h2>{title && <p className="muted">{showingDraft ? 'Review this draft before using it for screening.' : `JD ${document?.number ?? '…'} · Screening criteria ${document?.profile_version != null ? `v${document.profile_version}` : 'not set up'}`}</p>}</div><div className="jd-detail-actions">{tab !== 'suggestions' && content && editVersion && !editor && <button className="button-secondary" disabled={busy || editingLocked} onClick={beginEdit}>{tab === 'criteria' ? 'Edit screening criteria' : 'Edit description'}</button>}{title && <span className={`ui-badge ${showingDraft ? 'is-warning' : 'is-success'}`}>{showingDraft ? 'Draft · not approved' : '✓ Approved'}</span>}{!showingDraft && document && <Link className="button-primary" to={`/recruiter/cv-screening?job=${document.id}`}>Go to CV Screening</Link>}{showingDraft && <button className="button-secondary" disabled={busy || Boolean(editor)} onClick={() => changeTab('assistant')}>Ask the assistant to revise</button>}</div></header>}
         <nav className="redesign-tabs" aria-label="Job description sections">{(['description', 'criteria', 'suggestions', 'assistant'] as const).map(value => <button key={value} aria-current={tab === value ? 'page' : undefined} onClick={() => changeTab(value)} disabled={Boolean(editor) || (busy && value === 'assistant')}>{value === 'description' ? 'Description' : value === 'criteria' ? 'Screening criteria' : value === 'suggestions' ? 'Suggestions' : 'AI assistant'}</button>)}</nav>
         <div className="jd-assistant-mount" hidden={tab !== 'assistant'}><RecruiterChat ref={chat} token={token} userId={userId} onSaved={onSaved} onStateChange={onStateChange} onReviewTab={changeTab} /></div>
-        {editNotice && tab !== 'suggestions' && <p className="jd-save-notice" role="status">{editNotice}</p>}
+        {editNotice && (tab === 'description' || tab === 'criteria') && <p className="jd-save-notice" role="status">{editNotice}</p>}
         {editingLocked && tab !== 'assistant' && tab !== 'suggestions' && <p className="jd-save-notice">This job is posted or posting is pending. Its description and screening criteria are locked.</p>}
         {editor && <JobEditor token={token} target={editor} onSaved={finishEditing} onCancel={cancelEditing} />}
         {tab === 'suggestions' && (showingDraft ? <UnapprovedSuggestions onNavigate={changeTab} /> : document ? <JobSuggestions key={`${token}:${document.id}:${document.edit_version}`} token={token} job={document} onSaved={finishEditing} onNavigate={changeTab} onReload={onSaved} /> : <p role="status">Select a saved job to view suggestions.</p>)}
-        {tab !== 'assistant' && tab !== 'suggestions' && !editor && <div className="jd-document-layout"><div className="jd-document-scroll">
+        {tab !== 'assistant' && tab !== 'suggestions' && !editor && <div className={`jd-document-layout${showingDraft && content ? '' : ' is-full-width'}`}><div className="jd-document-scroll">
           {activeId && !showingDraft && detail?.id !== activeId && <div className="ui-state" role="status">Loading job description…</div>}
           {detail?.id === activeId && detail.error && <div className="ui-state" role="alert"><p>{detail.error}</p><button className="button-secondary" onClick={onSaved}>Try again</button></div>}
           {!activeId || (showingDraft && !content) ? <div className="ui-state"><h3>Start with a job description</h3><p>Tell the assistant about the role, seniority, and requirements.</p><button className="button-primary" onClick={() => changeTab('assistant')}>Open AI assistant</button></div> : content && (tab === 'description' ? <div className="markdown"><Markdown skipHtml>{content}</Markdown></div> : <Criteria profile={profile} />)}
-        </div>{content && <aside className="jd-context">{showingDraft ? <ApprovalReview key={`${assistant?.conversation_id}:${jd?.checkpoint_id}`} disabled={busy || !jd?.interrupt?.payload.allowed_actions.includes('approve')} errors={jd?.acceptance_errors ?? []} profile={profile} onApprove={() => { chat.current?.approve(); setTab('assistant') }} /> : <><div className="jd-context-card is-ready"><h3>{profile ? 'Ready for screening' : 'Criteria need setup'}</h3><p className="muted">{profile ? `${profile.criteria.filter(c => c.priority === 'Must have').length} essential and ${profile.criteria.filter(c => c.priority === 'Preferred').length} preferred criteria. Candidates are scored against this saved profile.` : 'This job needs a screening profile before candidates can be scored.'}</p><button className="text-link" onClick={() => setTab('criteria')}>View screening criteria</button></div><div className="jd-context-card"><h3>Work with the assistant</h3><p className="muted">Open this job in the assistant to discuss its requirements.</p><button className="text-link" onClick={() => changeTab('assistant')}>Open AI assistant</button></div></>}</aside>}</div>}
+        </div>{content && showingDraft && <aside className="jd-context"><ApprovalReview key={`${assistant?.conversation_id}:${jd?.checkpoint_id}`} disabled={busy || !jd?.interrupt?.payload.allowed_actions.includes('approve')} errors={jd?.acceptance_errors ?? []} profile={profile} onApprove={() => { chat.current?.approve(); setTab('assistant') }} /></aside>}</div>}
       </section>
     </div>
     <dialog className="jd-reference-dialog" ref={referenceDialog} aria-label="Reference documents"><header><h2>Reference documents</h2><button className="button-secondary" onClick={() => referenceDialog.current?.close()}>Close</button></header><ReferenceDocuments token={token} /></dialog>

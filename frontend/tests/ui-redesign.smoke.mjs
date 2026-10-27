@@ -34,8 +34,10 @@ const results = { run: { id: 'run-1', status: 'completed_with_issues', total: 17
 const approved = id => ({ conversation_id: id === 'job-2' ? 'chat-2' : 'chat-1', created_at: jobs[0].created_at, checkpoint_id: 'checkpoint-1', mode: 'chat', messages: [{ id: 'm-1', role: 'assistant', content: 'I can help you review the requirements for this job.' }], error_code: null, jd_conversation: { conversation_id: 'jd-1', status: 'approved', messages: [], draft_jd: content, approved_jd: content, revision_count: 1, checkpoint_id: 'jd-checkpoint', screening_profile: profile, profile_version: 2, acceptance_errors: [], error_code: null, interrupt: null, job_description: jobs.find(job => job.id === id) ?? jobs[0] } })
 const draft = { ...approved('job-1'), conversation_id: 'chat-draft', mode: 'jd_workflow', messages: [], jd_conversation: { ...approved('job-1').jd_conversation, status: 'awaiting_review', approved_jd: null, job_description: null, interrupt: { id: 'review-1', payload: { allowed_actions: ['revise', 'approve', 'cancel'] } } } }
 let failResults = false, emptyApplications = false, fileReadFailure = false, parseAttempts = 0
+let sourceCheckedAt = '2026-10-25T00:00:00Z', screeningStarts = 0
 const browser = await chromium.launch({ headless: true, ...(process.env.UI_TEST_BROWSER ? { executablePath: process.env.UI_TEST_BROWSER } : { channel: 'chrome' }) })
 const page = await browser.newPage({ viewport: { width: 1280, height: 600 } })
+await page.clock.install()
 const errors = []
 page.on('pageerror', error => errors.push(error.message))
 // Serve the compiled frontend from disk; the test never contacts a network or a backend.
@@ -54,11 +56,18 @@ await page.route('**/api/**', async route => {
   if (path === '/auth/refresh') data = { access_token: 'fixture-token', token_type: 'bearer' }
   else if (path === '/auth/me') data = { id: 'qa-user', email: 'recruiter@example.com', role: 'recruiter' }
   else if (path === '/health/db') data = { status: 'ok', database: 'connected' }
-  else if (path === '/cv/source-checks') data = []
+  else if (path === '/cv/source-checks') data = [{ source_id: 'source-job-1', job_description_id: 'job-1', new_cv_count: 0, last_checked_at: sourceCheckedAt, last_success_at: sourceCheckedAt, error_code: null }]
   else if (path === '/jd/descriptions') data = { items: jobs, limit: 10, offset: 0 }
   else if (path.startsWith('/jd/descriptions/')) data = { ...(jobs.find(job => job.id === path.split('/').at(-1)) ?? jobs[0]), content, screening_profile: profile, profile_version: 2, google_form_url: null }
   else if (path === '/cv/sources') data = jobs.map(job => ({ id: `source-${job.id}`, job_description_id: job.id, drive_folder_id: 'folder-1', spreadsheet_id: 'sheet-1', sheet_tab_id: 0 }))
   else if (path.endsWith('/applications')) data = emptyApplications ? [] : applications
+  else if (path.endsWith('/screening/jobs/job-1/start')) {
+    screeningStarts++
+    results.run.status = 'running'
+    results.run.progress = { stage: 'matching', parsed: 1, criteria_completed: 2, criteria_total: 68,
+      scored: 0, read_skipped: 0, criteria_skipped: 0, score_skipped: 0, completed_units: 3, total_units: 102, skipped_units: 0 }
+    data = results.run
+  }
   else if (path.endsWith('/results')) {
     if (failResults) return route.fulfill({ status: 503, json: { detail: 'Screening service unavailable.' } })
     data = results
@@ -115,8 +124,48 @@ try {
   await page.getByRole('navigation', { name: 'Job description sections' }).getByRole('button', { name: 'Description', exact: true }).click()
   await page.getByRole('link', { name: 'Go to CV Screening' }).waitFor()
 
+  results.run.status = 'completed'
   await page.goto(`${base}/recruiter/cv-screening?job=job-1`)
   await page.locator('.screening-candidate-row').first().waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Sync applications', exact: true }).count(), 0)
+  await page.getByRole('button', { name: 'Auto-import · 1 min', exact: true }).waitFor()
+  await page.locator('.redesign-header').scrollIntoViewIfNeeded()
+  await screenshot('screening-compact-header')
+  await Promise.all([
+    page.waitForResponse(response => response.url().endsWith('/cv/screening/jobs/job-1/start')),
+    page.getByRole('button', { name: 'Screen applications', exact: true }).click(),
+  ])
+  assert.equal(screeningStarts, 1)
+  assert.equal(parseAttempts, 0)
+  const loadingButton = page.getByRole('button', { name: 'Screening…', exact: true })
+  await loadingButton.waitFor()
+  assert.equal(await loadingButton.getAttribute('aria-busy'), 'true')
+  const spinnerStyle = await loadingButton.evaluate(element => ({ position: getComputedStyle(element, '::before').position,
+    width: getComputedStyle(element, '::before').width, gap: getComputedStyle(element).columnGap, opacity: getComputedStyle(element).opacity }))
+  assert.equal(spinnerStyle.position, 'static')
+  assert.equal(spinnerStyle.width, '14px')
+  assert.equal(spinnerStyle.gap, '8px')
+  assert.equal(spinnerStyle.opacity, '1')
+  await page.getByRole('progressbar', { name: 'Overall screening progress', exact: true }).waitFor()
+  assert.equal(await page.locator('.screening-stage[aria-current="step"]').innerText(), 'Match criteria\n2 / 68 checks')
+  await screenshot('screening-progress-desktop')
+  await page.setViewportSize({ width: 390, height: 844 })
+  if (await page.getByRole('button', { name: 'Toggle navigation', exact: true }).getAttribute('aria-expanded') === 'true') {
+    await page.getByRole('button', { name: 'Toggle navigation', exact: true }).click()
+  }
+  await page.locator('.sidebar-drawer').waitFor({ state: 'hidden' })
+  assert.equal(await page.locator('.screening-progress-stages').evaluate(element => {
+    const bounds = element.getBoundingClientRect()
+    return bounds.left >= 0 && bounds.right <= window.innerWidth
+  }), true)
+  await screenshot('screening-progress-mobile')
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  assert.equal(await loadingButton.evaluate(element => getComputedStyle(element, '::before').animationName), 'none')
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.setViewportSize({ width: 1280, height: 600 })
+  results.run.status = 'completed'
+  results.run.progress = { ...results.run.progress, stage: null, parsed: 17, criteria_completed: 68, scored: 17, completed_units: 102 }
+  await page.getByRole('button', { name: 'Screen applications', exact: true }).waitFor()
   await screenshot('screening-desktop')
   await page.getByRole('navigation', { name: 'Candidate sections' }).getByRole('button', { name: 'Profile', exact: true }).click()
   await page.getByRole('heading', { name: 'Contact details', exact: true }).waitFor()
@@ -178,11 +227,30 @@ try {
   await page.setViewportSize({ width: 1280, height: 600 })
   await page.getByRole('button', { name: 'Source setup', exact: true }).first().click()
   await page.getByRole('dialog', { name: 'Application source setup' }).waitFor()
+  assert.equal(await page.getByRole('button', { name: 'Parse downloaded CVs for this JD', exact: true }).count(), 0)
+  await page.getByRole('dialog', { name: 'Application source setup' }).getByRole('heading', { name: 'Source setup', exact: true }).click()
+  assert.equal(await page.getByRole('dialog', { name: 'Application source setup' }).isVisible(), true)
+  await page.mouse.click(5, 5)
+  await page.getByRole('dialog', { name: 'Application source setup' }).waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: 'Auto-import · 1 min', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Application source setup' }).waitFor()
   await page.getByRole('button', { name: 'Close', exact: true }).filter({ visible: true }).click()
+  await page.getByRole('button', { name: 'Interview shortlist', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Interview shortlist', exact: true }).waitFor()
+  await page.mouse.click(5, 5)
+  await page.getByRole('dialog', { name: 'Interview shortlist', exact: true }).waitFor({ state: 'hidden' })
+  assert.equal(new URL(page.url()).searchParams.has('shortlist'), false)
   emptyApplications = true
   await page.reload()
   await page.getByRole('heading', { name: 'No applications yet' }).waitFor()
   await screenshot('screening-empty')
+  // A background import becomes visible on the next source-status poll, without reload.
+  emptyApplications = false
+  sourceCheckedAt = '2026-10-25T00:01:00Z'
+  await page.clock.fastForward(31000)
+  await page.locator('.screening-candidate-row').first().waitFor()
+  assert.equal(await page.locator('.screening-candidate-row').count(), applications.length)
+  await page.clock.resume()
   emptyApplications = false; failResults = true
   await page.reload()
   await page.getByRole('alert').filter({ hasText: 'Some results could not be loaded' }).waitFor()
@@ -199,5 +267,5 @@ try {
   assert.equal(await page.getByRole('combobox', { name: 'CV document', exact: true }).inputValue(), 'cv-extra')
   assert.deepEqual(await page.getByRole('combobox', { name: 'CV document', exact: true }).locator('option').allTextContents(), ['Amina Chowdhury — CV 1.pdf', 'Amina Chowdhury — CV 2.docx'])
   assert.deepEqual(errors, [])
-  console.log('UI smoke checks passed: desktop, mobile, drafts, approval, filters, profile sections, scores, file labels, exact-file selection, retry reading, source setup, empty and failure recovery.')
+  console.log('UI smoke checks passed: desktop, mobile, drafts, approval, filters, profile sections, scores, file labels, exact-file selection, retry reading, source setup, one screening action, automatic import refresh, empty and failure recovery.')
 } finally { await browser.close() }

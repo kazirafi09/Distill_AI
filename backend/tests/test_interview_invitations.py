@@ -68,7 +68,7 @@ class InvitationTests(unittest.IsolatedAsyncioTestCase):
         context = AsyncMock()
         context.__aenter__.return_value = db
         with patch.object(invitations, "SessionFactory", return_value=context):
-            db.scalar.side_effect = [record, "Synthetic role", "Synthetic candidate"]
+            db.scalar.side_effect = [record, "Synthetic role", "Synthetic candidate", None]
             entry = await invitations.validate_entry(token)
             self.assertEqual(entry["job_title"], "Synthetic role")
             self.assertFalse(entry["interview_ready"])

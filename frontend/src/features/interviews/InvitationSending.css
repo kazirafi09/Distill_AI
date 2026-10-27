@@ -114,3 +114,38 @@
     width: 100%;
   }
 }
+.invitation-settings { display: grid; gap: 14px; margin-top: 20px; }
+.invitation-schedule-card { padding: 18px; border: 1px solid #dfe6ed; border-radius: 12px; background: #fff; }
+.invitation-recipient-previews pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.75; color: #475569; margin: 14px 0; }
+.invitation-schedule-card { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; background: #f4faf7; border-color: #c4e5d7; }
+.invitation-schedule-card h4 { font-weight: 650; color: #173e30; }
+.invitation-schedule-card p { color: #526678; font-size: 12px; margin-top: 5px; }
+.invitation-calendar-option { display: flex; align-items: flex-start; gap: 10px; padding: 16px 18px; border: 1px solid #dfe6ed; border-radius: 12px; }
+.invitation-calendar-option input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; accent-color: #00855e; }
+.invitation-calendar-option strong, .invitation-calendar-option small { display: block; }
+.invitation-calendar-option small { color: #64748b; font-weight: 400; margin-top: 4px; line-height: 1.6; }
+.invitation-recipient-previews details { margin: 12px 0; padding: 14px; border: 1px solid #dfe6ed; border-radius: 8px; background: #fff; }
+.invitation-recipient-previews summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.invitation-time-dialog { width: min(760px, calc(100vw - 32px)); max-height: min(85vh, 850px); margin: auto; padding: 0; border: 1px solid #dfe6ed; border-radius: 16px; box-shadow: 0 24px 80px #17203330; overflow-y: auto; color: #172033; }
+.invitation-time-dialog::backdrop { background: #0f172a70; backdrop-filter: blur(3px); }
+.invitation-time-dialog > header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 22px; border-bottom: 1px solid #e5eaf0; }
+.invitation-time-dialog h3 { font-size: 18px; font-weight: 700; }
+.invitation-time-dialog header p, .invitation-time-dialog footer p { font-size: 12px; color: #64748b; line-height: 1.6; margin-top: 5px; }
+.invitation-time-dialog form { padding: 20px 22px; }
+.invitation-time-list { display: grid; gap: 16px; }
+.invitation-time-list fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px; border: 1px solid #dfe6ed; border-radius: 10px; min-width: 0; }
+.invitation-time-list legend { padding: 0 6px; font-size: 13px; font-weight: 650; }
+.invitation-time-list legend small { display: block; font-size: 11px; font-weight: 400; color: #64748b; overflow-wrap: anywhere; }
+.invitation-time-list label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; color: #475569; }
+.invitation-time-list input { width: 100%; min-width: 0; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px; background: #fff; font-size: 13px; color: #263449; }
+.invitation-time-list .invitation-shared-time { grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; background: #f2faf6; border-color: #b7ddcd; }
+.invitation-shared-time > button { min-height: 42px; white-space: nowrap; }
+.invitation-shared-time > .cv-error { grid-column: 1 / -1; }
+.invitation-time-dialog footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 20px; padding-top: 16px; border-top: 1px solid #e5eaf0; }
+.invitation-time-dialog footer p { flex: 1 1 240px; }
+.invitation-time-dialog footer > div { display: flex; gap: 8px; }
+@media (max-width: 560px) {
+  .invitation-time-list fieldset { grid-template-columns: minmax(0, 1fr); }
+  .invitation-time-list .invitation-shared-time { grid-template-columns: minmax(0, 1fr); }
+  .invitation-time-dialog > header, .invitation-time-dialog form { padding: 16px; }
+}

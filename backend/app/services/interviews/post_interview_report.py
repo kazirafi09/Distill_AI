@@ -91,9 +91,10 @@ async def append(db, document, parent_id, recruiter_id, run_ids, include_evidenc
                 text("Improve: " + finding["improvement"])
                 evidence(finding["evidence"])
             timing = payload["speaking_time"]
-            if timing["status"] == "measured":
-                text(f"Measured speech segments: candidate {timing['candidate_ms'] / 60000:.1f} minutes; interviewer {timing['recruiter_ms'] / 60000:.1f} minutes.")
-                text(timing["note"], "note")
+            if timing["status"] in {"measured", "synthetic"}:
+                synthetic_timing = run.synthetic or timing["status"] == "synthetic"
+                text(f"{'Authored synthetic intervals' if synthetic_timing else 'Measured speech segments'}: candidate {timing['candidate_ms'] / 60000:.1f} minutes; interviewer {timing['recruiter_ms'] / 60000:.1f} minutes.")
+                text("Synthetic test timing, not recorded audio." if synthetic_timing else timing["note"], "note")
             else:
                 text("Speaking time unavailable: " + timing["reason"], "note")
         document["sections"].append({"id": f"post-interview-{run.kind}", "title": title, "blocks": blocks})

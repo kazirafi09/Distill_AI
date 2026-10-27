@@ -51,6 +51,50 @@ class GeminiRateLimitTests(unittest.IsolatedAsyncioTestCase):
             Settings(postgres_user="test", postgres_password="test", postgres_db="test",
                      jwt_secret_key="x" * 32, gemini_requests_per_minute=13, _env_file=None)
 
+    async def test_temporary_server_failure_recovers_with_pacing_and_same_payload(self):
+        for status in (500, 502, 503, 504):
+            with self.subTest(status=status):
+                client = SimpleNamespace(request=AsyncMock(side_effect=[
+                    httpx.Response(status, headers={'Retry-After': '7'}), httpx.Response(200, json={})]))
+                settings = SimpleNamespace(gemini_max_retries=3, cv_model_timeout_seconds=300)
+                with patch('app.integrations.cv_model.get_settings', return_value=settings), \
+                     patch('app.integrations.cv_model.acquire_gemini_slot', new_callable=AsyncMock) as acquire, \
+                     patch('app.integrations.cv_model.pause_gemini_requests', new_callable=AsyncMock) as pause, \
+                     patch('app.integrations.cv_model.headers', return_value={}):
+                    result = await gemini_request(client, 'POST', 'https://example.test/generate', json={'synthetic': True})
+                self.assertEqual(result.status_code, 200)
+                self.assertEqual(acquire.await_count, 2)
+                self.assertEqual(pause.await_count, 1)
+                self.assertGreaterEqual(pause.await_args.args[0], 7)
+                self.assertEqual(client.request.await_args_list[0], client.request.await_args_list[1])
+
+    async def test_server_failure_stops_at_retry_budget_and_keeps_safe_error(self):
+        client = SimpleNamespace(request=AsyncMock(return_value=httpx.Response(503, text='private provider response')))
+        settings = SimpleNamespace(gemini_max_retries=2, cv_model_timeout_seconds=300)
+        with patch('app.integrations.cv_model.get_settings', return_value=settings), \
+             patch('app.integrations.cv_model.acquire_gemini_slot', new_callable=AsyncMock) as acquire, \
+             patch('app.integrations.cv_model.pause_gemini_requests', new_callable=AsyncMock), \
+             patch('app.integrations.cv_model.headers', return_value={}):
+            with self.assertRaisesRegex(ValueError, '^MODEL_UNAVAILABLE$'):
+                await gemini_request(client, 'POST', 'https://example.test/generate')
+        self.assertEqual(client.request.await_count, 3)
+        self.assertEqual(acquire.await_count, 3)
+
+    async def test_permanent_errors_are_not_retried(self):
+        for status, code in [(400, 'MODEL_REQUEST_INVALID'), (401, 'MODEL_AUTH_FAILED'),
+                             (403, 'MODEL_AUTH_FAILED'), (404, 'MODEL_NOT_AVAILABLE')]:
+            with self.subTest(status=status):
+                client = SimpleNamespace(request=AsyncMock(return_value=httpx.Response(status)))
+                settings = SimpleNamespace(gemini_max_retries=3, cv_model_timeout_seconds=300)
+                with patch('app.integrations.cv_model.get_settings', return_value=settings), \
+                     patch('app.integrations.cv_model.acquire_gemini_slot', new_callable=AsyncMock), \
+                     patch('app.integrations.cv_model.pause_gemini_requests', new_callable=AsyncMock) as pause, \
+                     patch('app.integrations.cv_model.headers', return_value={}):
+                    with self.assertRaisesRegex(ValueError, '^' + code + '$'):
+                        await gemini_request(client, 'GET', 'https://example.test/model')
+                self.assertEqual(client.request.await_count, 1)
+                pause.assert_not_awaited()
+
 
 if __name__ == "__main__":
     unittest.main()

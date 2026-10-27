@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 import httpx
@@ -33,6 +33,20 @@ class CVSourceRequest(BaseModel):
         max_length=255,
         pattern=r"^[A-Za-z0-9_-]+$",
     )
+
+
+class DeleteApplicationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    confirmed: Literal[True]
+
+
+@router.post("/jobs/{job_id}/applications/{application_id}/delete")
+async def delete_candidate_application(job_id: UUID, application_id: UUID,
+    payload: DeleteApplicationRequest, recruiter: Recruiter):
+    if not payload.confirmed:
+        raise HTTPException(422, "Confirm permanent deletion first.")
+    from app.services.cv.deletion import delete_application
+    return await delete_application(job_id, application_id, recruiter.id)
 
 
 class CVSourceResponse(BaseModel):

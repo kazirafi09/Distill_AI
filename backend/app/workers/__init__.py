@@ -1,1 +1,1 @@
-"""Isolated processing subprocess entry points."""
+"""Background worker and isolated processing subprocess entry points."""

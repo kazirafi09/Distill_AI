@@ -64,3 +64,35 @@ verification scripts require their configured services; run those against a
 development database with synthetic data.
 
 See the [root setup guide](../README.md) for application startup.
+
+## Interview room cleanup
+
+The API checks active interviews against LiveKit presence every 15 seconds.
+After neither the recruiter nor candidate is present for 60 seconds, it ends
+the interview, stops transcription, and deletes the room. Hidden transcription
+participants do not count as people. Set `INTERVIEW_EMPTY_GRACE_SECONDS` (30–600)
+to adjust the reconnect grace period. Cleanup runs while the backend is running;
+failed presence checks do not count as an empty room.
+
+End interview still closes the room immediately after flushing transcription.
+If closure fails, its persisted `closing` state is retried automatically on
+subsequent checks, including after a backend restart. Startup resumes transcription
+only when a recruiter or candidate is actually connected. Existing abandoned
+`in_progress` interviews are also cleaned up after the grace period.
+
+## Recruiter chatbot scope
+
+Central chat runs a structured, tool-free scope check on each new recruiter
+message before routing actions. Entirely unrelated requests receive a fixed
+Distill AI feature redirect. Invalid or unavailable scope decisions stop the
+turn without executing an action. Tool-result explanations do not repeat the check.
+
+The shared scope policy also guides central answers, interview intent, and JD
+intent. It allows feature help, technical interview topics, greetings, mixed
+requests' supported portions, and contextual follow-ups while rejecting attempts
+to replace the assistant's role. Product features are distinguished from actions
+the current chat's authenticated tools can actually perform.
+
+Run `test_assistant_scope.py` for mocked guardrail regressions. Set
+`RUN_ASSISTANT_SCOPE_MODEL_TESTS=1` to include eight real-model scope scenarios;
+these use the configured model credentials and rate limiter.

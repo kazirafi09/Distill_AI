@@ -25,7 +25,17 @@ const payload = { findings, component_scores: { cv: { aggregate: '78.66666666666
 const finalScore = { status: 'provisional', score_100: '62.10', cv_score_100: '78.67', interview_score_100: '55.00', cv_contribution: '23.60', interview_contribution: '38.50', policy: { version: 'candidate-final-1', cv_weight: 30, interview_weight: 70 }, reason: 'For recruiter review; not an automatic hiring decision.', warnings: ['Transcript gaps.'] }
 const result = { run, final_score: finalScore, result: payload, answers, dimension_summaries: {}, criteria, source_turns: turns, outdated: false, f6: null }
 const workspace = { candidates: [], runs: [run, old], profile_ready: true, has_more_candidates: false, offset: 0, synthetic_demo_available: false }
-let postRequests = [], failInsights = false
+let postRequests = [], failInsights = false, insightMode = 'empty'
+const featureRun = (id, kind, status) => ({...old, id, kind, status, error_code: status === 'needs_review' ? 'EXTENSION_OUTPUT_NEEDS_REVIEW' : null, parent_run_id: 'f5', synthetic: true, can_retry: false})
+const policy = {policy_sha256: 'policy', revision: 0, policy: {weights: Object.fromEntries(['technical_competency', 'communication', 'response_relevance', 'problem_solving', 'experience_depth', 'job_alignment'].map(name => [name, 20])), minimum_assessed_dimensions: 4, essential_dimensions: ['technical_competency']}}
+const performanceResult = score => ({warnings: [], dimensions: Object.fromEntries(Object.keys(policy.policy.weights).map(name => [name, {score, reason: 'assessed', justification: 'Saved dimension explanation.', basis: name === 'technical_competency' ? 'model_knowledge' : 'interview_only', evidence: [{turn_id: 'a1', quote: turns[3].text, speaker_role: 'candidate', session_start_ms: 1000}], reference_evidence: []}])), summary: {overall_score_100: String(score * 25), assessed_dimensions: 6, assessed_weight: 100, missing_weight: 0, status: 'assessed'}, scoring_settings: policy})
+const savedInsights = [
+  {run: featureRun('claims', 'cv_claim_review', 'needs_review'), result: null, reviews: [], diagnostics: [{attempt: 1, message: 'Saved CV quotation does not match.', field_path: 'claims.cv_evidence'}]},
+  {run: featureRun('performance-current', 'interview_performance', 'completed'), result: performanceResult(3), reviews: []},
+  {run: featureRun('performance-old', 'interview_performance', 'completed'), result: performanceResult(2), reviews: []},
+  {run: featureRun('quality', 'interview_quality', 'completed'), result: {warnings: [], process_summary: 'Test process quality.', coverage: [{criterion_id: 'c0', text: 'Python', status: 'explored', group_ids: ['g1']}, {criterion_id: 'c7', text: 'Degree', status: 'not_explored', group_ids: []}], findings: [{category: 'follow_up', observation: 'The interviewer explored the answer in group g1.', improvement: 'Ask a practical question after the explanation.', group_ids: ['g1'], evidence: [{turn_id: 'q1', quote: turns[2].text, speaker_role: 'recruiter', session_start_ms: 1000}]}], speaking_time: {status: 'measured', candidate_ms: 60000, recruiter_ms: 30000}}, reviews: []},
+]
+
 const browser = await chromium.launch({ headless: true, ...(process.env.UI_TEST_BROWSER ? { executablePath: process.env.UI_TEST_BROWSER } : { channel: 'chrome' }) })
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
 await page.addInitScript(() => {
@@ -55,12 +65,12 @@ await page.route('**/api/**', async route => {
   else if (path.endsWith('/post-interview') && route.request().method() === 'POST') { postRequests.push(route.request().postDataJSON()); data = { blockers: {} } }
   else if (path.endsWith('/post-interview')) {
     if (failInsights) return route.fulfill({ status: 503, json: { detail: 'Insights temporarily unavailable.' } })
-    data = { items: [], blockers: { cv_claim_review: null, interview_performance: null, interview_quality: null }, source_warnings: [], scoring_settings: {}, review_required: true, prompt_version: 'interview-extensions-2' }
+    data = { items: insightMode === 'saved' ? savedInsights : [], actions: insightMode === 'saved' ? Object.fromEntries(['cv_claim_review','interview_performance','interview_quality'].map(kind => [kind, {action: 'none', reason: kind === 'cv_claim_review' ? 'Validation attempts are exhausted. The same inputs cannot be retried.' : 'This result is already saved.'}])) : undefined, blockers: { cv_claim_review: null, interview_performance: null, interview_quality: null }, source_warnings: [], scoring_settings: {}, review_required: true, prompt_version: 'interview-extensions-2' }
   }
   else if (path.endsWith('/report.pdf')) return route.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4\n%%EOF' })
   else if (path.endsWith('/report')) data = { title: 'Candidate assessment report', filename: 'assessment.pdf', report_type: 'recruiter', metadata: { run, candidate: { name: run.label }, job: { number: 207, title: 'Backend Engineer' } }, sections: [{ title: 'Assessment overview', blocks: [{ kind: 'text', text: 'Saved report content for this candidate.' }] }] }
   else if (path === '/assessments/runs/f6/result') data = result
-  else if (path === '/assessments/runs/f5/result') data = { ...result, final_score: undefined, run: old, result: { coverage: payload.coverage, warnings: ['TEXT_ONLY_FINALIZED'] }, f6: { ready: true, review_required: true } }
+  else if (path === '/assessments/runs/f5/result') data = { ...result, final_score: {...finalScore, interview_run_id: 'performance-current'}, pinned_cv: {id: 'pinned-old-cv', score: {aggregate: '78.67'}, matches: sources.filter(source => source.kind === 'cv').map(source => ({requirement_id: source.criterion_ids[0], decision: source.decision, justification: source.justification, evidence: source.evidence}))}, run: old, result: { coverage: payload.coverage, warnings: ['TEXT_ONLY_FINALIZED'] }, f6: { ready: true, review_required: true } }
   else if (path === '/health/db') data = { status: 'ok', database: 'connected' }
   else data = []
   await route.fulfill({ json: data })
@@ -71,9 +81,9 @@ try {
   await page.goto('http://assessment.test/recruiter/assessments?job=job&run=f6')
   await page.getByRole('heading', { name: 'Amina Chowdhury', exact: true }).waitFor()
   await page.getByText('78.67', { exact: false }).first().waitFor()
-  await page.getByRole('heading', { name: 'Final score', exact: true }).waitFor()
+  await page.getByRole('heading', { name: 'Combined score', exact: true }).waitFor()
   assert.match(await page.getByRole('region', { name: 'Final assessment score' }).innerText(), /Provisional/)
-  assert.equal(await nav().getByRole('button').count(), 5)
+  assert.equal(await nav().getByRole('button').count(), 8)
   assert.equal(await page.getByRole('button', { name: /I reviewed this analysis|Reviewed for this session/ }).count(), 0)
   await page.waitForFunction(() => document.querySelector('.ca-navigation nav')?.dataset.motionIndicator === 'ready')
   const indicatorBefore = await nav().evaluate(element => element.style.getPropertyValue('--motion-indicator-x'))
@@ -110,7 +120,7 @@ try {
   assert.equal(await page.getByRole('dialog').count(), 0)
   assert.equal(await page.getByRole('button', { name: 'Report & export', exact: true }).evaluate(element => element === document.activeElement), true)
 
-  await nav().getByRole('button', { name: 'CV findings', exact: false }).click()
+  await nav().getByRole('button', { name: 'Assessment', exact: false }).click()
   await page.waitForFunction(previous => document.querySelector('.ca-navigation nav').style.getPropertyValue('--motion-indicator-x') !== previous, indicatorBefore)
   assert.match(await nav().evaluate(element => getComputedStyle(element, '::after').transitionProperty), /transform/)
   await page.waitForFunction(() => window.__assessmentEntries.length >= 1)
@@ -135,7 +145,7 @@ try {
   await screenshot('qa-1440')
   await nav().getByRole('button', { name: /Criteria coverage/ }).click()
   const python = page.locator('.ca-coverage-table tbody tr').first()
-  assert.match(await python.innerText(), /Strength/)
+  assert.match(await python.innerText(), /Documented in CV/)
   await screenshot('coverage-1440')
   await nav().getByRole('button', { name: /Verify next/ }).click()
   assert.equal(await page.locator('.ca-verification-list > article').count(), 6)
@@ -166,7 +176,7 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.locator('.ca-more-details > summary').click()
   await page.getByRole('button', { name: 'Post-interview insights', exact: true }).click()
-  const runAll = page.getByRole('button', { name: 'Run all post-interview insights', exact: true })
+  const runAll = page.getByRole('button', { name: 'Run all available insights', exact: true })
   await runAll.waitFor()
   assert.equal(await runAll.isDisabled(), true)
   await page.getByRole('checkbox', { name: 'I reviewed the saved questions, scores and evidence.', exact: true }).click()
@@ -178,9 +188,74 @@ try {
   await page.getByRole('combobox', { name: 'Saved candidate analysis' }).selectOption('f5')
   await page.getByRole('heading', { name: 'Complete the candidate assessment' }).waitFor()
   assert.equal(await page.getByRole('button', { name: 'Generate consolidated assessment', exact: true }).isDisabled(), true)
-  assert.equal(await page.locator('.ca-preview-grid .ca-count').allTextContents().then(values => values.every(value => value === '0')), true)
+  assert.equal(await page.locator('.ca-preview-grid .ca-count').count(), 0)
+  await page.getByRole('heading', {name: 'Consolidated assessment not generated', exact: true}).waitFor()
   await page.getByRole('checkbox', { name: 'I reviewed the saved questions, scores and evidence.', exact: true }).click()
   assert.equal(await page.getByRole('button', { name: 'Generate consolidated assessment', exact: true }).isDisabled(), false)
+  // The F5 coverage screen must use its pinned CV without requiring F6.
+  await nav().getByRole('button', {name: /Criteria coverage/}).click()
+  assert.match(await page.locator('.ca-coverage-table tbody tr').first().innerText(), /Documented in CV/)
+  assert.equal(await page.getByText('No CV assessment pinned', {exact: true}).count(), 0)
+  // Completed, exhausted, historical and synthetic states remain independently readable.
+  insightMode = 'saved'
+  await page.reload()
+  await nav().getByRole('button', {name: 'Performance', exact: true}).click()
+  await page.locator('.post-interview-total').waitFor()
+  assert.equal(await page.locator('.pi-performance-table tbody tr').count(), 6)
+  assert.equal(await page.locator('.pi-performance-table .pi-row-detail').count(), 0)
+  const contentWidth = await page.locator('.ca-content').evaluate(el => el.clientWidth - parseFloat(getComputedStyle(el).paddingLeft) - parseFloat(getComputedStyle(el).paddingRight))
+  assert.ok(Math.abs((await page.locator('.post-interview-assessment').boundingBox()).width - contentWidth) < 3)
+  await screenshot('performance-overview-1440')
+  await page.setViewportSize({width: 390, height: 844})
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false)
+  await screenshot('performance-overview-mobile')
+  await page.setViewportSize({width: 1440, height: 900})
+  assert.equal(await page.getByRole('button', {name: /Run all available insights|Retry saved analysis/}).count(), 0)
+  await page.getByRole('combobox', {name: 'Saved analysis', exact: true}).selectOption('performance-old')
+  await page.getByText('The combined score uses a different saved performance run.', {exact: false}).waitFor()
+  await page.locator('.pi-performance-table .ca-citation').first().click()
+  await page.getByRole('button', {name: 'View in source transcript', exact: true}).first().click()
+  await page.getByRole('dialog', {name: 'Source transcript'}).waitFor()
+  await page.mouse.click(5, 400)
+  await page.getByRole('dialog').waitFor({state: 'hidden'})
+  assert.equal(await page.getByRole('combobox', {name: 'Saved analysis', exact: true}).inputValue(), 'performance-old')
+  assert.equal(await nav().getByRole('button', {name: 'Performance', exact: true}).getAttribute('aria-current'), 'page')
+  await screenshot('performance-1440')
+  await nav().getByRole('button', {name: 'CV claims', exact: true}).click()
+  assert.equal(await page.getByRole('button', {name: /Run cv claim review|Retry saved analysis/}).count(), 0)
+  await page.getByRole('heading', {name: 'CV comparison unavailable', exact: true}).waitFor()
+  await page.getByText('View validation details', {exact: true}).click()
+  await page.getByText('Saved CV quotation does not match.', {exact: false}).waitFor()
+  await screenshot('claim-validation-1440')
+  savedInsights[0] = {run: featureRun('claims-complete', 'cv_claim_review', 'completed'), reviews: [], result: {warnings: [], selection_note: 'Selected role-relevant claims from the saved CV.', claims: [{id: 'claim-1', claim: 'Built backend services.', status: 'discussed_not_substantiated', explanation: 'The answer described the project but did not establish its deployment scope.', scope_comparison: 'Same project; deployment detail not established.', follow_up: 'Ask which parts the candidate implemented.', cv_evidence: {quote: 'Built backend services.', source_id: 'pdf-page-1'}, interview_evidence: [{turn_id: 'a1', quote: turns[3].text, speaker_role: 'candidate', session_start_ms: 1000}]}]}}
+  await page.reload()
+  await nav().getByRole('button', {name: 'CV claims', exact: true}).click()
+  await page.locator('.pi-claims-table').waitFor()
+  await page.locator('.pi-claims-table .ca-citation').click()
+  await page.getByText('Ask which parts the candidate implemented.', {exact: false}).waitFor()
+  await page.locator('.pi-row-detail summary').filter({hasText: 'Recruiter review'}).click()
+  await page.getByRole('textbox', {name: 'Clarification', exact: true}).fill('Follow up on implementation scope.')
+  assert.equal(await page.getByRole('button', {name: 'Add clarification', exact: true}).isEnabled(), true)
+  await screenshot('claims-1440')
+  await page.setViewportSize({width: 390, height: 844})
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+  await screenshot('claims-mobile')
+  await page.setViewportSize({width: 1440, height: 900})
+  await nav().getByRole('button', {name: 'Interview quality', exact: true}).click()
+  await page.getByRole('heading', {name: 'Observations & next steps', exact: true}).waitFor()
+  assert.equal(await page.locator('.pi-quality-table .pi-row-detail').count(), 0)
+  assert.match(await page.locator('.pi-quality-table .ca-row-trigger').innerText(), /question Q2/)
+  await page.locator('.pi-quality-table .ca-citation').click()
+  await page.getByRole('button', {name: /Q2 · Difference between Python list and tuple/}).click()
+  assert.equal(await nav().getByRole('button', {name: /Interview Q&A/}).getAttribute('aria-current'), 'page')
+  assert.equal(await page.locator('.ca-question-detail').count(), 1)
+  await page.waitForFunction(() => document.activeElement?.classList.contains('ca-question-detail'))
+  await nav().getByRole('button', {name: 'Interview quality', exact: true}).click()
+  assert.equal(await page.locator('.pi-quality-table .pi-row-detail').count(), 1)
+  await page.locator('.pi-quality-table .ca-citation').click()
+  await page.getByText('Authored synthetic timing', {exact: true}).click()
+  await page.getByText('Authored test intervals, not recorded speech or microphone measurements.', {exact: true}).waitFor()
+  await screenshot('quality-1440')
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.getByRole('button', { name: 'Report & export', exact: true }).click()
   await page.getByRole('dialog', { name: 'Report & export', exact: true }).waitFor()
@@ -193,5 +268,5 @@ try {
   assert.equal(reducedEntry.options.duration, 40)
   assert.equal(reducedEntry.keyframes.some(frame => 'transform' in frame), false)
   assert.deepEqual(errors, [])
-  console.log('PASS: 5 tabs, expanded evidence/Q&A, source navigation, history, score semantics, review gating, combined analysis request, report modal/preview/download/print, shared tab/modal motion, reduced-motion support and responsive layouts; no browser errors.')
+  console.log('PASS: 8 tabs, expanded evidence/Q&A, source navigation, history, score semantics, review gating, combined analysis request, report modal/preview/download/print, shared tab/modal motion, reduced-motion support and responsive layouts; no browser errors.')
 } finally { await browser.close() }

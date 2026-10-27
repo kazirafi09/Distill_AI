@@ -1,137 +1,245 @@
 # Distill AI
 
-AI-powered CV screening, candidate scoring and interview assessment.
+Distill AI helps recruiters turn job requirements, CVs and interview evidence into traceable candidate assessments in one recruitment workspace.
 
-See the [project progress tracker](docs/PROJECT_PROGRESS.md) for current features,
-project flows, verification status, and remaining work.
+Create and review job descriptions, import applications from Google Sheets and Drive, screen CVs against saved criteria, schedule interviews, and inspect the evidence behind assessment results.
 
-## Repository layout
+## Key features
 
-- `backend/`: FastAPI API, feature services, integrations, workflows, workers,
-  database models, migrations, and tests. See the
-  [backend structure guide](backend/README.md) for module responsibilities.
-- `frontend/`: React application, organized into features and shared components.
-- `docs/`: Architecture diagrams, planning artifacts, and verification guides.
-- `storage/`: Local runtime files; downloaded CVs are ignored by Git.
-- `compose.yaml`: Development services and persistent Docker volumes.
+- **Job descriptions and recruiter chat:** draft, revise and approve job descriptions with structured screening criteria; look up saved jobs and screening results directly in chat.
+- **Evidence-based CV screening:** import connected applications every minute, extract PDF/DOCX content with OCR support, and track criterion matching, weighted scores and tied rankings.
+- **Scheduled interviews:** review personalized invitations, attach calendar files, manage joining windows, and host LiveKit interviews with Deepgram transcription.
+- **Traceable assessments:** inspect Q&A analysis, consolidated CV/interview findings, claim reviews, performance dimensions and interview quality using pinned source evidence.
+- **Reviewed AI suggestions:** rehearse screening with synthetic CVs, review proposed job-description and criteria changes together, and explicitly confirm the selected changes before applying them.
 
-## Current foundation
+Results support recruiter review. Evidence gaps, outdated results and processing failures are represented explicitly; scores are not hiring decisions.
 
-- React, Vite and TypeScript frontend.
-- FastAPI backend with PostgreSQL connectivity.
-- PostgreSQL 16 through Docker Compose with persistent storage.
-- Staff account creation, password hashing, JWT login and role restrictions.
-- Recruiter signup and persistent, revocable browser sessions (seven days by default).
-- Application logging, error handling and health endpoints.
-- Alembic migration for the users table.
+## Tech stack and architecture
 
-FastAPI and React currently run locally. PostgreSQL runs in Docker.
+| Layer | Technologies |
+| --- | --- |
+| Frontend | TypeScript, React 19, Vite 8, React Router, Tailwind CSS 4 |
+| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic |
+| Persistence | PostgreSQL 16, PostgreSQL-backed LangGraph checkpoints, local document storage |
+| AI workflows | LangGraph, LangChain, Google Gemini, Ollama, authenticated MCP tools |
+| Retrieval and documents | ChromaDB, Qwen3 embeddings, Tesseract OCR, Poppler, pypdf, python-docx |
+| Interviews | LiveKit, Deepgram, OpenCV |
+| Integrations | Google Drive, Google Sheets, Gmail SMTP, Discord webhooks |
+| Development | Docker Compose, ESLint, Node.js test runner, Python unittest |
 
-## Local setup — Windows PowerShell
+The browser calls FastAPI through the frontend's `/api` proxy. Routes delegate to services and LangGraph workflows. Separate workers handle imports, screening, synthetic screening rehearsals, assessments and invitation delivery.
 
-Requirements: Python 3.12, Node.js 24, npm and Docker Compose.
+```text
+React workspace
+    |
+    v
+FastAPI --> Services / LangGraph workflows --> Authenticated MCP tools
+                 |
+                 +--> PostgreSQL: records, queues and checkpoints
+                 +--> ChromaDB: retrievable evidence
+                 +--> Mounted storage: CVs and synthetic documents
+                 +--> Gemini / Ollama: inference and embeddings
+                 +--> Drive / Sheets / SMTP / LiveKit / Deepgram
 
-Run from the repository root:
+Background workers --> Durable processing and saved results
+```
+
+## Getting started
+
+### Prerequisites
+
+- Git and Docker with Docker Compose v2; Docker Desktop supports Windows development.
+- A Gemini API key for recruiter chat and the default interview-analysis configuration.
+- A Google service-account JSON file with access to the connected Drive folders and response Sheets. The supplied Compose configuration requires an existing credentials file to mount.
+- Available memory and disk space for the multi-service stack and configured Ollama models.
+- For running tools outside Docker: Python 3.12, Node.js 24 and npm. Docker images install application dependencies, Tesseract and Poppler.
+
+The following commands use PowerShell from the repository root. The supplied Compose stack runs development servers with source mounts and reload enabled.
+
+### 1. Clone and configure
 
 ```powershell
+git clone https://github.com/KaziRafiulKader09/Distill_AI.git
+Set-Location Distill_AI
 Copy-Item .env.example .env
 ```
 
-For a new setup only: edit `.env` with local database credentials and a
-privately generated JWT secret. Keep an existing `.env`; do not overwrite it.
-Never commit `.env`.
+Copy the environment file only for a new checkout; preserve an existing `.env`. Configure it before starting services:
+
+| Variables | Purpose |
+| --- | --- |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Database credentials; replace the example password. |
+| `JWT_SECRET_KEY` | Private signing secret of at least 32 characters. |
+| `GEMINI_API_KEY`, `GEMINI_CHAT_MODEL` | Recruiter chat credentials and model. |
+| `GOOGLE_DRIVE_CREDENTIALS_HOST_PATH` | Absolute host path to an existing service-account JSON file; required by Compose. |
+| `GOOGLE_DRIVE_CV_ROOT_FOLDER_ID` | Drive root used by CV intake. |
+| `CV_MODEL_PROVIDER`, `CV_PARSER_MODEL`, `GEMINI_CV_MODEL` | CV inference settings. `auto` selects Gemini when a key is configured; `ollama` selects local CV inference. |
+| `F5_MODEL_*`, `F6_MODEL_*` | Explicit Q&A analysis and consolidation settings; defaults use Gemini. |
+| `PUBLIC_APP_URL` | Browser-facing origin; defaults to `http://localhost:5173`. |
+| `SMTP_USERNAME`, `SMTP_PASSWORD`, `EMAIL_MCP_SECRET` | Invitation delivery credentials. Use a Gmail app password and a separate MCP secret of at least 32 characters. |
+| `DEEPGRAM_API_KEY` | Required when starting live transcription. |
+| `LIVEKIT_API_URL`, `LIVEKIT_WS_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | Interview media configuration; Compose provides same-PC development defaults. |
+| `DISCORD_WEBHOOK_URL` | Optional approved-job posting integration. |
+
+See [the environment example](.env.example) and [backend settings](backend/app/core/config.py) for supported options. Compose overrides database, Ollama, ChromaDB and internal MCP addresses for container networking.
+
+### 2. Install dependencies and initialize storage
 
 ```powershell
-python -m venv backend/.venv
-.\backend\.venv\Scripts\Activate.ps1
-python -m pip install -r backend/requirements.txt
-docker compose up -d postgres
+docker compose build backend frontend
+```
+
+The image builds install Python dependencies from `backend/requirements.txt` and frontend dependencies using `npm ci`.
+
+After configuring the credentials-file mount, generate a secret locally:
+
+```powershell
+docker compose run --rm --no-deps backend python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Copy it to `JWT_SECRET_KEY` in your private environment file. Generate a separate value for `EMAIL_MCP_SECRET` when enabling invitation delivery. Keep environment files and service-account credentials out of commits.
+
+Start infrastructure, download the embedding model and apply database migrations:
+
+```powershell
+docker compose up -d --wait postgres ollama chromadb
+docker compose exec ollama ollama pull qwen3-embedding:0.6b
+docker compose run --rm --no-deps backend python -m alembic upgrade head
+```
+
+Ollama embeddings are used even when CV inference uses Gemini. If you select local CV inference, also download the configured parser model:
+
+```powershell
+docker compose exec ollama ollama pull qwen3:4b
+```
+
+### 3. Run the application
+
+```powershell
+docker compose up -d
 docker compose ps
 ```
 
-Wait for PostgreSQL to become healthy, then initialize the database:
+| Service | Local address |
+| --- | --- |
+| Recruitment workspace | [localhost:5173](http://localhost:5173) |
+| Interactive API documentation | [localhost:8000/docs](http://localhost:8000/docs) |
+| API health | [localhost:8000/health](http://localhost:8000/health) |
+| Database health | [localhost:8000/health/db](http://localhost:8000/health/db) |
+
+Choose **Create an account** on the sign-in page to register a recruiter. Passwords require at least 12 characters. You can also create a staff account interactively:
 
 ```powershell
-cd backend
-python -m alembic upgrade head
+$staffEmail = Read-Host "Staff email"
+docker compose exec backend python -m app.scripts.create_user --email $staffEmail --role recruiter
 ```
 
-Create a staff account when needed:
+The script prompts for a password and confirmation. Use `--role interviewer` to create an interviewer account.
+
+### Local frontend development
+
+To run the frontend on the host with the Docker backend, stop the Compose frontend first to free port 5173:
 
 ```powershell
-python -m app.scripts.create_user --email recruiter@example.com --role recruiter
-```
-
-The script prompts for a password and confirmation.
-Passwords require at least 12 characters.
-Supported roles: recruiter and interviewer.
-
-Recruiters can also choose **Create an account** on the sign-in page. Signup
-requires a password of at least 12 characters and signs the new recruiter in.
-An HttpOnly cookie restores the session after reloads and browser restarts;
-short-lived access tokens renew automatically. Sign-out revokes that browser's
-session. Configure `AUTH_SESSION_DAYS` (default 7) and
-`ACCESS_TOKEN_EXPIRE_MINUTES` (default 30) in `.env`. Set `PUBLIC_APP_URL` to the
-actual public frontend origin; HTTPS deployments receive Secure cookies.
-Local Vite access from localhost is also supported. Apply `alembic upgrade head`
-to create the session table before using the updated login.
-
-Start the backend:
-
-```powershell
-python -m uvicorn app.main:app --reload
-```
-
-In another terminal, from the repository root:
-
-```powershell
-cd frontend
+docker compose stop frontend
+Set-Location frontend
 npm ci
 npm run dev
 ```
 
-Frontend: http://localhost:5173
-API documentation: http://127.0.0.1:8000/docs
+Vite proxies `/api` to `http://127.0.0.1:8000` by default. Run `npm run build` to generate the frontend bundle.
 
-## Verification
+### Interview setup
+
+The bundled LiveKit service supports same-PC development. Remote interviews require a reachable LiveKit deployment or LiveKit Cloud, matching API/browser addresses, and an HTTPS application origin for browser media access.
+
+Live transcription requires Deepgram configuration. Candidate face comparison also requires model files; see the [candidate identification guide](docs/F7_CANDIDATE_IDENTIFICATION.md).
+
+## Usage
+
+1. Draft a job description with the assistant, review its criteria and weights, and approve it.
+2. Connect its Google response Sheet and CV folder. The source worker imports applications automatically.
+3. Select **Screen applications** to parse CVs, match criteria and calculate scores. Review evidence and processing issues before saving a shortlist.
+4. Set interview times, preview recipient-specific invitations and confirm delivery.
+5. Conduct the interview and inspect saved Q&A analysis, consolidated findings and post-interview assessments.
+6. Review supported AI suggestions in the job workspace and confirm the exact selected changes before applying them.
+
+### API example: read saved job descriptions
+
+Authenticate with an existing recruiter account and retrieve its saved jobs:
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8000/health
-Invoke-RestMethod http://127.0.0.1:8000/health/db
+$credential = Get-Credential -Message "Enter your Distill AI recruiter credentials"
+$loginBody = @{
+    email = $credential.UserName
+    password = $credential.GetNetworkCredential().Password
+} | ConvertTo-Json
+
+$session = Invoke-RestMethod -Method Post `
+    -Uri "http://localhost:8000/auth/login" `
+    -ContentType "application/json" -Body $loginBody
+
+$headers = @{ Authorization = "Bearer $($session.access_token)" }
+Invoke-RestMethod -Uri "http://localhost:8000/jd/descriptions" -Headers $headers
 ```
 
-Expected: application status `ok` and database `connected`.
+This reads saved recruiter-owned descriptions without starting screening or a model workflow. Explore other request and response schemas in the [interactive API documentation](http://localhost:8000/docs).
 
-Authentication and role checks passed in Swagger on October 2.
-On October 3, dependency checks, backend/database health and the users
-migration passed on the home PC.
+## Development and verification
 
-Accounts belong to each local database and must be created separately.
+Run frontend unit checks, lint and a bundle build from the repository root:
 
-## Incremental M02 scope
+```powershell
+docker compose exec frontend npm test
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run build
+```
 
-M02 remains partially complete. Upcoming increments will add:
+The backend uses `unittest`. Focused examples without live model calls:
 
-- M03 records for jobs, candidates, CVs, applications and evaluations.
-- Persistent processing status, duplicate prevention, retries and recovery.
-- Candidate data deletion behavior.
-- Full application containerization and remaining reproducibility checks.
-- Interview-specific storage and processing as later modules require them.
+```powershell
+docker compose exec backend python -m unittest discover -s tests -p test_cv_screening_progress.py
+docker compose exec backend python -m unittest discover -s tests -p test_invitation_scheduling.py
+```
 
-## M03 development order
+Database and live-model checks use opt-in settings defined in their test modules. Configure the required services and environment variables before enabling these suites.
 
-1. Implement the required storage and processing support.
-2. Build F1–F2 LangGraphs.
-3. Test extraction, evidence, scoring, ranking and interruption handling.
-4. Connect the verified workflows to the UI.
+Inspect services and background processing:
 
-CV ingestion follows Google Form → Google Drive → Distill AI.
+```powershell
+docker compose logs --tail 100 backend cv-worker cv-source-check-worker
+Invoke-RestMethod http://localhost:8000/health/db
+```
 
-The CV parsing stage adds local Tesseract OCR, Qwen3 4B extraction, versioned
-PostgreSQL results and authenticated MCP tools. Setup commands, limits and
-verification are in [the CV parsing guide](docs/cv-parsing-stage-verification.md).
+Expected database health response:
 
-CV Screening now starts durable evidence indexing, MCP retrieval, semantic
-matching, deterministic scoring and ranking runs. The central chatbot remains
-unchanged. See [the screening setup and verification guide](docs/cv-screening-stages-verification.md)
-for the initial rubric, worker startup, recovery and review limitations.
+```json
+{"status":"ok","database":"connected"}
+```
+
+Source mounts update files visible to workers, but worker processes do not automatically reload. Restart the affected worker after relevant changes when its active work permits. Use `docker compose stop` to stop services while retaining persisted data.
+
+## Repository layout
+
+```text
+backend/
+  app/             Routes, services, integrations, workflows and workers
+  migrations/      Alembic database migrations
+  tests/           Unit, integration and acceptance checks
+frontend/
+  src/             Recruitment workspace and shared UI
+  tests/           Unit tests and browser smoke scripts
+docs/              Architecture, progress and verification records
+storage/           Local runtime artifacts; ignored by Git
+compose.yaml       Development services and persistent volumes
+```
+
+See the [backend structure guide](backend/README.md) for module responsibilities.
+
+## Contributing
+
+Open an [issue](https://github.com/KaziRafiulKader09/Distill_AI/issues) to report a reproducible problem or discuss a feature. Pull requests should explain the behavior change, include relevant verification, and preserve source evidence, ownership checks and recovery behavior. Use synthetic candidate data in examples and tests.
+
+## Maintainer
+
+[KaziRafiulKader09](https://github.com/KaziRafiulKader09) · [GitHub repository](https://github.com/KaziRafiulKader09/Distill_AI)

@@ -56,6 +56,7 @@ class ShortlistingTests(unittest.IsolatedAsyncioTestCase):
             self.job_id,
             self.recruiter_id,
             db=db,
+            versions=None,
         )
         self.assertEqual(response["job_id"], str(self.job_id))
         self.assertEqual(response["run"], results["run"])

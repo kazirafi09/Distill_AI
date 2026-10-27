@@ -168,7 +168,8 @@ if __name__ == "__main__":
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--run-id", type=UUID)
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
+    from app.core.logging import setup_logging
+    setup_logging("assessment-worker")
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main(args.once, args.run_id))

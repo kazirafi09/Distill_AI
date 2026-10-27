@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, SecretStr, Field
 from app.services.interviews.delivery import (
     prepare_invitations, confirm_invitations, invitation_status, SendMode,
+    invitation_options, save_invitation_schedules,
 )
 
 from app.auth import require_recruiter
@@ -14,6 +15,7 @@ from app.models.user import User
 from app.services.interviews.schemas import SaveShortlistRequest
 from app.services.interviews.selections import load_shortlist, save_shortlist
 from app.services.interviews.invitations import validate_entry, revoke_invitation
+from app.services.interviews.scheduling import InvitationSchedule
 from app.services.interviews.sessions import (
     start_interview, recruiter_status, admit_candidate,
     candidate_status, candidate_join, recruiter_join, end_interview,
@@ -45,6 +47,8 @@ async def revoke_interview_link(job_id: UUID, invitation_id: UUID, recruiter: Re
 
 class InvitationPreviewRequest(BaseModel):
     mode: SendMode = "new"
+    schedules: list[InvitationSchedule] = Field(default_factory=list, max_length=200)
+    include_calendar: bool = True
 
 
 class InvitationConfirmation(BaseModel):
@@ -53,9 +57,24 @@ class InvitationConfirmation(BaseModel):
     confirmed: Literal[True]
 
 
+class InvitationScheduleRequest(BaseModel):
+    schedules: list[InvitationSchedule] = Field(min_length=1, max_length=200)
+
+
+@router.put("/jobs/{job_id}/invitations/schedules")
+async def save_invitation_times(job_id: UUID, request: InvitationScheduleRequest, recruiter: Recruiter):
+    return await save_invitation_schedules(job_id, recruiter.id, request.schedules)
+
+
 @router.post("/jobs/{job_id}/invitations/preview")
 async def invitation_preview(job_id: UUID, request: InvitationPreviewRequest, recruiter: Recruiter):
-    return await prepare_invitations(job_id, recruiter.id, request.mode)
+    return await prepare_invitations(job_id, recruiter.id, request.mode,
+        schedules=request.schedules, include_calendar=request.include_calendar)
+
+
+@router.get("/jobs/{job_id}/invitations/options")
+async def invitation_defaults(job_id: UUID, recruiter: Recruiter):
+    return await invitation_options(job_id, recruiter.id)
 
 
 @router.post("/jobs/{job_id}/invitations/confirm")

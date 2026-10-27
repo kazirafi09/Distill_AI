@@ -1,8 +1,4 @@
-"""Recruitment MCP tools; the assistant graph retains conversation orchestration.
-
-Mount transport_app before the existing /mcp mount and run mcp.session_manager
-in the API lifespan. This module is not connected to the API yet.
-"""
+"""Recruitment MCP tools mounted by the API; the assistant graph orchestrates chat."""
 
 import json
 import logging
@@ -31,6 +27,8 @@ from app.services.assistant.conversations import assistant_config, get_owned_ass
 from app.services.interviews import delivery
 from app.services.jd.discord_job_posts import post_job_to_discord as post_saved_job_to_discord
 from app.services.question_banks.retrieval import retrieve_interview_questions
+from app.services.jd.lookup import find_owned_jobs
+from app.integrations.cv_results_mcp import read_screening_results
 from app.workflows.assistant.state import AssistantState
 
 
@@ -48,6 +46,8 @@ class RecruitmentContext:
     allowed_tools: list[str]
     state: AssistantState
     interview_session_id: UUID | None = None
+    conversation_id: UUID | None = None
+    auth_session_id: UUID | None = None
 
 
 authorized_context: ContextVar[RecruitmentContext] = ContextVar("recruitment_mcp_context")
@@ -110,6 +110,48 @@ def invitation_preview_was_shown(messages, review) -> bool:
 
 
 @mcp.tool(structured_output=True)
+async def find_jobs(job_number: int | None = None, title: str | None = None,
+                    limit: int = 5, offset: int = 0) -> dict[str, Any]:
+    """Read the recruiter's saved jobs and display their information directly in chat.
+
+    Use the user's exact job number OR a literal title fragment. Omit both to list
+    recent saved jobs. A unique number/title match includes the full saved job
+    description and screening profile. Several matches return summaries: ask the
+    recruiter to choose a job number rather than guessing. Use next_offset for more
+    results. Never navigate, open a job conversation, or start a JD workflow.
+    """
+    context = get_authorized_context("find_jobs")
+    return await find_owned_jobs(context.recruiter_id, job_number=job_number,
+        title=title, limit=limit, offset=offset)
+
+
+@mcp.tool(structured_output=True)
+async def get_screening_results(job_number: int | None = None, limit: int = 5, offset: int = 0,
+                                 view: Literal["ranked", "issues", "all"] = "ranked") -> dict[str, Any]:
+    """Read saved screening results directly in chat; never start parsing or screening.
+
+    Use the exact JD number or omit it for this chat's associated saved JD. Use
+    ranked for the top candidates, issues for processing failures/review needs,
+    or all for ranked and unranked candidates. Use next_offset to read more.
+    Older/withheld scores are not current ranks. Scores are not hiring decisions.
+    """
+    context = get_authorized_context("get_screening_results")
+    if not 1 <= limit <= 20 or not 0 <= offset <= 10000 or (job_number is not None and not 1 <= job_number < 2**63):
+        return {"status": "invalid_request", "message": "Use a positive JD number, limit 1–20 and offset 0–10000."}
+    try:
+        job_id = await delivery.resolve_job(context.recruiter_id, job_number, saved_job(context))
+        result = await read_screening_results(context.recruiter_id, context.conversation_id, job_id,
+            session_id=context.auth_session_id, limit=limit, offset=offset, view=view)
+    except HTTPException as error:
+        return {"status": "failed", "message": error.detail, "screening_started": False}
+    except Exception as error:
+        logging.getLogger(__name__).warning("Saved screening lookup failed | error_type=%s", type(error).__name__)
+        return {"status": "failed", "message": "Saved screening results could not be read. Please try again. No screening run was started.",
+                "screening_started": False}
+    return {**result, **({"job_number": job_number} if job_number is not None else {})}
+
+
+@mcp.tool(structured_output=True)
 async def start_jd_creation() -> dict[str, Any]:
     """Request a new JD workflow only when the user explicitly asks to create a JD."""
     context = get_authorized_context("start_jd_creation")
@@ -150,6 +192,8 @@ async def preview_interview_invitations(
     Show the job, sender, all recipients/actions, subject, body and link lifetime.
     Ask whether to send this exact preview. Only a later user reply can approve.
     Use retry_failed or reissue only on an explicit user request.
+    Uses interview times saved in the Invitations panel. New/reissued invitations
+    always include a calendar file. Saving times alone never sends email.
     """
     context = get_authorized_context("preview_interview_invitations")
     try:
@@ -328,6 +372,8 @@ class RecruitmentAuth:
             allowed_tools=claims.allowed_tools,
             state=snapshot.values,
             interview_session_id=claims.interview_session_id,
+            conversation_id=claims.conversation_id,
+            auth_session_id=claims.sid,
         ))
         try:
             await self.app(scope, receive, send)

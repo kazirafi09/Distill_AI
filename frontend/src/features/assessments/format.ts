@@ -38,6 +38,7 @@ export function errorLabel(code: string, validationError?: string | null) {
     ANALYSIS_MODEL_TIMEOUT: 'The model request timed out.', ANALYSIS_MODEL_REQUEST_FAILED: 'The model request failed.',
     ANALYSIS_OUTPUT_NEEDS_REVIEW: 'Model output failed validation. Saved evidence is retained for review.',
     ANALYSIS_INPUT_TOO_LARGE: 'This transcript exceeds the current model context limit.',
+    EXTENSION_INPUT_TOO_LARGE: 'The saved interview evidence exceeds the model request budget. Your Q&A results and original sources are preserved.',
     ASSESSMENT_VERSION_CHANGED: 'Processing instructions changed. Start a new assessment.',
     ASSESSMENT_ATTEMPTS_EXHAUSTED: 'The retry limit has been reached.',
     ASSESSMENT_SOURCE_CHANGED: 'The saved transcript changed and must be reviewed.',

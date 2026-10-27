@@ -117,8 +117,8 @@ export type ConversationSummary = {
   title: string
 }
 
-export function listAssistantConversations(token: string, offset = 0, signal?: AbortSignal) {
+export function listAssistantConversations(token: string, offset = 0, signal?: AbortSignal, jdOnly = false) {
   return apiRequest<{ items: ConversationSummary[]; limit: number; offset: number }>(
-    `/assistant/conversations?limit=20&offset=${offset}`, { token, signal },
+    `/assistant/conversations?limit=20&offset=${offset}${jdOnly ? '&jd_only=true' : ''}`, { token, signal },
   )
 }
