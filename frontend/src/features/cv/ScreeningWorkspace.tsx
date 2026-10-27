@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { apiRequest } from '../../services/api'
 import { CandidateFiles, ScoreDetails } from './CandidateSource'
 import CandidateProfile from './CandidateProfile'
+import DeleteCandidate from './DeleteCandidate'
 import ScreeningProgress from './ScreeningProgress'
 import { errorLabels } from './screeningMessages'
 import type { Assessment, Results, Run } from './CVResults'
@@ -40,7 +41,7 @@ function Requirements({ application, item, profile }: { application: CandidateAp
   })}</>
 }
 
-function CandidateDetail({ token, jobTitle, application, item, results, opened, onBack }: { token: string; jobTitle: string; application: CandidateApplication; item?: Assessment; results: Results; opened: boolean; onBack: () => void }) {
+function CandidateDetail({ token, jobId, jobTitle, application, item, results, opened, onBack, onDeleted }: { token: string; jobId: string; jobTitle: string; application: CandidateApplication; item?: Assessment; results: Results; opened: boolean; onBack: () => void; onDeleted: (pending: boolean) => void }) {
   const [tab, setTab] = useState('requirements')
   const [profileFileId, setProfileFileId] = useState('')
   const heading = useRef<HTMLHeadingElement>(null)
@@ -56,6 +57,7 @@ function CandidateDetail({ token, jobTitle, application, item, results, opened, 
     <button className="screening-back text-link" onClick={onBack}>‹ Back to candidates (filters kept)</button>
     <p className="screening-mobile-context muted">{jobTitle}{results.run && ` · criteria v${results.run.profile_version}`}</p>
     <header className="screening-detail-heading"><div><h2 ref={heading} tabIndex={-1}>{application.full_name}</h2><p className="muted">{application.email}{application.email && ' · '}Applied {new Date(application.created_at).toLocaleDateString('en-GB', { timeZone: 'Asia/Dhaka', day: 'numeric', month: 'short' })}</p></div>{evidenceLink(application) && <a className="button-secondary" href={evidenceLink(application)!} target="_blank" rel="noopener noreferrer">Open CV file ↗</a>}</header>
+    <div className="screening-detail-actions"><DeleteCandidate token={token} application={application} jobId={jobId} jobTitle={jobTitle} onDeleted={onDeleted} /></div>
     {tab === 'requirements' && <div className="screening-score-explanation"><ScoreCard item={item} /><p>How much of the approved criteria the CV documents. This is not a hiring recommendation or a prediction. Missing evidence does not mean the candidate cannot do it. Nothing is rejected automatically.</p></div>}
     <div className="screening-detail-status">{tab !== 'requirements' && <span className="screening-score-inline">Match score: {validScore(item) === null ? 'Not scored' : `${Math.round(validScore(item)!)} / 100`}</span>}<span className={`ui-badge ${status.tone}`}>{status.label}</span>{count > 0 && <span className="ui-badge is-warning">{count} essential {count === 1 ? 'criterion needs' : 'criteria need'} review</span>}</div>
     <nav className="redesign-tabs" aria-label="Candidate sections">{[['requirements', 'Requirements'], ['profile', 'Profile'], ['score', 'Score details'], ['files', 'CV files']].map(([value, label]) => <button key={value} aria-current={tab === value ? 'page' : undefined} onClick={() => setTab(value)}>{label}</button>)}</nav>
@@ -79,6 +81,8 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
   const [busy, setBusy] = useState(false)
   const [revision, setRevision] = useState(0)
   const [lastChecked, setLastChecked] = useState('')
+  const [deletedIds, setDeletedIds] = useState<string[]>([])
+  const [deletionNotice, setDeletionNotice] = useState('')
   const lock = useRef(false)
   const requestVersion = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -141,7 +145,8 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
     }, { replace: true })
   }
   const assessments = new Map([...(results?.ranked ?? []), ...(results?.incomplete ?? [])].map(item => [item.application_id, item]))
-  const rows = applications.map(application => ({ application, item: assessments.get(application.id), status: candidateStatus(application, assessments.get(application.id)) }))
+  const remainingApplications = applications.filter(application => !deletedIds.includes(application.id))
+  const rows = remainingApplications.map(application => ({ application, item: assessments.get(application.id), status: candidateStatus(application, assessments.get(application.id)) }))
   const visible = rows.filter(row => `${row.application.full_name} ${row.application.email}`.toLowerCase().includes(query.toLowerCase()) && (show === 'all' || row.status.key === show) && (!onlyReview || reviewCount(row.item) > 0)).sort((a, b) => sort === 'name' ? a.application.full_name.localeCompare(b.application.full_name) : sort === 'newest' ? Date.parse(b.application.created_at) - Date.parse(a.application.created_at) : (validScore(b.item) ?? -1) - (validScore(a.item) ?? -1))
   const selected = visible.find(row => row.application.id === requestedId) ?? visible[0]
   const scored = rows.filter(row => row.status.key === 'screened').length
@@ -151,6 +156,7 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
   const resume = !!run && ['failed', 'completed_with_issues'].includes(run.status)
 
   return <div className={`screening-workspace${requestedId && selected?.application.id === requestedId ? ' has-mobile-selection' : ''}`}>
+    {deletionNotice && <p className="screening-notice is-info" role="status">{deletionNotice}</p>}
     <div className="screening-workflow-toolbar" aria-label="Screening actions">
       <div className="screening-action-group"><span>Application source</span><div><button className="button-secondary" disabled={!sourceReady} onClick={onSource}>Source setup</button></div></div>
       <div className="screening-action-group"><span>Parse CVs and screen</span><div><button className="button-secondary" disabled={applicationsLoading || !!applicationsError || !applications.length} onClick={onShortlist}>Interview shortlist</button><button className="button-primary screening-start-button" data-motion-processing={active || busy} aria-busy={active || busy} disabled={!results || !connected || busy || active || !applications.length} onClick={() => void screen(resume)}>{busy ? 'Starting…' : active ? 'Screening…' : resume ? 'Resume screening' : 'Screen applications'}</button></div></div>
@@ -181,7 +187,15 @@ export default function ScreeningWorkspace({ token, jobId, jobTitle, application
           })}
         </div><footer className="muted">Search, filters, and list position stay when you open a candidate and come back.</footer>
       </section>
-      {!loading && selected && results ? <CandidateDetail key={selected.application.id} token={token} jobTitle={jobTitle} application={selected.application} item={selected.item} results={results} opened={requestedId === selected.application.id} onBack={back} /> : <section className="screening-candidate-detail"><div className="ui-state"><h3>{loading ? 'Loading screening evidence…' : 'Select a candidate'}</h3><p>Requirement evidence and source information will appear here.</p></div></section>}
+      {!loading && selected && results ? <CandidateDetail key={selected.application.id} token={token} jobId={jobId} jobTitle={jobTitle} application={selected.application} item={selected.item} results={results} opened={requestedId === selected.application.id} onBack={back} onDeleted={pending => {
+        setDeletedIds(current => [...current, selected.application.id])
+        setDeletionNotice(pending ? 'Application deleted. File and search-index cleanup is pending and will retry automatically.' : 'Candidate application and saved evidence deleted. Screen again to refresh the remaining rankings.')
+        requestVersion.current += 1
+        setResults(null)
+        setRevision(value => value + 1)
+        onReload()
+        back()
+      }} /> : <section className="screening-candidate-detail"><div className="ui-state"><h3>{loading ? 'Loading screening evidence…' : 'Select a candidate'}</h3><p>Requirement evidence and source information will appear here.</p></div></section>}
     </div>
     {!!results?.history.length && <details className="screening-history"><summary>Previous screening runs ({results.history.length})</summary>{results.history.map(old => <p key={old.id}>{old.status.replaceAll('_', ' ')} · criteria v{old.profile_version} · {old.completed}/{old.total} scored</p>)}</details>}
   </div>

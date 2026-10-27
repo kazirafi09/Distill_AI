@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.config import get_settings
 from app.db.base import Base
 from app.models.user import User
+from app.models.candidate_deletion import CVImportExclusion, CandidateDeletion
 from app.models.auth_session import AuthSession
 from app.models.candidate_identity import CandidateIdentity
 from app.models.model_rate_limit import ModelRateLimit

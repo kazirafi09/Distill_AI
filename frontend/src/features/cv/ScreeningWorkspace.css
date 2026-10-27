@@ -199,3 +199,12 @@
   .screening-dialog .cv-connect { margin: 0; }
   .screening-dialog .cv-connect-fields { grid-template-columns: minmax(0, 1fr); }
 }
+.screening-detail-actions { display: flex; justify-content: flex-end; margin: 6px 0 10px; }
+.screening-delete-button { color: #b42318; border-color: #f0b4ae; }
+.screening-delete-dialog { max-width: 640px; }
+.screening-delete-dialog p { margin: 14px 0; line-height: 1.6; }
+.screening-delete-confirm { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; }
+.screening-delete-confirm input { flex: none; margin-top: 4px; }
+.screening-delete-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.screening-delete-confirm-button { background: #b42318; }
+.screening-delete-confirm-button:hover:not(:disabled) { background: #912018; }

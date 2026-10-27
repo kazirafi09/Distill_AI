@@ -114,6 +114,9 @@ async def fetch_cv_source(source_id: UUID, recruiter_id: UUID) -> dict:
                 except RuntimeError:
                     raise HTTPException(status_code=503, detail="Google credentials are unavailable.") from None
                 allowed_file_ids = {item["id"] for item in files}
+                from app.services.cv.deletion import excluded_files, file_key
+                excluded = await excluded_files(db, source_id)
+                files = [item for item in files if file_key(item["id"]) not in excluded]
                 if source.spreadsheet_id is not None:
                     requested_ids = {file_id for row in response_rows for file_id in row["drive_file_ids"]}
                     files = [item for item in files if item["id"] in requested_ids]

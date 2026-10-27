@@ -78,6 +78,8 @@ async def check_source(source_id):
 
 
 async def run_due_checks():
+    from app.services.cv.deletion import retry_pending
+    await retry_pending()
     from app.services.interviews.identification import purge_expired
     await purge_expired()
     async with engine.connect() as connection:

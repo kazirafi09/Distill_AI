@@ -112,6 +112,7 @@ class SchedulingTests(unittest.IsolatedAsyncioTestCase):
         with ExitStack() as stack:
             stack.enter_context(patch.object(checks, "engine", SimpleNamespace(connect=lambda: context)))
             stack.enter_context(patch("app.services.interviews.identification.purge_expired", new=AsyncMock()))
+            stack.enter_context(patch("app.services.cv.deletion.retry_pending", new=AsyncMock()))
             run = stack.enter_context(patch.object(checks, "check_source", new=AsyncMock(return_value=True)))
             self.assertEqual(await checks.run_due_checks(), 1)
             run.assert_awaited_once_with(source_id)
@@ -131,7 +132,7 @@ class WorkerBootstrapTests(unittest.TestCase):
         import subprocess
         import sys
         script = """
-from app.scripts import cv_source_check_worker
+from app.workers import cv_source_check_worker
 from app.services.interviews.identification import purge_expired
 from app.services.cv.ingestion import fetch_cv_source
 from app.db.base import Base
@@ -161,6 +162,7 @@ class ImportPersistenceTests(unittest.IsolatedAsyncioTestCase):
         from app.models.jd import JDConversation, JobDescription
         from app.models.cv import Candidate, CandidateApplication, CVDocument, CVFileVersion
         from app.models.candidate_identity import CandidateIdentity
+        from app.models.candidate_deletion import CVImportExclusion
         from app.services.cv import ingestion
 
         engine = create_async_engine(get_settings().database_url, poolclass=NullPool)
@@ -171,7 +173,7 @@ class ImportPersistenceTests(unittest.IsolatedAsyncioTestCase):
             await connection.execute(CreateSchema(schema))
         try:
             tables = [model.__table__ for model in (User, JDConversation, JobDescription, CVSource,
-                CVSourceCheck, Candidate, CandidateApplication, CVDocument, CVFileVersion, CandidateIdentity)]
+                CVSourceCheck, Candidate, CandidateApplication, CVDocument, CVFileVersion, CandidateIdentity, CVImportExclusion)]
             async with scoped.begin() as connection:
                 await connection.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
             async with factory() as db:
