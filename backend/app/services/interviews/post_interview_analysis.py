@@ -13,7 +13,7 @@ from app.services.interviews import performance_rubric as rubric
 KINDS = ("cv_claim_review", "interview_performance", "interview_quality")
 PROMPT_VERSION = "interview-extensions-3"
 PERFORMANCE_EVIDENCE_VERSION = "source-selection-2"
-VERSIONS = {"cv_claim_review": "cv-claim-review-3", "interview_performance": rubric.RUBRIC_VERSION, "interview_quality": "interview-quality-1"}
+VERSIONS = {"cv_claim_review": "cv-claim-review-3", "interview_performance": rubric.RUBRIC_VERSION, "interview_quality": "interview-quality-2"}
 Text = Annotated[str, Field(min_length=1, max_length=1400)]
 
 
@@ -173,6 +173,8 @@ def generation_schema(kind, inputs):
     contract = (ReferencedClaims if uses_interview_selection(inputs) else SelectedClaims) if kind == "cv_claim_review" and uses_cv_selection(inputs) else SCHEMAS[kind]
     if kind == "interview_performance" and uses_performance_selection(inputs):
         contract = ReferencedPerformance
+    if kind == "interview_quality" and inputs.get("rubric_version") == "interview-quality-2":
+        contract = SelectedQuality
     schema = deepcopy(contract.model_json_schema())
     if kind == "cv_claim_review" and uses_cv_selection(inputs):
         schema["$defs"]["CVSelection"]["properties"]["source_ref"]["enum"] = list(cv_sources(inputs))
@@ -192,6 +194,13 @@ def generation_schema(kind, inputs):
                 properties[field]["items"]["enum"] = list(sources)
             else:
                 properties[field]["maxItems"] = 0
+    if kind == "interview_quality" and inputs.get("rubric_version") == "interview-quality-2":
+        field = schema["$defs"]["SelectedQualityFinding"]["properties"]["evidence"]
+        sources = quality_excerpts(inputs)
+        if sources:
+            field["items"]["enum"] = list(sources)
+        else:
+            schema["properties"]["findings"]["maxItems"] = 0
     return schema
 
 
@@ -275,7 +284,7 @@ class QualityFinding(Schema):
     category: Literal["question_relevance", "question_effectiveness", "follow_up", "interaction"]
     observation: Text
     group_ids: list[str] = Field(min_length=1, max_length=12)
-    evidence: list[Quote] = Field(min_length=1, max_length=8)
+    evidence: list[Quote] = Field(min_length=1, max_length=200)
     improvement: Text
     uncertainty: Text | None
 
@@ -283,6 +292,50 @@ class QualityFinding(Schema):
 class Quality(Schema):
     findings: list[QualityFinding] = Field(max_length=12)
     summary: Text
+
+
+class SelectedQualityFinding(Schema):
+    category: Literal["question_relevance", "question_effectiveness", "follow_up", "interaction"]
+    observation: Text
+    evidence: list[str] = Field(min_length=1, max_length=200)
+    improvement: Text
+    uncertainty: Text | None
+
+
+class SelectedQuality(Schema):
+    findings: list[SelectedQualityFinding] = Field(max_length=12)
+    summary: Text
+
+
+def quality_excerpts(inputs):
+    """Bind both speakers' exact excerpts to accepted F5 groups before generation."""
+    sources = {}
+    fields = ("question_turn_ids", "answer_turn_ids", "follow_up_turn_ids", "clarification_turn_ids", "revisit_turn_ids")
+    for item in inputs["f5"]["results"]:
+        group = item["group"]
+        allowed = {turn_id for field in fields for turn_id in group.get(field, [])}
+        for turn in inputs["prepared"]["turns"]:
+            if turn["id"] not in allowed:
+                continue
+            for start in range(0, len(turn["text"]), 1200):
+                quote = turn["text"][start:start + 1200]
+                if quote.strip():
+                    sources[f"quality-source-{len(sources) + 1}"] = {
+                        "group_id": group["id"], "turn_id": turn["id"],
+                        "speaker_role": turn["speaker_role"], "quote": quote}
+    return sources
+
+
+def resolve_quality_selection(raw, inputs):
+    result = SelectedQuality.model_validate(raw).model_dump()
+    sources = quality_excerpts(inputs)
+    for index, finding in enumerate(result["findings"]):
+        selected = finding["evidence"]
+        if len(set(selected)) != len(selected) or any(ref not in sources for ref in selected):
+            raise InterviewEvidenceError("INTERVIEW_QUALITY_SOURCE_INVALID", f"findings.{index}.evidence")
+        finding["group_ids"] = list(dict.fromkeys(sources[ref]["group_id"] for ref in selected))
+        finding["evidence"] = [{key: sources[ref][key] for key in ("turn_id", "quote")} for ref in selected]
+    return result
 
 
 SCHEMAS = {"cv_claim_review": Claims, "interview_performance": Performance, "interview_quality": Quality}
@@ -368,6 +421,7 @@ VALIDATION_MESSAGES = {
     "INTERVIEW_PERFORMANCE_TECHNICAL_BASIS_INVALID": ("Technical correctness requires saved reference evidence or an explicit model-knowledge label.", "dimensions.basis"),
     "INTERVIEW_QUALITY_GROUP_SCOPE_INVALID": ("A process finding cited an unknown question group.", "findings.group_ids"),
     "INTERVIEW_QUALITY_GROUP_EVIDENCE_INVALID": ("A process finding cited evidence outside its question groups.", "findings.evidence"),
+    "INTERVIEW_QUALITY_SOURCE_INVALID": ("Select unique source_ref values from quality_excerpts; group IDs and quotations are attached by the backend.", "findings.evidence"),
 }
 
 
@@ -447,6 +501,8 @@ def speaking_time(prepared):
 
 
 def materialize(kind, raw, inputs):
+    if kind == "interview_quality" and inputs.get("rubric_version") == "interview-quality-2":
+        raw = resolve_quality_selection(raw, inputs)
     if kind == "cv_claim_review" and uses_cv_selection(inputs):
         raw = resolve_cv_selection(raw, inputs)
     if kind == "interview_performance" and uses_performance_selection(inputs):
@@ -613,6 +669,14 @@ async def execute(claim, version):
                     "Interviewer speech and question-bank passages are context only and cannot be selected as support. "
                     "If no eligible passage establishes technical correctness, use model_knowledge or not_assessed "
                     "as appropriate; never select an unrelated reference just to supply a citation.")
+        if kind == "interview_quality" and inputs.get("rubric_version") == "interview-quality-2":
+            payload["quality_excerpts"] = [{"source_ref": ref, **excerpt}
+                for ref, excerpt in quality_excerpts(inputs).items()]
+            payload["task"] += (" Return evidence as source_ref strings from quality_excerpts. "
+                "Do not generate group IDs, turn IDs or quotations; Python attaches their exact source groups and text. "
+                "Choose excerpts supporting each finding, preferably at most eight; up to 200 are allowed for fragmented speech. "
+                "For a finding about an answer elicited by a question, select both the question and answer excerpts. "
+                "Do not repeat references or select unrelated speech to fill a citation. Omit unsupported findings.")
         text = encode_payload(payload)
         attempts = await store.read_stage(claim, "extension-attempts") or {"count": 0}
         previous_response = None

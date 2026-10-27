@@ -99,6 +99,8 @@ export const startF5 = (token: string, jobId: string, applicationId?: string) =>
     ? { source: 'interview', application_id: applicationId } : { source: 'synthetic_demo' } })
 export const retryF5 = (token: string, id: string) =>
   apiRequest<Run>(`/assessments/runs/${id}/retry`, { token, method: 'POST' })
+export const rerunF5 = (token: string, id: string) =>
+  apiRequest<Run>(`/assessments/runs/${id}/rerun`, { token, method: 'POST' })
 export const recoverF5 = (token: string, id: string) =>
   apiRequest<Run>(`/assessments/runs/${id}/recover`, { token, method: 'POST' })
 export const startF6 = (token: string, id: string, confirmReview: boolean) =>

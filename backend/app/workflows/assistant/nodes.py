@@ -11,13 +11,14 @@ from app.workflows.assistant.state import AssistantState
 from app.workflows.streaming import invoke_reply
 from app.integrations.assistant_mcp import call_assistant_tool, discover_assistant_tools
 from app.workflows.assistant.interview_intent import acknowledgement_reply, interpret_interview_message
+from app.workflows.assistant.scope import FEATURE_SCOPE, SCOPE_REDIRECT, check_scope
 from app.workflows.jd.chat_routing import (
     explicit_jd_approval, recruiter_context, requests_jd_creation, unverified_jd_claim,
 )
 
 logger = logging.getLogger("distill_ai.workflows.assistant")
 
-SYSTEM_PROMPT = """
+SYSTEM_PROMPT = FEATURE_SCOPE + "\n\n" + """
 You are the Distill AI assistant.
 
 Your connected capabilities are:
@@ -109,15 +110,17 @@ links stop working. Never automatically retry uncertain outcomes.
 Use get_interview_invitation_status for per-recipient outcomes. Queued means
 awaiting processing, provider_accepted means SMTP accepted it, and neither
 means confirmed delivery. Never expose raw links/tokens in general chat.
-Interview execution and assessments are not connected yet.
+Interview execution and assessments are available in their product workspaces;
+this central chat has no tools to run calls or assessments. Explain their purpose
+and supported workflow when asked, without claiming to operate them here.
 You do not have general access to company policies or tools to start CV processing.
 Never claim those actions have run. Explain unavailable actions briefly.
-For greetings and general questions, answer normally and concisely.
+For greetings and product questions, answer concisely within the product scope above.
 Make at most one tool call per response.
 """.strip()
 
 
-INTERVIEW_PROMPT = """
+INTERVIEW_PROMPT = FEATURE_SCOPE + "\n\n" + """
 You are the Distill AI assistant helping the recruiter conduct the selected interview.
 The backend supplies the current interview's job and candidate. That context takes
 precedence over jobs or candidates mentioned earlier in this conversation.
@@ -206,6 +209,15 @@ def assistant_turn(state: AssistantState, config: RunnableConfig) -> dict[str, o
         return {"error_code": "ASSISTANT_MCP_UNAVAILABLE"}
 
     if not interview and isinstance(messages[-1], HumanMessage):
+        try:
+            model = make_assistant_model(settings)
+            if not check_scope(messages, model):
+                return {"messages": [AIMessage(content=SCOPE_REDIRECT)], "error_code": None}
+        except Exception as exc:
+            logger.error("Assistant scope check failed | error_type=%s", type(exc).__name__)
+            if is_rate_limited(exc):
+                return {"error_code": "ASSISTANT_MODEL_RATE_LIMITED"}
+            return {"error_code": "ASSISTANT_MODEL_REQUEST_FAILED"}
         latest = messages[-1].content
         if isinstance(latest, str):
             creation = requests_jd_creation(latest)

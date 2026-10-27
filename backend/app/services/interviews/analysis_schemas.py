@@ -101,3 +101,4 @@ class DimensionEvidenceSelection(DimensionEvaluation):
     """The model selects supplied excerpts; Python copies their exact source text."""
 
     evidence: list[str] = Field(max_length=200)
+    reference_evidence: list[str] = Field(default_factory=list, max_length=5)

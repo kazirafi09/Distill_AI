@@ -67,6 +67,11 @@ async def retry(run_id: UUID, recruiter: Recruiter):
     return await service.retry_run(run_id, recruiter.id)
 
 
+@router.post("/runs/{run_id}/rerun", status_code=202)
+async def rerun(run_id: UUID, recruiter: Recruiter):
+    return await service.rerun_run(run_id, recruiter.id)
+
+
 @router.post("/runs/{run_id}/f6", status_code=202)
 async def consolidate(run_id: UUID, request: consolidation_runs.StartConsolidation, recruiter: Recruiter):
     return await consolidation_runs.start(run_id, recruiter.id, request)

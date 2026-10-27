@@ -168,19 +168,23 @@ def public_run(run):
 
 def can_recover(run):
     return (run.kind == "f5" and run.status == "needs_review" and run.error_code == "ANALYSIS_OUTPUT_NEEDS_REVIEW"
-        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", "interview-analysis-12", "interview-analysis-13", PROMPT_VERSION}
+        and not run.inputs.get("recovery") and run.inputs.get("prompt_version") in {"interview-analysis-9", "interview-analysis-11", "interview-analysis-12", "interview-analysis-13", "interview-analysis-14", "interview-analysis-15", PROMPT_VERSION}
         and run.inputs.get("rubric_version") == RUBRIC_VERSION)
 
 
 def recovery_policy(name, payload):
     """Only known repairable failures can receive a single recovery budget."""
     code = payload.get("last_error")
+    if name == "grouping-attempts" and code == "GROUP_ROLE_INVALID":
+        return "grouping-role-recovery-1"
     if name == "mapping-attempts" and code in {"MAPPING_CRITERION_INVALID", "MAPPING_COVERAGE_INVALID"}:
         return "mapping-id-recovery-1"
     if not name.startswith("evaluation-") or not name.endswith("-attempts"):
         return None
     if code == "EVIDENCE_QUOTE_INVALID":
         return "evidence-selection-recovery-1"
+    if code == "REFERENCE_QUOTE_INVALID":
+        return "reference-selection-recovery-1"
     errors = payload.get("last_details", {}).get("validation_errors", [])
     if code == "SCHEMA_INVALID" and errors:
         if all(e.get("code") == "SCORE_REASON_CONFLICT" for e in errors):
@@ -302,6 +306,32 @@ async def start_run(job_id, recruiter_id, request):
             await db.flush()
         await db.commit()
         return public_run(run)
+
+
+async def rerun_run(run_id, recruiter_id):
+    """Explicit fresh attempt on pinned evidence; repeated clicks reuse the same child."""
+    async with SessionFactory() as db:
+        source = await owned_run(db, run_id, recruiter_id)
+        await lock_job(db, source.job_id)
+        await db.refresh(source)
+        if source.kind != "f5" or source.synthetic or source.status not in {"failed", "needs_review"}:
+            raise HTTPException(409, "Only stopped interview Q&A analyses can be rerun.")
+        inputs = deepcopy(source.inputs)
+        inputs.pop("recovery", None)
+        inputs.update(prompt_version=PROMPT_VERSION, rubric_version=RUBRIC_VERSION,
+                      model_options=execution_options(), rerun={"source_run_id": str(source.id)})
+        key = digest(inputs)
+        child = await db.scalar(select(AssessmentRun).where(
+            AssessmentRun.recruiter_id == recruiter_id, AssessmentRun.input_key == key))
+        if not child:
+            child = AssessmentRun(recruiter_id=recruiter_id, job_id=source.job_id,
+                application_id=source.application_id, transcript_id=source.transcript_id,
+                cv_assessment_id=source.cv_assessment_id, parent_run_id=source.id,
+                kind="f5", synthetic=False, label=source.label, inputs=inputs, input_key=key)
+            db.add(child)
+            await db.flush()
+        await db.commit()
+        return public_run(child)
 
 
 async def retry_run(run_id, recruiter_id):

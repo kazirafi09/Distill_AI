@@ -92,6 +92,7 @@ class Settings(BaseSettings):
     livekit_api_secret: SecretStr | None = None
     livekit_token_ttl_seconds: int = Field(default=300, ge=60, le=900)
     livekit_api_timeout_seconds: int = Field(default=10, ge=1, le=60)
+    interview_empty_grace_seconds: int = Field(default=60, ge=30, le=600)
 
     # Optional until a transcription request is explicitly started.
     deepgram_api_key: SecretStr | None = None

@@ -74,3 +74,20 @@ async def close_room(room_name: str) -> None:
             # Repeated closure is safe if the room is already gone.
             if error.code != "not_found":
                 raise
+
+
+async def participant_identities(room_name: str) -> set[str]:
+    """Inspect presence without joining (and accidentally creating) a room."""
+    settings = get_settings()
+    key, secret = livekit_credentials(settings)
+    async with api.LiveKitAPI(
+        url=settings.livekit_api_url, api_key=key, api_secret=secret,
+        timeout=ClientTimeout(total=settings.livekit_api_timeout_seconds),
+    ) as client:
+        try:
+            result = await client.room.list_participants(api.ListParticipantsRequest(room=room_name))
+        except api.TwirpError as error:
+            if error.code == "not_found":
+                return set()
+            raise
+        return {participant.identity for participant in result.participants}

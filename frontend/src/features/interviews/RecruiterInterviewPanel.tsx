@@ -40,7 +40,7 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
   const leave = useCallback(() => {
     setCredentials(null)
     setConnected(false)
-    setMessage('You left the call. The interview stays active until you choose End interview.')
+    setMessage('You left the call. The interview ends automatically after everyone has left for one minute. Choose End interview to end it now.')
   }, [])
 
   useEffect(() => {
@@ -123,7 +123,7 @@ function RecruiterSession({ token, userId, jobId, candidate, members, invitation
     {pollError && <p role="alert">Status check failed: {pollError}</p>}
     {error && <p role="alert">{error}</p>}
     {message && !finished && <p role="status">{message}</p>}
-    {status?.status === 'closing' && <p>Room closure is pending. Retry End interview.</p>}
+    {status?.status === 'closing' && <p>Room closure is pending. The server will retry automatically, or you can retry End interview now.</p>}
     {finished && <p role="status">This interview has finished.</p>}
   </>
   const admitted = active && status.candidate_admitted

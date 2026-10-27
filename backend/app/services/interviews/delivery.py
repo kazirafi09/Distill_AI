@@ -72,6 +72,8 @@ async def invitation_options(job_id, recruiter_id):
         recipients = []
         for application_id, name, email in rows:
             session = await application_session(db, application_id)
+            if session and session.status == "completed":
+                continue
             draft = await db.get(InvitationScheduleDraft, application_id)
             recipients.append({"application_id": str(application_id), "name": name, "email": email,
                                "schedule": schedule_for_session(draft or session)})
@@ -96,6 +98,9 @@ async def save_invitation_schedules(job_id, recruiter_id, schedules):
             .join(InterviewShortlist, InterviewShortlist.id == InterviewShortlistMember.shortlist_id)
             .where(CandidateApplication.job_description_id == job_id, Candidate.recruiter_id == recruiter_id,
                    InterviewShortlist.job_description_id == job_id, InterviewShortlist.recruiter_id == recruiter_id)))
+        completed = set(await db.scalars(select(InterviewSession.application_id).where(
+            InterviewSession.application_id.in_(selected), InterviewSession.status == "completed")))
+        selected -= completed
         if not selected or set(requested) != selected:
             raise HTTPException(409, "The saved interviewees changed. Reload and set times for every recipient.")
         for application_id, item in requested.items():
@@ -149,6 +154,9 @@ async def preview_data(db, job_id, recruiter_id, mode, schedules=None, include_c
     recipients = []
     now = datetime.now(timezone.utc)
     for member, candidate in rows:
+        session = await application_session(db, member.application_id)
+        if session and session.status == "completed":
+            continue
         calendar_enabled = include_calendar
         assessment = current.get(str(member.application_id))
         if (str(shortlist.screening_run_id) != results["run"]["id"] or not assessment
@@ -163,7 +171,6 @@ async def preview_data(db, job_id, recruiter_id, mode, schedules=None, include_c
             InterviewInvitation.application_id == member.application_id))
         send_job = await db.scalar(select(InvitationEmailJob).where(
             InvitationEmailJob.invitation_id == invitation.id)) if invitation else None
-        session = await application_session(db, member.application_id)
         current_schedule = schedule_for_session(session)
         draft = await db.get(InvitationScheduleDraft, member.application_id)
         planned_schedule = schedule_for_session(draft)

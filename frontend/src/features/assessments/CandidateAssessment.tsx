@@ -88,9 +88,9 @@ function QuestionDetail({ answer, data, onEvidence }: { answer: Answer; data: Re
   </div>
 }
 
-export default function CandidateAssessment({ data, token, jobTitle, jobNumber, runs, busy, onBack, onSelect, onRetry, onRecover, onConsolidate }: {
+export default function CandidateAssessment({ data, token, jobTitle, jobNumber, runs, busy, onBack, onSelect, onRetry, onRecover, onRerun, onConsolidate }: {
   data: Result; token: string; jobTitle: string; jobNumber: number; runs: Run[]; busy: boolean
-  onBack: () => void; onSelect: (id: string) => void; onRetry: () => void; onRecover: () => void; onConsolidate: (confirm: boolean) => void
+  onBack: () => void; onSelect: (id: string) => void; onRetry: () => void; onRecover: () => void; onRerun: () => void; onConsolidate: (confirm: boolean) => void
 }) {
   const [tab, setTab] = useState<Tab>('summary')
   const [filter, setFilter] = useState<'all' | FindingSection>('all')
@@ -174,6 +174,7 @@ export default function CandidateAssessment({ data, token, jobTitle, jobNumber, 
     {data.outdated && <p className="ca-care">Job criteria have changed. This saved analysis retains its original criteria.</p>}
     {run.error_code && <div className="assessment-error" role="alert"><p>{errorLabel(run.error_code, data.result?.validation_error)}</p>{run.can_retry && <button type="button" className="ca-button" onClick={onRetry}>Retry from saved work</button>}{run.can_recover && <button type="button" className="ca-button" disabled={busy} onClick={onRecover}>Resume from saved work</button>}</div>}
     {active && <div className="ca-progress" role="status"><strong>{stageLabel(run.stage)}</strong><span>{run.completed_groups} / {run.total_groups || '…'} {run.kind === 'f6' ? 'analysis branches' : 'question groups'} saved · attempt {run.attempt}/{run.max_attempts}</span>{run.heartbeat_at && <span>Last activity {date(run.heartbeat_at)} (Bangladesh time)</span>}{run.total_groups > 0 && <progress value={run.completed_groups} max={run.total_groups} />}</div>}
+    {run.kind === 'f5' && !run.synthetic && ['failed', 'needs_review'].includes(run.status) && <div className="ca-care"><p>Run Q&amp;A again using the saved transcript and criteria with the current analysis settings. The previous run stays in history.</p><button type="button" className="ca-button" disabled={busy} onClick={onRerun}>{busy ? 'Starting…' : 'Rerun Q&A analysis'}</button></div>}
     <div className="ca-navigation"><nav className="redesign-tabs" aria-label="Candidate assessment sections">{tabs.map(item => <button type="button" key={item.id} aria-current={tab === item.id ? 'page' : undefined} onClick={() => ['cv_claim_review', 'interview_performance', 'interview_quality'].includes(item.id) ? showInsight(item.id as InsightKind) : setTab(item.id)}>{item.label}{item.count !== undefined && <span className="ca-count">{item.count}</span>}</button>)}</nav>
       <div className="ca-page-actions"><button type="button" className="ca-button primary" onClick={() => openPanel('report')}>Report &amp; export</button>
         <details ref={moreDetails} className="ca-more-details" onKeyDown={event => { if (event.key === 'Escape' && moreDetails.current) { moreDetails.current.open = false; moreDetails.current.querySelector('summary')?.focus() } }}><summary className="ca-button">More details</summary><div>

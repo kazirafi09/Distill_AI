@@ -15,7 +15,7 @@ from app.core.config import get_settings
 from app.db.session import SessionFactory
 from app.models.interviews import InterviewSession
 from app.models.interview_transcripts import InterviewTranscript, InterviewAudioStream
-from app.services.interviews.livekit import livekit_credentials
+from app.services.interviews.livekit import livekit_credentials, participant_identities
 from app.services.interviews.transcription import transcribe_microphone
 from app.services.interviews.transcripts import begin_transcript, mark_speech_boundary, save_final_turn
 from app.services.interviews.audio_timing import AudioClock, TIMING_BASIS
@@ -113,21 +113,6 @@ async def stop_transcription(session_id):
 
 async def shutdown_transcriptions():
     await asyncio.gather(*(stop_transcription(sid) for sid in list(_captures)), return_exceptions=True)
-
-
-async def resume_active_transcriptions():
-    """Resume admitted active interviews after an API reload without another Join."""
-    from app.models.interviews import InterviewInvitation
-    async with SessionFactory() as db:
-        ids = list(await db.scalars(select(InterviewSession.id)
-            .join(InterviewInvitation, InterviewInvitation.application_id == InterviewSession.application_id)
-            .where(InterviewSession.status == "in_progress", InterviewSession.candidate_admitted_at.is_not(None),
-                InterviewInvitation.recruiter_id == InterviewSession.recruiter_id,
-                InterviewInvitation.token_hash == InterviewSession.admitted_invitation_hash,
-                InterviewInvitation.revoked_at.is_(None),
-                InterviewInvitation.expires_at > datetime.now(timezone.utc))))
-    for session_id in ids:
-        start_transcription(session_id)
 
 
 def safe_error(error):
@@ -302,6 +287,12 @@ async def _run(session_id, capture):
             # UTC-to-session reference. Result/save arrival time is never used.
             anchor = asyncio.get_running_loop().time()
             session_elapsed_ms = (datetime.now(timezone.utc) - session.started_at).total_seconds() * 1000
+        # Join requests can arrive before the browser connects. Never let the
+        # subscriber create an empty room; reconciliation resumes it once a
+        # person is present, including after an API restart.
+        expected = {f"recruiter-{owner_id}": "recruiter", f"candidate-{application_id}": "candidate"}
+        if not (await participant_identities(room_name)) & expected.keys():
+            return
         info = await begin_transcript(job_id, application_id, owner_id)
         transcript_id = UUID(info["transcript_id"])
         capture.transcript_id = transcript_id
@@ -311,7 +302,6 @@ async def _run(session_id, capture):
         if not settings.deepgram_api_key or not settings.deepgram_api_key.get_secret_value().strip():
             raise ValueError("DEEPGRAM_API_KEY_MISSING")
         key, secret = livekit_credentials(settings)
-        expected = {f"recruiter-{owner_id}": "recruiter", f"candidate-{application_id}": "candidate"}
 
         def subscribe(publication, participant):
             if (not capture.stop.is_set() and participant.identity in expected

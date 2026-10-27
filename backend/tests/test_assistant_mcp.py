@@ -56,6 +56,7 @@ class AssistantMCPUnitTests(unittest.TestCase):
         self.assertLessEqual(claims["exp"] - claims["iat"], 120)
 
 
+@patch("app.workflows.assistant.nodes.check_scope", new=lambda *_: True)
 class AssistantMCPHTTPTests(unittest.IsolatedAsyncioTestCase):
     async def test_discovery_execution_graph_and_access_guards(self):
         owner, conversation_id, session_id = uuid4(), uuid4(), uuid4()
